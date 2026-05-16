@@ -226,9 +226,13 @@ sense.** This is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 8. Open work (in priority order)
 
-Three pieces of specification work and one piece of implementation
-work are now load-bearing. Listed in the order their dependencies
-require:
+The architecture recognition (2026-05-15) and subsequent work clarified
+that what remains is a stack of dependent specification, library, and
+implementation work, culminating in the **Terraformation Pipeline** —
+the largest and most consequential piece, where the threshold-crossing
+claim gets tested at the scale of the web platform itself.
+
+Listed in the order their dependencies require:
 
 ### Priority 1 — Specify the universal type format (IN PROGRESS)
 **Documents being written:** [canon/UTF/](canon/UTF/) directory
@@ -237,10 +241,11 @@ require:
 the kernel routes it, applications are made of it. Without a written
 schema, the architecture exists as recognition but not as
 specification.
-**Status as of 2026-05-15:**
+**Status as of 2026-05-16:**
 - [canon/UTF/00-INDEX.md](canon/UTF/00-INDEX.md) — entry point and reading order, complete
 - [canon/UTF/01-foundations.md](canon/UTF/01-foundations.md) — the structural argument (WHEN:THEN vs KEY:VALUE), complete
 - [canon/UTF/research/key-value-formats-survey.md](canon/UTF/research/key-value-formats-survey.md) — exhaustive survey establishing the exclusion, complete
+- [canon/UTF/research/substrate-stratification-observation.md](canon/UTF/research/substrate-stratification-observation.md) — observation recorded for later decision
 - `02-kind-vocabulary.md` — closed set of node kinds, planned
 - `03-attribute-schema.md` — required/optional attributes per kind, planned
 - `04-identity-and-content-addressing.md` — algorithm 13 made operational, planned
@@ -252,35 +257,197 @@ formats survey. Algorithms 09, 10, 11 (VSF binary form) to be
 incorporated in `05-canonical-encodings.md`.
 
 ### Priority 2 — Specify the adapter protocol
-**Document to write:** `canon/adapter-protocol.md`
+**Document to write:** `canon/adapter-protocol.md` (or equivalent
+location alongside `canon/UTF/`)
 **Closes:** [ARCHITECTURE.md proof gap §6.2](ARCHITECTURE.md)
 **Why second:** Once UTF is specified, the adapter protocol is
 "what an adapter must do with UTF nodes on the kernel side." This
 formalizes the contract every existing adapter implicitly honors.
+**Distinct from Priority 3 (Adapter Library):** the protocol is the
+*contract*; the library is the *built drivers* that honor it. Protocol
+must exist before library can be built to it.
 **Sources to cite:** algorithm 12 (IPC), algorithm 16 (GPU bridge),
-SE-06 (substrate duality), the IndexedDB adapter from Phase 5.7.7.
+SE-06 (substrate duality), the IndexedDB adapter from Phase 5.7.7,
+and the existing adapter set (CSS oracle, JS oracle, WGSL shader,
+IPC channel, IndexedDB persistence, binary intake, code-to-VSF
+extractor) as the empirical anchor.
 
-### Priority 3 — Implement the kernel as a discrete artifact
+### Priority 3 — Adapter Library (the standard library of substrate connections)
+**Code to write:** A loadable, modular library of adapters that
+honor the protocol from Priority 2. Each adapter is a unit that
+speaks UTF on its kernel side and a specific hardware protocol on
+the other. The library is the architecture's `require()`-equivalent
+mechanism for substrate capability: load `network-adapter.js`, and
+the substrate now has an HTTP deposition interface; load
+`indexeddb-adapter.js`, and it has persistence; load `wgsl-adapter.js`,
+and it has GPU resolution.
+**Closes:** Operational equivalent of [ARCHITECTURE.md §3](ARCHITECTURE.md)
+— makes the adapter layer a buildable, extensible artifact rather
+than an existence-proof scattered across implementation directories.
+**Why third:** The adapter protocol (Priority 2) names the contract;
+the library is where adapters actually live as independent units that
+can be loaded, swapped, and composed. The library is the surface the
+substrate uses to *do work in the world*.
+**Minimum adapter set to ship in v1:**
+- CSS oracle adapter (rendering substrate, reference resolver)
+- JS oracle adapter (sequential interpreter)
+- WGSL adapter (GPU compute)
+- IndexedDB adapter (storage substrate, per SE-13)
+- IPC channel adapter (host event loop)
+- Network adapter (HTTP intake / HTTP excretion)
+- Source-byte intake adapter (per Phase 5.7.5, generalized)
+**Stretch adapters for v1.x:**
+- WebSocket adapter, ServiceWorker adapter, Cache API adapter,
+  WebRTC adapter, File System Access adapter, Web Crypto adapter,
+  Web Audio adapter, MediaStream adapter
+**Cross-reference:** Many existing implementations already function
+as adapters in all but name. The library work is partly extraction
+and naming, partly new adapter construction.
+
+### Priority 4 — Implement the kernel as a discrete artifact
 **Code to write:** ~100-300 lines of host-language code implementing
 the discretion router + state object + adapter notification, with
-an example adapter set
+an example adapter set from the Adapter Library
 **Closes:** [ARCHITECTURE.md proof gap §6.3](ARCHITECTURE.md)
-**Why third:** With UTF and the adapter protocol specified, the
-kernel becomes a buildable artifact. Verify against the canonical
-loan program for byte-identical output through (kernel+CSS-adapter),
-(kernel+JS-adapter), (kernel+WGSL-adapter).
+**Why fourth:** With UTF, the adapter protocol, and a minimum
+adapter library in place, the kernel becomes a buildable artifact
+that can be exercised. Verify against the canonical loan program for
+byte-identical output through (kernel+CSS-adapter), (kernel+JS-adapter),
+(kernel+WGSL-adapter). The kernel is small; what makes it useful is
+the adapter set it loads.
 **Cross-reference:** [implementation/08-runtime-kernel/](implementation/08-runtime-kernel/)
 may already be partially this work — reconcile before starting fresh.
 
-### Priority 4 — Demonstrate substrate relocation across hosts
+### Priority 5 — Demonstrate substrate relocation across hosts
 **Experiment to run:** serialize a live substrate state from one
 host (CPython, Node, or any non-browser host), deserialize into a
 browser, verify state identity
 **Closes:** [ARCHITECTURE.md proof gap §6.4](ARCHITECTURE.md);
 [RESEARCH-AGAINST-PREFACE.md](RESEARCH-AGAINST-PREFACE.md) objection 2
-**Why fourth:** Depends on priority 1 (the format being serializable)
-and priority 3 (the kernel being implementable in multiple hosts).
+**Why fifth:** Depends on Priorities 1, 3, and 4 (UTF serializable;
+adapters that read/write UTF; kernel implementable in multiple hosts).
 This is the strongest version of the substrate-portability claim.
+**Can run in parallel with Priority 6** once 1-4 are done.
+
+### Priority 6 — The Terraformation Pipeline
+**The largest and most consequential piece of work in the project.**
+The substrate's claim is that the web platform's grammar — HTML
+structure, CSS resolution semantics, JavaScript ECMA grammar, W3C
+standards, MDN-documented behavior, the union of every specified
+behavior any browser engine implements — IS the coordinate space the
+substrate operates over. The application is a region within that
+space. The Terraformation Pipeline is the work of making that claim
+*operational*: ingest the web platform's full specification corpus
+into a state space, then load applications into the terraformed
+substrate and let the cascade resolve them as deposited geometry.
+
+**Closes:** the largest open empirical question the project has —
+does the threshold-crossing claim survive at the scale of the web
+platform itself, not just at the scale of the deployed loan program?
+This is the test the preface gestures at without being able to
+demonstrate; the pipeline is what would demonstrate it.
+
+**Why last:** Depends on Priorities 1-4 (UTF, adapter protocol,
+adapter library, kernel artifact). The pipeline is large enough
+that doing it before those exist would be building on sand.
+
+The pipeline has two parts. Each is substantial.
+
+#### Part 1: Spec corpus ingest (Terraform the universe)
+
+Dynamically retrieve the canonical specifications of the web platform
+and deposit them into a state space:
+
+- **ECMA-262** (JavaScript language specification — grammar, semantics,
+  built-in objects, abstract operations)
+- **HTML Living Standard** (WHATWG — element vocabulary, parsing
+  algorithm, DOM construction, content models)
+- **CSS specifications** (W3C — Selectors, Cascade, Custom Properties,
+  Box Model, Layout, Color, Typography, every level-N module)
+- **WebIDL** (interface definition language tying the others together)
+- **DOM specification** (WHATWG — coordinate-space semantics)
+- **Web APIs** (Fetch, Streams, WebGPU, WebAudio, WebRTC, File System
+  Access, IndexedDB, ServiceWorker, MediaStream, Web Crypto, every
+  spec that defines behavior available in a browser)
+- **Encoding standards** (UTF-8, character classes, normalization)
+- **URL standard**, **MIME types**, **HTTP semantics** (where the
+  platform meets the network)
+- **MDN reference documentation** as a structured commentary layer
+  (where the spec language is too dense, MDN provides the operational
+  reading the platform actually implements against)
+
+This is not "documentation we read." It is **the substrate's
+coordinate-space declaration**. The substrate doesn't *use* the
+specs; the substrate's playing field *is* the specs, in terraformed
+form. Phase 5.7.5 demonstrated the substrate can ingest real WASM
+bytes and develop alignment (Spearman ≥ 0.85 against ground truth);
+Part 1 is the same operation scaled to the entire specification
+corpus the web platform stands on.
+
+**Open structural questions for Part 1:**
+- Source retrieval: fetched on demand vs. mirrored vs. embedded?
+- Specification format heterogeneity: HTML specs use Bikeshed; CSS
+  uses ReSpec; ECMA uses its own toolchain. Some normalization
+  needed.
+- Versioning: pin to a specific snapshot or track Living Standards?
+- Scope: every web platform spec, or a minimum bootstrap set?
+- Ingest discipline: byte-level (Phase 5.7.5 style) or
+  structure-level (parse the specs and ingest their declared
+  vocabulary)?
+
+#### Part 2: Source-code buffer (Deposit the application)
+
+A buffer the kernel can place application source code into so that
+adapters can deposit the application's behavior as constraints in the
+terraformed substrate:
+
+- An application's HTML/CSS/JS source enters the buffer
+- The kernel hands the buffer to the appropriate adapters
+  (HTML-deposition adapter, CSS-deposition adapter, JS-deposition
+  adapter, all built from the Adapter Library)
+- Each adapter extracts the application's behavior in UTF form and
+  commits it to the substrate
+- The cascade resolves the deposited geometry against the terraformed
+  coordinate space
+- The application *runs*, in the substrate, against the platform-spec
+  coordinate space that Part 1 established
+
+This is the architecture's first whole-application demonstration at
+realistic scale. Every prior demonstration (Phase A/B, the loan
+program, Phase 5.7.5 WASM, Phase 7 TodoMVC) was either a synthetic
+constraint set or a single application without the platform context.
+Part 2 closes that gap: the substrate hosts *real applications*
+against *real platform grammar*.
+
+**Finish line for Part 1 (and the "for shits and giggles" moment):**
+Load the entirety of all CSS, JS, and HTML specification material
+into a state space. See what happens. The substrate has demonstrated
+byte-native ingestion against WASM at Spearman ≥ 0.85; ingesting the
+platform's full specification corpus is the same operation at much
+larger scale. The result is empirical: what coordinate structure
+does the substrate produce when the universe of platform grammar is
+deposited into it? What sub-cascades emerge? What patterns get
+named? What density of structure does the substrate develop?
+
+This is the experiment the threshold-crossing claim actually pivots
+on. Run it.
+
+**Why this matters for the four preface objections:**
+- **Objection 1 (threshold metaphor):** Part 1 tests whether the
+  substrate-as-classifier of platform grammar finds the same structural
+  shapes the platform's own implementations have converged on. If it
+  does, the threshold-crossing is empirically demonstrable at the
+  platform's scale, not just at the loan program's scale.
+- **Objection 2 (hardware implication):** Part 2 demonstrates the
+  application/hardware decoupling at a scale that matters. An
+  application running through the kernel + adapter library against
+  terraformed platform grammar can in principle be relocated to any
+  host that has the kernel and the library. This is the strongest
+  version of substrate-portability the project can demonstrate.
+- **Objection 4 (engineering core vs thesis wrapping):** Part 2 is
+  *the engineering core scaled up*. If applications run against
+  terraformed platform grammar, the engineering core has answered
+  the preface's question by demonstration.
 
 -----
 
@@ -332,6 +499,7 @@ agent) should follow them.
 | 2026-05-15 | Repository made live on GitHub (private) at `paradigm-version-2`. Initial commit captures the full state including PREFACE, ARCHITECTURE, RESEARCH-AGAINST-PREFACE, PROJECT-PLAN, canon, implementations, and exodus. |
 | 2026-05-15 | Priority 1 (UTF specification) begun. [canon/UTF/](canon/UTF/) directory created. Foundation document [01-foundations.md](canon/UTF/01-foundations.md) establishes UTF is WHEN:THEN, not KEY:VALUE; the structural argument is supported by an exhaustive survey of key:value formats demonstrating that CSS is the only deployed format with the right shape. Kind vocabulary, attribute schema, identity discipline, encodings, and versioning to follow in subsequent documents. |
 | 2026-05-16 | SE-12 and SE-13 drafts created. [canon/specification/SE-12-cross-substrate-compounds.md](canon/specification/SE-12-cross-substrate-compounds.md) and [canon/specification/SE-13-storage-as-substrate-recall.md](canon/specification/SE-13-storage-as-substrate-recall.md). Both are AI-produced drafts written from existing Phase 4b/4c code; structural content anchored, voice to be replaced per HAND_REWRITE_LIST.md Tier 4. Closes the D2 gap that HAND_REWRITE_LIST.md identifies as "the only D2 violation in the audit." Twelve new invariants introduced (M6-M12) for incorporation into INVARIANTS.md v1.4. The slot-number contradiction with KERNEL_RUNTIME_CONTRACT.md §10 (which tentatively claimed SE-12/13 for different reduced candidates) is resolved in favor of compounds/recall and noted in HAND_REWRITE_LIST.md. SE-12's "let delta decide" commitment is flagged as a candidate generalization that may reduce several algorithm 16 boundary findings under continuous-SDF delta-tiebreaker semantics; empirical confirmation is open work. |
+| 2026-05-16 | PROJECT-PLAN §8 (Open work) expanded from four priorities to six. Adapter Library (P3) added as distinct from Adapter Protocol (P2): the protocol is the *contract*, the library is the *built drivers*. Terraformation Pipeline (P6) added as the largest and final priority — the work of dynamically ingesting the web platform's full specification corpus (ECMA-262, HTML Living Standard, CSS specs, WebIDL, DOM, Web APIs, MDN reference) into a state space as the substrate's coordinate-space declaration (Part 1), and a source-code buffer mechanism for adapters to deposit applications into the terraformed substrate (Part 2). The pipeline's finish line is loading the entirety of CSS/JS/HTML specification material into a state space and observing what coordinate structure the substrate produces — the experiment the threshold-crossing claim actually pivots on. |
 
 Updates appended as canonical specification work proceeds, the
 kernel is built, substrate relocation is demonstrated, or other
