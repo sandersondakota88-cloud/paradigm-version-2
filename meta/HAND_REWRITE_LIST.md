@@ -126,17 +126,33 @@ recall (Phase 4c) are structural commitments in the code with no
 corresponding SE-N entry. This is the only D2 violation in the audit.
 
 17. **canon/specification/SE-12-cross-substrate-compounds.md** -
-    NEW. Document compounds as a constraint kind with tuple-predicate
-    pattern, fidelity tracking, promotion-as-templates. Reference
-    field.js:154-170 for the mechanism.
+    DRAFT EXISTS as of 2026-05-16, AI-produced from code and
+    IMPLEMENTATION_PATH prose. Structural content anchored to Phase
+    4b implementation; voice to be replaced. Document compounds as
+    a constraint kind with tuple-predicate pattern, fidelity
+    tracking, promotion-as-templates. Reference field.js:154-170 for
+    the mechanism. Introduces invariants M6, M7, M8.
 
 18. **canon/specification/SE-13-storage-as-substrate-recall.md** -
-    NEW. Document recall as gap-triggered reaching backward into
-    persisted constraints, parallel to predictive reaching forward.
-    Reference field.js:172-196 and storage-adapter.js.
+    DRAFT EXISTS as of 2026-05-16, AI-produced from code and
+    IMPLEMENTATION_PATH prose. Structural content anchored to Phase
+    4c implementation; voice to be replaced. Document recall as
+    gap-triggered reaching backward into persisted constraints,
+    parallel to predictive reaching forward. Reference field.js:172-196
+    and storage-adapter.js. Introduces invariants M9, M10, M11, M12.
 
-After writing 17 and 18, update INVARIANTS.md v1.3 to v1.4 with the
-relevant invariants the new SE entries imply.
+After hand-rewriting 17 and 18, update INVARIANTS.md v1.3 to v1.4
+with M6-M12.
+
+**Contradiction note.** The SE-12 and SE-13 slot numbers were
+tentatively claimed by `implementation/08-runtime-kernel/KERNEL_RUNTIME_CONTRACT.md`
+section 10 for different mechanisms (cascade-match constraint
+pattern, input-feature buffer). Those Phase 8 candidates were
+correctly reduced to existing spec (algorithm 16, SE-08, SE-11) and
+do not occupy the SE-12/13 slots. The slots are correctly used by
+compounds and recall as identified in this list. The KERNEL_RUNTIME_CONTRACT
+section 10 should be either deleted or reframed to acknowledge the
+slot reassignment when canon work resumes.
 
 ---
 
