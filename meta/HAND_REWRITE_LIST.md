@@ -17,6 +17,25 @@ voice work is what only you can do.
   type phrases repeated across documents
 - Source-history notes that read as documentation rather than authorship
 
+Patterns specifically present in the 2026-05-15 session writing
+(ARCHITECTURE.md, PROJECT-PLAN.md, RESEARCH-AGAINST-PREFACE.md,
+canon/UTF/00-INDEX.md, canon/UTF/01-foundations.md, the algorithm 16
+rewrite, and related):
+
+- "Three-axis" or "two-half" framings that segment everything into
+  enumerated structural categories
+- "Proof gap" / "named in plain text" / "load-bearing" phrasing
+  repeated across documents as connective tissue
+- Sentences that begin with the structural conclusion before the
+  observation (e.g. "The architecture has the same shape an OS has")
+- Disclaimers about what the document "does not do" appended as
+  closing sections
+- Tables that match document tiers or layers to one-line summaries
+- "Live status" log tables at the end of every document with the
+  same date format
+- "This document does not foreclose discovery" / "the recognition
+  matters; the specification matters more" style closers
+
 Your own PREFACE shares some of these features. They are not wrong
 inherently; they are wrong when they are reflexive instead of chosen.
 Rewriting by hand forces choice.
@@ -25,7 +44,7 @@ Rewriting by hand forces choice.
 
 ## TIER 1 - Claim documents (highest priority; first impression)
 
-These four are the documents a skeptical evaluator reads first.
+These are the documents a skeptical evaluator reads first.
 Rewriting these is the difference between "this looks AI-generated"
 and "this looks like a human wrote it carefully."
 
@@ -43,6 +62,32 @@ and "this looks like a human wrote it carefully."
 
 4. **canon/KERNEL.md** - 250-line pseudocode + prose. The kernel as
    the spec describes it. Should match your own register, not AI's.
+
+5. **ARCHITECTURE.md** (root) - NEW, written 2026-05-15 in AI voice.
+   ~470 lines. Names the kernel/adapter/UTF/hardware layering. Root-
+   level claim document. Heavy em-dash usage, "three-axis" framings,
+   "proof gap" connective tissue, disclaimer-section closer. Tier 1
+   because a skeptical reader hits this in the first three documents.
+   This is the most consequential of the new docs because it
+   reframes how every other piece of canon fits together.
+
+6. **PROJECT-PLAN.md** (root) - NEW, written 2026-05-15 in AI voice.
+   ~210 lines. Project organization document. Tier table at top,
+   directory listings, live status log. Cadence is recognizably AI;
+   content is mostly factual organization. Lighter rewrite than
+   ARCHITECTURE.md but same first-impression position.
+
+7. **RESEARCH-AGAINST-PREFACE.md** (root) - NEW, written 2026-05-15
+   in AI voice. The catalogue of evidence against four preface
+   objections. §0 contains explicit "I (Claude)" provenance that
+   needs first-person-your-voice replacement. Tier 1 because the
+   document's whole purpose is to be honest about what was
+   demonstrated; honesty about authorship is part of that.
+
+8. **README.md** (root) - NEW, written 2026-05-15 in AI voice. The
+   GitHub landing page. ~120 lines. Was previously listed as a
+   "potentially write from scratch" item (A); now exists and needs
+   rewriting in your voice. First thing any visitor to the repo sees.
 
 ---
 
@@ -92,6 +137,52 @@ corresponding SE-N entry. This is the only D2 violation in the audit.
 
 After writing 17 and 18, update INVARIANTS.md v1.3 to v1.4 with the
 relevant invariants the new SE entries imply.
+
+---
+
+## TIER 4.5 - UTF specification (begun 2026-05-15, in AI voice)
+
+The universal type format specification work begun in the
+2026-05-15 session. These are load-bearing because the entire
+adapter protocol, the kernel-as-discrete-artifact, and the substrate
+relocation experiment depend on UTF being specified correctly.
+
+18a. **canon/algorithm/16-gpu-postfix-stack-machine.md** - Heavily
+     rewritten 2026-05-15. PROPOSED -> IMPLEMENTED, with structural
+     argument, closure boundaries, empirical record, and re-readings
+     of cited SE-Ns added. The new sections are in AI voice. This is
+     canon and load-bearing for everything downstream; tier-1-
+     adjacent priority. Already on the list at item 16 implicitly
+     via "00-INDEX update" but the file itself needs explicit voice
+     review.
+
+18b. **canon/UTF/00-INDEX.md** - NEW, written 2026-05-15. UTF
+     directory entry point. ~120 lines. Names UTF's five structural
+     commitments and document layout. Heavy AI cadence in the
+     "what UTF is / what UTF is not" framing.
+
+18c. **canon/UTF/01-foundations.md** - NEW, written 2026-05-15.
+     The structural argument that UTF is WHEN:THEN, not KEY:VALUE.
+     ~350 lines. The single most load-bearing document in the UTF
+     directory; everything downstream cites the five differences
+     named here. Tier-1-equivalent for UTF work specifically.
+
+18d. **canon/UTF/research/key-value-formats-survey.md** -
+     Reference material produced by a survey agent 2026-05-15.
+     ~1500 words. **Decision needed: rewrite vs label.** This
+     document has the heaviest AI signature in the entire repo
+     (it was produced by an exploration agent). One option: rewrite
+     in your voice. Other option (cleaner): add a header note that
+     says "this is reference material produced by a survey agent,
+     preserved verbatim for transparency." The second option is
+     more honest and saves time. Recommendation: label, don't
+     rewrite.
+
+18e. **canon/UTF/research/substrate-stratification-observation.md** -
+     NEW, written 2026-05-15 to capture an observation made during
+     UTF work. ~140 lines. Observation-level document, not canon
+     proper. Could be rewritten or kept with provenance noted.
+     Lower priority than 18a-18c.
 
 ---
 
@@ -238,29 +329,55 @@ E. **meta/README.md** - what meta/ holds and why.
 
 ## SUGGESTED ORDER OF WORK
 
-If you have limited time, the highest leverage is:
+Updated 2026-05-15 to reflect the four new root-level documents and
+the UTF specification work.
 
-1. PREFACE.md
-2. canon/INVARIANTS.md
-3. canon/DEFINITION.md
-4. canon/KERNEL.md
-5. Root README.md (write new)
-6. implementation/kernel/README.md (replace mine)
-7. SE-01 through SE-11
-8. SE-12 and SE-13 (new D2 closure)
-9. Everything else can be batched.
+Highest leverage, in order:
 
-Items 1-6 are what a skeptical reader hits first. They are the
-difference between "give the work the time of day" and "looks AI".
+1. **README.md** (root) - first thing any GitHub visitor sees.
+   Was just written; needs to be your voice.
+2. **PREFACE.md** (root) - the structural claim.
+3. **ARCHITECTURE.md** (root) - the kernel/adapter naming. Reframes
+   how everything else is read; voice here propagates.
+4. **PROJECT-PLAN.md** (root) - project organization. Lower
+   philosophical weight but high first-impression presence.
+5. **RESEARCH-AGAINST-PREFACE.md** (root) - the catalogue. Replace
+   the explicit AI provenance language; rest is lighter touch.
+6. **canon/INVARIANTS.md** - the checklist of structural
+   commitments.
+7. **canon/DEFINITION.md** - foundational definition.
+8. **canon/KERNEL.md** - kernel pseudocode.
+9. **canon/algorithm/16-gpu-postfix-stack-machine.md** - the
+   recently rewritten algorithm; load-bearing for the empirical
+   floor.
+10. **canon/UTF/01-foundations.md** - the WHEN:THEN argument.
+    Everything downstream in UTF depends on this being in your
+    voice.
+11. **canon/UTF/00-INDEX.md** - UTF directory entry point.
+12. **implementation/kernel/README.md** (replace migration-era voice).
+13. SE-01 through SE-11.
+14. SE-12 and SE-13 (new D2 closure).
+15. Everything else can be batched.
+
+Items 1-12 are what a skeptical reader hits first or what is
+structurally load-bearing for the work downstream. They are the
+difference between "give the work the time of day" and "looks AI."
 
 ## ESTIMATED TIME
 
-Tier 1 (4 docs): 4-8 hours of focused rewriting per document, depending
-on depth. Total: 16-32 hours.
+Tier 1 (8 docs after 2026-05-15 additions): 4-8 hours of focused
+rewriting per document, depending on depth. Total: 32-64 hours.
+The new root-level documents (ARCHITECTURE.md, PROJECT-PLAN.md,
+RESEARCH-AGAINST-PREFACE.md, README.md) are each lighter than the
+original four canon documents but still meaningful.
 
 Tier 2 (11 SE docs): 1-2 hours per. Total: 11-22 hours.
 
 Tier 4 (2 new SE docs): 2-4 hours per. Total: 4-8 hours.
+
+Tier 4.5 (UTF docs, 4-5 items): 2-4 hours each for 18a/b/c; the
+research survey is recommended as label-only (15 minutes). Total:
+6-12 hours.
 
 Tier 5 (5 docs I wrote): 1-2 hours per. Total: 5-10 hours.
 
