@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 3 / Substrate Demonstration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- ============================================================
+     STAGE 3 GENERATED CASCADE
+     This is the runtime. JavaScript writes attributes; the cascade
+     resolves; getComputedStyle reads the result. The browser's
+     compositor (GPU-accelerated on most devices) does the actual
+     resolution work. No framework. No virtual DOM. No reconciliation.
+     ============================================================ -->
+<style id="stage3-cascade">
+#V-probe, #V-probe-container > div {
+  --sdf: -1;
+  --deny: "";
+  --reg: VALID;
+  --rt: UNCLASSIFIED;
+  --rth: 0;
+  --doc: BASIC;
+}
+
+#V-probe[data-credit="prime"], #V-probe-container > div[data-credit="prime"] {
+  --rt: A-PREFERRED;
+  --rth: 160;
+  --doc: BASIC;
+}
+
+#V-probe[data-credit="near-prime"], #V-probe-container > div[data-credit="near-prime"] {
+  --rt: B-STANDARD;
+  --rth: 130;
+  --doc: ENHANCED;
+}
+
+#V-probe[data-credit="sub-prime"], #V-probe-container > div[data-credit="sub-prime"] {
+  --rt: C-ELEVATED;
+  --rth: 95;
+  --doc: ENHANCED;
+}
+
+#V-probe[data-residency="foreign"], #V-probe-container > div[data-residency="foreign"] {
+  --doc: ENHANCED;
+}
+
+#V-probe[data-residency="diplomatic"], #V-probe-container > div[data-residency="diplomatic"] {
+  --doc: MAXIMUM;
+}
+
+#V-probe[data-credit="sub-prime"][data-product="business-line"], #V-probe-container > div[data-credit="sub-prime"][data-product="business-line"] {
+  --sdf: 1;
+  --deny: "SubPrime cannot hold BusinessLine";
+  --reg: DENIED;
+  --rth: 0;
+}
+
+#V-probe[data-residency="foreign"][data-product="mortgage"][data-credit="sub-prime"], #V-probe-container > div[data-residency="foreign"][data-product="mortgage"][data-credit="sub-prime"] {
+  --sdf: 1;
+  --deny: "Foreign SubPrime Mortgage not underwriteable";
+  --reg: DENIED;
+  --rth: 0;
+}
+
+#V-probe[data-employment="unemployed"][data-product="mortgage"], #V-probe-container > div[data-employment="unemployed"][data-product="mortgage"] {
+  --sdf: 1;
+  --deny: "Mortgage requires income source";
+  --reg: DENIED;
+  --rth: 0;
+}
+
+#V-probe[data-employment="student"][data-product="business-line"], #V-probe-container > div[data-employment="student"][data-product="business-line"] {
+  --sdf: 1;
+  --deny: "Student cannot hold BusinessLine";
+  --reg: DENIED;
+  --rth: 0;
+}
+
+#V-probe[data-applicant="trust"][data-product="personal"], #V-probe-container > div[data-applicant="trust"][data-product="personal"] {
+  --sdf: 1;
+  --deny: "Trust cannot hold Personal";
+  --reg: DENIED;
+  --rth: 0;
+}
+
+#V-probe[data-income="under50"][data-product="mortgage"], #V-probe-container > div[data-income="under50"][data-product="mortgage"] {
+  --sdf: 1;
+  --deny: "Mortgage requires minimum qualifying income";
+  --reg: DENIED;
+  --rth: 0;
+}
+</style>
+
+<!-- Page chrome (separate from the runtime cascade above) -->
+<style>
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,800&display=swap");
+
+:root {
+  --bg: #0a0a0a;
+  --bg-2: #111111;
+  --bg-3: #1a1a1a;
+  --line: #2a2a2a;
+  --line-2: #3a3a3a;
+  --ink: #e8e6e0;
+  --ink-2: #a8a6a0;
+  --ink-3: #686660;
+  --hot: #ff5722;
+  --cool: #4fc3f7;
+  --pass: #4caf50;
+  --warn: #ffc107;
+  --rule: #b39ddb;
+
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --serif: "Fraunces", Georgia, serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body {
+  min-height: 100vh;
+  padding: 24px 32px 64px;
+  background-image:
+    radial-gradient(circle at 80% 0%, rgba(255, 87, 34, 0.06), transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(79, 195, 247, 0.04), transparent 50%);
+}
+
+a { color: var(--cool); }
+
+header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+  padding-bottom: 20px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+header h1 {
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144;
+}
+header h1 em {
+  font-style: italic;
+  color: var(--hot);
+  font-weight: 300;
+}
+header .sub {
+  color: var(--ink-2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 8px;
+}
+header .right {
+  text-align: right;
+  color: var(--ink-3);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+header .right .stage3 {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 22px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  display: block;
+  margin-bottom: 4px;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+section {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+section > h2 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+section > h2 .meta {
+  color: var(--ink-3);
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  text-transform: none;
+}
+
+/* --- Configuration controls --- */
+
+.config {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+.config .dim {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.config .dim-name {
+  font-size: 12px;
+  color: var(--ink-2);
+  padding-top: 6px;
+  letter-spacing: 0.02em;
+}
+.config .dim-name code {
+  color: var(--cool);
+  font-family: var(--mono);
+}
+.config .values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.config .val {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+  padding: 5px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 80ms, border-color 80ms, color 80ms;
+}
+.config .val:hover { color: var(--ink); border-color: var(--ink-2); }
+.config .val[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+  font-weight: 500;
+}
+
+/* --- Probe + readout --- */
+
+.probe-frame {
+  padding: 16px;
+}
+#V-probe {
+  /* The probe is a live element. Its data-X attributes are what triggers
+     cascade resolution. We make it visually present so the demonstration
+     is honest about what's happening, but its dimensions don't matter. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.readout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+}
+.readout .out {
+  padding: 14px 16px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.readout .out:nth-child(2n) { border-right: 0; }
+.readout .out:nth-last-child(-n+2) { border-bottom: 0; }
+.readout .out .label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.readout .out .value {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 22px;
+  font-variation-settings: "opsz" 96;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+.readout .out.denied .value { color: var(--hot); }
+.readout .out.valid .value { color: var(--pass); }
+
+/* The verdict panel: dramatic, full-width */
+.verdict {
+  margin-top: 16px;
+  padding: 24px 16px;
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.verdict .stamp {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 800;
+  font-variation-settings: "opsz" 144;
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  display: block;
+}
+.verdict[data-reg="VALID"] .stamp { color: var(--pass); }
+.verdict[data-reg="DENIED"] .stamp { color: var(--hot); }
+.verdict .reason {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* --- Right column: cascade rules + scan --- */
+
+.rules-frame {
+  padding: 0;
+  max-height: 480px;
+  overflow: auto;
+}
+.rules-frame pre {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  padding: 14px 16px;
+  white-space: pre;
+}
+.rules-frame .selector { color: var(--rule); }
+.rules-frame .prop { color: var(--cool); }
+.rules-frame .val-ident { color: var(--ink); }
+.rules-frame .val-string { color: var(--warn); }
+.rules-frame .val-num { color: var(--pass); }
+.rules-frame .punct { color: var(--ink-3); }
+.rules-frame .comment { color: var(--ink-3); font-style: italic; }
+.rules-frame .rule.matched {
+  background: linear-gradient(90deg, rgba(255, 87, 34, 0.10), transparent 50%);
+  border-left: 2px solid var(--hot);
+  padding-left: 8px;
+  margin-left: -10px;
+}
+
+/* --- Scan --- */
+
+.scan {
+  border-top: 1px solid var(--line);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+.scan-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.scan button {
+  appearance: none;
+  background: var(--ink);
+  color: var(--bg);
+  border: 0;
+  padding: 8px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 100ms;
+}
+.scan button:hover { opacity: 0.85; }
+.scan button:disabled { opacity: 0.4; cursor: not-allowed; }
+.scan-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.scan-stat {
+  background: var(--bg-3);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scan-stat .label {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.scan-stat .value {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 19px;
+  font-variation-settings: "opsz" 72;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+#V-probe-container {
+  /* Holds the scan probes during scanSpace. Off-screen but real -
+     elements have to be in the document for getComputedStyle to work
+     on them. The substrate's resolution is happening on these elements. */
+  position: absolute;
+  top: -10000px;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  contain: strict;
+}
+
+.scan-progress {
+  height: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+.scan-progress .bar {
+  position: absolute;
+  inset: 0 100% 0 0;
+  background: linear-gradient(90deg, var(--cool), var(--hot));
+  transition: right 60ms linear;
+}
+
+.scan-result {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  padding: 8px 0;
+  white-space: pre-wrap;
+}
+.scan-result .ok { color: var(--pass); }
+
+/* --- Footer --- */
+
+footer {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: end;
+}
+footer h3 {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+footer .lineage {
+  color: var(--ink-3);
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  body { padding: 16px; }
+  header h1 { font-size: 32px; }
+  main { grid-template-columns: 1fr; gap: 16px; }
+  .verdict .stamp { font-size: 40px; }
+  .scan-stats { grid-template-columns: repeat(2, 1fr); }
+  footer { grid-template-columns: 1fr; }
+  footer .lineage { text-align: left; }
+}
+</style>
+
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>configuration <em>resolves</em>.</h1>
+    <div class="sub">Stage 3 cascade -- generated from substrate surface, running on the device's compositor</div>
+  </div>
+  <div class="right">
+    <span class="stage3">Stage 3</span>
+    Loan eligibility canonical<br>
+    11 rules, 6 dimensions, 2,880 coordinates
+  </div>
+</header>
+
+<main>
+
+  <!-- LEFT: Configuration + verdict -->
+  <div>
+
+    <section>
+      <h2>Configuration <span class="meta">data-X attributes on the probe</span></h2>
+      <div class="config" id="config-controls"></div>
+    </section>
+
+    <section style="margin-top: 24px;">
+      <h2>Resolution <span class="meta">getComputedStyle(probe), live</span></h2>
+      <div class="probe-frame">
+        <!-- The probe element. JS writes data-X on it. The cascade
+             resolves. We read the resolved values via getComputedStyle. -->
+        <div id="V-probe"></div>
+
+        <div class="readout" id="readout">
+          <div class="out" data-prop="rt">
+            <div class="label">RISK TIER (rt)</div>
+            <div class="value" id="out-rt">--</div>
+          </div>
+          <div class="out" data-prop="rth">
+            <div class="label">RISK THRESHOLD (rth)</div>
+            <div class="value" id="out-rth">--</div>
+          </div>
+          <div class="out" data-prop="doc">
+            <div class="label">DOC LEVEL (doc)</div>
+            <div class="value" id="out-doc">--</div>
+          </div>
+          <div class="out" data-prop="sdf">
+            <div class="label">SDF (sdf)</div>
+            <div class="value" id="out-sdf">--</div>
+          </div>
+        </div>
+
+        <div class="verdict" id="verdict" data-reg="VALID">
+          <span class="stamp" id="verdict-stamp">VALID</span>
+          <div class="reason" id="verdict-reason">no constraints denied</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- RIGHT: Cascade rules + scan -->
+  <div>
+    <section>
+      <h2>Cascade rules <span class="meta">the runtime, inspectable</span></h2>
+      <div class="rules-frame" id="rules-frame">
+        <pre id="rules-pre"></pre>
+      </div>
+
+      <div class="scan">
+        <div class="scan-controls">
+          <button id="scan-btn">Scan all 2,880 coordinates</button>
+          <span style="color: var(--ink-3); font-size: 11px;" id="scan-hint">exercises the full state space; phone may warm</span>
+        </div>
+
+        <div class="scan-progress"><div class="bar" id="scan-bar"></div></div>
+
+        <div class="scan-stats">
+          <div class="scan-stat">
+            <div class="label">Coordinates</div>
+            <div class="value" id="stat-coords">2,880</div>
+          </div>
+          <div class="scan-stat">
+            <div class="label">Resolved</div>
+            <div class="value" id="stat-resolved">--</div>
+          </div>
+          <div class="scan-stat">
+            <div class="label">Denied</div>
+            <div class="value" id="stat-denied">--</div>
+          </div>
+          <div class="scan-stat">
+            <div class="label">Time / coord</div>
+            <div class="value" id="stat-time">--</div>
+          </div>
+        </div>
+
+        <div class="scan-result" id="scan-result"></div>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<!-- Off-screen probe container for batch scan. The substrate's resolution
+     happens on these elements when they're in the document; getComputedStyle
+     is what extracts the resolution. -->
+<div id="V-probe-container"></div>
+
+<footer>
+  <div>
+    <h3>What you're looking at</h3>
+    <div>
+      JavaScript writes <code>data-X</code> attributes; the cascade resolves; <code>getComputedStyle</code> reads outputs.
+      No framework, no virtual DOM, no event loop tricks.
+      The CSS above was generated from real source bytes by Stage 3's dimensional recognizer.
+      The cascade resolution runs on the browser's compositor pipeline -- typically GPU-accelerated.
+    </div>
+  </div>
+  <div class="lineage">
+    Source &rarr; Stage 1 &rarr; substrates &rarr; composer &rarr; Stage 3 &rarr; this CSS<br>
+    No human wrote these rules.
+  </div>
+</footer>
+
+<script>
+"use strict";
+(function () {
+
+  // ============================================================
+  // The 6 dimensions Stage 3 recognized from the canonical source.
+  // (These are values are echoed in the UI; the *cascade* doesn't
+  // need them - it only needs the data-X attributes set on the probe.)
+  // ============================================================
+  var DIMS = [
+    { name: "credit",     values: ["prime", "near-prime", "sub-prime"] },
+    { name: "product",    values: ["mortgage", "personal", "auto", "business-line"] },
+    { name: "applicant",  values: ["individual", "joint", "business", "trust"] },
+    { name: "residency",  values: ["domestic", "foreign", "diplomatic"] },
+    { name: "income",     values: ["under50", "50to100", "100to250", "over250"] },
+    { name: "employment", values: ["employed", "self-employed", "retired", "student", "unemployed"] }
+  ];
+
+  // The current configuration (one chosen value per dimension).
+  // Default to all-first-value (a benign configuration that resolves to VALID).
+  var config = {};
+  for (var i = 0; i < DIMS.length; i++) config[DIMS[i].name] = DIMS[i].values[0];
+
+  // ============================================================
+  // Build the configuration controls. Each value is a button.
+  // Clicking one writes the corresponding data-X attribute to the probe,
+  // which triggers cascade resolution.
+  // ============================================================
+  var probe = document.getElementById("V-probe");
+  var controlsEl = document.getElementById("config-controls");
+
+  function applyConfigToProbe() {
+    for (var i = 0; i < DIMS.length; i++) {
+      probe.setAttribute("data-" + DIMS[i].name, config[DIMS[i].name]);
+    }
+  }
+
+  function buildControls() {
+    var html = "";
+    for (var i = 0; i < DIMS.length; i++) {
+      var d = DIMS[i];
+      html += '<div class="dim">';
+      html += '<div class="dim-name"><code>data-' + d.name + '</code></div>';
+      html += '<div class="values">';
+      for (var j = 0; j < d.values.length; j++) {
+        var v = d.values[j];
+        var pressed = config[d.name] === v ? "true" : "false";
+        html += '<button class="val" data-dim="' + d.name + '" data-value="' + v +
+                '" aria-pressed="' + pressed + '">' + v + '</button>';
+      }
+      html += '</div></div>';
+    }
+    controlsEl.innerHTML = html;
+    var btns = controlsEl.querySelectorAll(".val");
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].addEventListener("click", onValClick);
+    }
+  }
+
+  function onValClick(e) {
+    var dim = e.currentTarget.getAttribute("data-dim");
+    var val = e.currentTarget.getAttribute("data-value");
+    config[dim] = val;
+    // Update aria-pressed for this dimension's siblings
+    var siblings = controlsEl.querySelectorAll('.val[data-dim="' + dim + '"]');
+    for (var i = 0; i < siblings.length; i++) {
+      siblings[i].setAttribute("aria-pressed",
+        siblings[i].getAttribute("data-value") === val ? "true" : "false");
+    }
+    applyConfigToProbe();
+    refreshReadout();
+    highlightMatchedRules();
+  }
+
+  // ============================================================
+  // Read the cascade's resolution via getComputedStyle.
+  // This is the substrate's interface. Nothing else.
+  // ============================================================
+  function stripQuotes(s) {
+    if (!s) return "";
+    var f = s.charAt(0), l = s.charAt(s.length - 1);
+    if ((f === '"' && l === '"') || (f === "'" && l === "'")) return s.slice(1, -1);
+    return s;
+  }
+
+  function readProbe() {
+    var cs = getComputedStyle(probe);
+    return {
+      sdf:  cs.getPropertyValue("--sdf").trim(),
+      rt:   stripQuotes(cs.getPropertyValue("--rt").trim()),
+      rth:  cs.getPropertyValue("--rth").trim(),
+      doc:  stripQuotes(cs.getPropertyValue("--doc").trim()),
+      deny: stripQuotes(cs.getPropertyValue("--deny").trim()),
+      reg:  stripQuotes(cs.getPropertyValue("--reg").trim())
+    };
+  }
+
+  // ============================================================
+  // Render the readout.
+  // ============================================================
+  function refreshReadout() {
+    var r = readProbe();
+    document.getElementById("out-rt").textContent  = r.rt || "--";
+    document.getElementById("out-rth").textContent = r.rth || "0";
+    document.getElementById("out-doc").textContent = r.doc || "--";
+    document.getElementById("out-sdf").textContent = r.sdf || "--";
+
+    var verdict = document.getElementById("verdict");
+    var stamp = document.getElementById("verdict-stamp");
+    var reason = document.getElementById("verdict-reason");
+    verdict.setAttribute("data-reg", r.reg || "VALID");
+    if (r.reg === "DENIED") {
+      stamp.textContent = "DENIED";
+      reason.textContent = r.deny || "constraint violated";
+    } else {
+      stamp.textContent = "VALID";
+      reason.textContent = "no constraints denied";
+    }
+
+    // Color the readout outputs based on verdict
+    var outs = document.querySelectorAll(".readout .out");
+    for (var i = 0; i < outs.length; i++) {
+      outs[i].classList.remove("denied", "valid");
+      outs[i].classList.add(r.reg === "DENIED" ? "denied" : "valid");
+    }
+  }
+
+  // ============================================================
+  // Render the cascade rules (parsed from the live <style> block,
+  // so what's shown is exactly what's running).
+  // ============================================================
+  function renderRules() {
+    var styleEl = document.getElementById("stage3-cascade");
+    var css = styleEl.textContent || "";
+    // Tokenize for syntax coloring. Simple state machine; respects strings.
+    var html = "";
+    var i = 0, len = css.length;
+    while (i < len) {
+      // comments
+      if (css.charAt(i) === "/" && css.charAt(i + 1) === "*") {
+        var end = css.indexOf("*/", i + 2);
+        if (end < 0) end = len;
+        html += '<span class="comment">' + escapeHtml(css.substring(i, end + 2)) + "</span>";
+        i = end + 2;
+        continue;
+      }
+      // strings
+      if (css.charAt(i) === '"') {
+        var sEnd = css.indexOf('"', i + 1);
+        if (sEnd < 0) sEnd = len - 1;
+        html += '<span class="val-string">' + escapeHtml(css.substring(i, sEnd + 1)) + "</span>";
+        i = sEnd + 1;
+        continue;
+      }
+      // selector blocks: from start of line to "{"
+      if (/[#\.\[a-zA-Z]/.test(css.charAt(i))) {
+        // Collect until { or newline
+        var open = css.indexOf("{", i);
+        var nl = css.indexOf("\n", i);
+        if (open >= 0 && (nl < 0 || open < nl + 200)) {
+          // Treat as selector
+          html += '<span class="selector rule" data-rule-idx="' + getCurrentRuleIdx() + '">' +
+                  escapeHtml(css.substring(i, open + 1)) + "</span>";
+          i = open + 1;
+          continue;
+        }
+      }
+      // declarations: --PROP: VAL;
+      if (css.substring(i, i + 2) === "--") {
+        var colon = css.indexOf(":", i);
+        var semi = css.indexOf(";", colon);
+        if (colon > 0 && semi > 0) {
+          html += '<span class="prop">' + escapeHtml(css.substring(i, colon)) + "</span>";
+          html += '<span class="punct">: </span>';
+          var valRaw = css.substring(colon + 1, semi).trim();
+          var valHtml;
+          if (/^-?\d+(\.\d+)?$/.test(valRaw)) {
+            valHtml = '<span class="val-num">' + escapeHtml(valRaw) + "</span>";
+          } else if (valRaw.charAt(0) === '"') {
+            valHtml = '<span class="val-string">' + escapeHtml(valRaw) + "</span>";
+          } else {
+            valHtml = '<span class="val-ident">' + escapeHtml(valRaw) + "</span>";
+          }
+          html += valHtml + '<span class="punct">;</span>';
+          i = semi + 1;
+          continue;
+        }
+      }
+      html += escapeHtml(css.charAt(i));
+      i++;
+    }
+    document.getElementById("rules-pre").innerHTML = html;
+  }
+
+  var ruleIdxCounter = 0;
+  function getCurrentRuleIdx() {
+    return ruleIdxCounter++;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // ============================================================
+  // Highlight matched rules in the displayed CSS.
+  // A rule matches if all its [data-X="V"] requirements are met by config.
+  // ============================================================
+  function highlightMatchedRules() {
+    var rules = document.querySelectorAll(".rules-frame .rule");
+    for (var i = 0; i < rules.length; i++) {
+      var sel = rules[i].textContent;
+      // Find all [data-X="V"] in selector text
+      var attrRe = /\[data-([a-zA-Z-]+)="([^"]+)"\]/g;
+      var match, allMatch = true, hadAny = false;
+      while ((match = attrRe.exec(sel))) {
+        hadAny = true;
+        if (config[match[1]] !== match[2]) { allMatch = false; break; }
+      }
+      // Base rule (no attributes) always matches
+      if (!hadAny || allMatch) {
+        rules[i].classList.add("matched");
+      } else {
+        rules[i].classList.remove("matched");
+      }
+    }
+  }
+
+  // ============================================================
+  // Scan-space: write all 2,880 coordinates' attributes onto a batch
+  // of probe elements, let the cascade resolve, read back via
+  // getComputedStyle. This is where the device does sustained parallel
+  // resolution work and where the GPU's involvement becomes visible
+  // (and feelable).
+  // ============================================================
+  var TOTAL_COORDS = 1;
+  for (var d = 0; d < DIMS.length; d++) TOTAL_COORDS *= DIMS[d].values.length;
+  document.getElementById("stat-coords").textContent = TOTAL_COORDS.toLocaleString();
+
+  function coordToValues(idx) {
+    var values = [];
+    var rem = idx;
+    for (var d = 0; d < DIMS.length; d++) {
+      var n = DIMS[d].values.length;
+      values.push(DIMS[d].values[rem % n]);
+      rem = Math.floor(rem / n);
+    }
+    return values;
+  }
+
+  document.getElementById("scan-btn").addEventListener("click", runScan);
+
+  function runScan() {
+    var btn = document.getElementById("scan-btn");
+    btn.disabled = true;
+    btn.textContent = "Scanning...";
+    document.getElementById("scan-result").textContent = "";
+    document.getElementById("stat-resolved").textContent = "0";
+    document.getElementById("stat-denied").textContent = "0";
+    document.getElementById("stat-time").textContent = "--";
+
+    var container = document.getElementById("V-probe-container");
+    container.innerHTML = "";
+
+    // Build all 2,880 probe elements with their data-X attributes set.
+    // The cascade resolves all of them. This is the substrate's full
+    // state-space exercise.
+    var t0 = performance.now();
+
+    // Build in chunks so the UI can update progress.
+    var chunkSize = 240;
+    var built = 0;
+    var probes = [];
+
+    function buildChunk() {
+      var frag = document.createDocumentFragment();
+      var end = Math.min(built + chunkSize, TOTAL_COORDS);
+      for (var i = built; i < end; i++) {
+        var div = document.createElement("div");
+        var values = coordToValues(i);
+        for (var d = 0; d < DIMS.length; d++) {
+          div.setAttribute("data-" + DIMS[d].name, values[d]);
+        }
+        frag.appendChild(div);
+        probes.push(div);
+      }
+      container.appendChild(frag);
+      built = end;
+      var pct = Math.floor(built / TOTAL_COORDS * 100);
+      document.getElementById("scan-bar").style.right = (100 - pct) + "%";
+
+      if (built < TOTAL_COORDS) {
+        requestAnimationFrame(buildChunk);
+      } else {
+        // Force a layout / style flush so the cascade has resolved
+        // every element. Reading any computed style triggers this.
+        var _warm = getComputedStyle(probes[0]).getPropertyValue("--sdf");
+
+        // Read back outputs
+        var t1 = performance.now();
+        var denied = 0;
+        var resolved = 0;
+        for (var i = 0; i < probes.length; i++) {
+          var cs = getComputedStyle(probes[i]);
+          var sdf = cs.getPropertyValue("--sdf").trim();
+          if (sdf === "1") denied++;
+          if (sdf) resolved++;
+        }
+        var t2 = performance.now();
+        var totalMs = t2 - t0;
+        var perCoord = (totalMs / TOTAL_COORDS).toFixed(3);
+
+        document.getElementById("stat-resolved").textContent = resolved.toLocaleString();
+        document.getElementById("stat-denied").textContent = denied.toLocaleString();
+        document.getElementById("stat-time").textContent = perCoord + "ms";
+
+        var lines = [];
+        lines.push("scanned " + resolved.toLocaleString() + " / " + TOTAL_COORDS.toLocaleString() + " coordinates");
+        lines.push("denied: " + denied.toLocaleString() + "   valid: " + (resolved - denied).toLocaleString());
+        lines.push("total time: " + totalMs.toFixed(1) + "ms");
+        lines.push("per coordinate: " + perCoord + "ms");
+        lines.push("");
+        lines.push("the cascade resolved 2,880 distinct configurations");
+        lines.push("simultaneously across the device's compositor pipeline.");
+        lines.push("");
+        lines.push("<span class='ok'>full state space resolved.</span>");
+        document.getElementById("scan-result").innerHTML = lines.join("\n");
+
+        btn.disabled = false;
+        btn.textContent = "Scan all 2,880 coordinates";
+      }
+    }
+
+    buildChunk();
+  }
+
+  // ============================================================
+  // Initialize
+  // ============================================================
+  buildControls();
+  applyConfigToProbe();
+  // Defer first read by one frame so layout has stabilized.
+  requestAnimationFrame(function () {
+    refreshReadout();
+    renderRules();
+    highlightMatchedRules();
+  });
+
+})();
+</script>
+</body>
+</html>

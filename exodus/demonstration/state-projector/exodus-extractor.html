@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EXODUS — Constraint Extractor</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box }
+body {
+  background:#08080a; color:#888;
+  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
+  font-size:11px; height:100vh;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+
+/*  THE PROBE CONTAINER 
+   One div per code chunk. All seeded simultaneously.
+   One getComputedStyle call triggers one style recalc for ALL of them.
+   The CSS cascade classifies every chunk in parallel.
+    */
+#probes {
+  position:absolute; left:-9999px; top:-9999px;
+  width:0; height:0; overflow:hidden; pointer-events:none;
+}
+
+.hdr { padding:12px 16px; border-bottom:1px solid #111; display:flex; justify-content:space-between; align-items:center; flex-shrink:0 }
+.hdr h1 { font:700 10px/1 inherit; color:#ccc; letter-spacing:2px }
+.hdr .sub { font-size:7px; color:#555; letter-spacing:1px; margin-top:2px }
+.status { padding:3px 10px; border-radius:2px; font-size:8px; font-weight:700; letter-spacing:1px; transition:all .3s }
+.status.idle     { background:hsla(40,30%,10%,.4);  border:1px solid hsla(40,30%,22%,.4);  color:hsl(40,45%,40%) }
+.status.scanning { background:hsla(210,30%,10%,.4); border:1px solid hsla(210,30%,22%,.4); color:hsl(210,50%,50%) }
+.status.resolved { background:hsla(160,30%,10%,.4); border:1px solid hsla(160,30%,22%,.4); color:hsl(160,50%,45%) }
+.status.collapsed{ background:hsla(270,30%,10%,.4); border:1px solid hsla(270,30%,22%,.4); color:hsl(270,50%,55%) }
+
+.app { display:flex; flex:1; overflow:hidden }
+.col { display:flex; flex-direction:column; padding:12px; gap:8px; overflow:hidden; border-right:1px solid #0e0e11 }
+.col:last-child { border-right:none }
+.col-label { font-size:7px; letter-spacing:3px; color:#555; padding-bottom:6px; border-bottom:1px solid #0e0e11; flex-shrink:0 }
+
+.box { border:1px solid #151518; border-radius:3px; padding:8px; flex-shrink:0 }
+.box-label { font-size:7px; letter-spacing:2px; color:#555; margin-bottom:5px }
+
+
+.code-block {
+  flex: 1;
+  overflow-y: auto;
+  background: #090909;
+  border: 1px solid #161618;
+  border-radius: 3px;
+  padding: 8px 10px;
+  font: 400 7.5px/1.7 'SF Mono','Fira Code','Cascadia Code',monospace;
+  white-space: pre;
+  color: #555;
+  tab-size: 2;
+  cursor: default;
+  user-select: none;
+}
+.code-block .kw   { color: hsl(210,55%,58%) }
+.code-block .fn   { color: hsl(40,55%,55%) }
+.code-block .str  { color: hsl(160,50%,46%) }
+.code-block .cmt  { color: #383840; font-style:italic }
+.code-block .num  { color: hsl(30,55%,52%) }
+.code-block .op   { color: hsl(270,45%,58%) }
+.code-block .ln   { color: #252530; user-select:none; display:inline-block; width:28px; text-align:right; margin-right:10px; flex-shrink:0 }
+
+textarea {
+  width:100%; flex:1;
+  background:#090909; border:1px solid #161618; border-radius:3px;
+  color:#888; font:400 8px/1.7 'SF Mono','Fira Code',monospace;
+  padding:8px; resize:none; outline:none;
+}
+textarea:focus { border-color:#666; color:#666 }
+textarea::placeholder { color:#666 }
+
+.btn { padding:8px 14px; border-radius:3px; font:700 8px/1 inherit; letter-spacing:1px; cursor:pointer; transition:all .1s; flex-shrink:0 }
+.btn.go     { border:1px solid hsl(160,45%,25%); background:hsl(160,45%,12%); color:hsl(160,55%,48%) }
+.btn.go:hover { background:hsl(160,45%,15%) }
+.btn.collapse-btn { border:1px solid hsl(270,45%,28%); background:hsl(270,45%,12%); color:hsl(270,55%,58%) }
+.btn.collapse-btn:hover { background:hsl(270,45%,15%) }
+.btn.dl     { border:1px solid hsl(210,45%,25%); background:hsl(210,45%,12%); color:hsl(210,55%,55%) }
+.btn.dl:hover { background:hsl(210,45%,15%) }
+.btn:disabled { opacity:.25; cursor:default; pointer-events:none }
+.btn-row { display:flex; gap:6px }
+
+/* δ meter */
+.delta-label { font-size:9px; font-weight:700; letter-spacing:1px; margin-bottom:3px }
+.delta-track { height:3px; background:#111; border-radius:2px; overflow:hidden; margin-bottom:4px }
+.delta-fill  { height:100%; border-radius:2px; transition:width .4s, background .4s }
+.delta-note  { font-size:7px; color:#555; letter-spacing:1px }
+
+/* stats */
+.stats { display:flex; gap:4px }
+.stat { flex:1; padding:6px 4px; border-radius:2px; text-align:center }
+.stat.a { background:hsla(160,25%,9%,.5);  border:1px solid hsla(160,30%,16%,.4) }
+.stat.b { background:hsla(210,25%,9%,.5);  border:1px solid hsla(210,30%,16%,.4) }
+.stat.c { background:hsla(0,25%,9%,.5);    border:1px solid hsla(0,30%,16%,.4) }
+.stat.d { background:hsla(40,25%,9%,.5);   border:1px solid hsla(40,30%,16%,.4) }
+.stat.e { background:hsla(270,25%,9%,.5);  border:1px solid hsla(270,30%,16%,.4) }
+.sn { font-size:15px; font-weight:700; line-height:1 }
+.sn.a { color:hsl(160,55%,46%) }
+.sn.b { color:hsl(210,55%,56%) }
+.sn.c { color:hsl(0,50%,48%) }
+.sn.d { color:hsl(40,55%,50%) }
+.sn.e { color:hsl(270,50%,56%) }
+.sd { font-size:6px; letter-spacing:1px; margin-top:2px; color:#555 }
+
+/* probe viz — one dot per chunk, colored by classification */
+.probe-viz { display:flex; flex-wrap:wrap; gap:1px; padding:5px; background:#090909; border:1px solid #111; border-radius:3px; min-height:28px }
+.probe-dot { width:6px; height:6px; border-radius:1px; background:#111; transition:background .05s }
+.probe-dot.constraint { background:hsl(160,50%,28%) }
+.probe-dot.dimension  { background:hsl(210,50%,32%) }
+.probe-dot.display    { background:hsl(40,40%,22%) }
+.probe-dot.server     { background:hsl(270,45%,30%) }
+.probe-dot.transform  { background:hsl(30,40%,22%) }
+.probe-dot.noise      { background:#2a2a2e }
+.probe-dot.unknown    { background:#181818 }
+
+/* chunk stream */
+.chunk-stream { flex:1; overflow-y:auto; background:#090909; border:1px solid #111; border-radius:3px; padding:4px }
+.chunk {
+  padding:3px 6px; border-radius:2px; margin-bottom:2px;
+  border:1px solid transparent; font-size:7px; line-height:1.5;
+  display:flex; gap:6px; align-items:flex-start;
+}
+.chunk.constraint { border-color:hsla(160,35%,18%,.5); background:hsla(160,25%,7%,.4) }
+.chunk.dimension  { border-color:hsla(210,35%,18%,.5); background:hsla(210,25%,7%,.4) }
+.chunk.server     { border-color:hsla(270,35%,18%,.5); background:hsla(270,25%,7%,.4) }
+.chunk.display    { border-color:hsla(40,25%,12%,.3);  background:hsla(40,15%,5%,.2)  }
+.chunk.transform  { border-color:hsla(30,25%,12%,.3);  background:hsla(30,15%,5%,.2)  }
+.chunk.noise      { opacity:.25 }
+.chunk.unknown    { border-color:#111 }
+.chunk-role { font-size:6px; font-weight:700; letter-spacing:1px; flex-shrink:0; width:64px; padding-top:1px }
+.chunk-role.constraint { color:hsl(160,50%,44%) }
+.chunk-role.dimension  { color:hsl(210,50%,54%) }
+.chunk-role.server     { color:hsl(270,48%,56%) }
+.chunk-role.display    { color:hsl(40,45%,44%) }
+.chunk-role.transform  { color:hsl(30,45%,44%) }
+.chunk-role.noise      { color:#555 }
+.chunk-role.unknown    { color:#555 }
+.chunk-text { color:#777; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.chunk-weight { font-size:6px; color:#555; flex-shrink:0 }
+
+/* geometry panel */
+.geo-scroll { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px }
+.geo-dim {
+  padding:7px 9px; border-radius:3px;
+  border:1px solid hsla(210,35%,18%,.5);
+  background:hsla(210,25%,7%,.4);
+}
+.geo-dim-name { font-size:8px; font-weight:700; color:hsl(210,55%,56%); margin-bottom:4px; letter-spacing:1px }
+.geo-dim-vals { font-size:7px; color:#777; line-height:1.8 }
+.geo-dim-src  { font-size:6px; color:#555; margin-top:3px; font-style:italic }
+.geo-rule {
+  padding:7px 9px; border-radius:3px;
+  border:1px solid hsla(160,35%,18%,.5);
+  background:hsla(160,25%,7%,.4);
+}
+.geo-rule-when { font-size:7px; color:hsl(160,50%,44%); margin-bottom:3px }
+.geo-rule-then { font-size:7px; color:#777 }
+.geo-empty { font-size:8px; color:#555; padding:12px; text-align:center; letter-spacing:1px }
+
+/* output */
+.output-pre {
+  flex:1; overflow-y:auto;
+  background:#090909; border:1px solid #111; border-radius:3px;
+  padding:8px; font-size:7px; line-height:1.7; color:#777;
+  white-space:pre; tab-size:2;
+}
+.out-comment  { color:#555 }
+.out-key      { color:hsl(210,50%,50%) }
+.out-string   { color:hsl(40,50%,48%) }
+.out-dim      { color:hsl(160,50%,44%) }
+.out-rule     { color:hsl(270,48%,54%) }
+</style>
+</head>
+<body>
+
+<!--  PROBE CONTAINER 
+     Populated dynamically. One div per code chunk.
+     All data-* attributes set before any getComputedStyle call.
+     The browser resolves the cascade for ALL divs in one pass.
+      -->
+<div id="probes"></div>
+
+<div class="hdr">
+  <div>
+    <h1>EXODUS · CONSTRAINT EXTRACTOR</h1>
+    <div class="sub">PASTE CODE → PARALLEL CASCADE CLASSIFICATION → VSF GEOMETRY → EXODUS SKELETON</div>
+  </div>
+  <div class="status idle" id="status">IDLE</div>
+</div>
+
+<div class="app">
+
+  <!--  COL 1: SOURCE ═ -->
+  <div class="col" style="flex:0 0 30%">
+    <div class="col-label">SOURCE — NEXUS POS CHECKOUT v3.4.1 · 973 LINES · jQuery</div>
+
+    <div class="box" style="flex-shrink:0">
+      <div class="box-label">EMBEDDED APPLICATION — READ ONLY</div>
+      <div style="font-size:7px; color:#666; line-height:1.6">
+        jQuery POS: cart management, payment methods (cash/card/split/voucher/account),
+        refunds, voids, holds, age verification, loyalty, tax profiles, manager override.
+        Extraction runs against this source directly.
+      </div>
+    </div>
+
+    <div class="code-block" id="pos-source-display"></div>
+
+    <button class="btn go" id="btn-extract" style="flex-shrink:0">▶ EXTRACT GEOMETRY</button>
+  </div>
+
+  <!--  COL 2: CLASSIFICATION  -->
+  <div class="col" style="flex:0 0 30%">
+    <div class="col-label">CASCADE CLASSIFICATION — PARALLEL PROBE ARRAY</div>
+
+    <div class="box">
+      <div class="box-label">δ — RESOLUTION DEPTH</div>
+      <div class="delta-label" id="delta-label" style="color:#555">δ = 1.0000</div>
+      <div class="delta-track"><div class="delta-fill" id="delta-fill" style="width:0;background:hsl(0,50%,30%)"></div></div>
+      <div class="delta-note" id="delta-note">awaiting input</div>
+    </div>
+
+    <div class="box">
+      <div class="box-label">PROBE ARRAY — ONE DOT PER CHUNK</div>
+      <div class="probe-viz" id="probe-viz"></div>
+      <div style="font-size:6px; color:#666; margin-top:4px; letter-spacing:1px">ALL DOTS RESOLVE IN ONE STYLE RECALCULATION PASS</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat a"><div class="sn a" id="st-total">0</div><div class="sd">CHUNKS</div></div>
+      <div class="stat b"><div class="sn b" id="st-constraint">0</div><div class="sd">CONSTRAINT</div></div>
+      <div class="stat b" style="background:hsla(210,25%,9%,.5);border-color:hsla(210,30%,16%,.4)"><div class="sn b" id="st-dimension">0</div><div class="sd">DIMENSION</div></div>
+      <div class="stat d"><div class="sn d" id="st-display">0</div><div class="sd">DISPLAY</div></div>
+      <div class="stat e"><div class="sn e" id="st-server">0</div><div class="sd">SERVER</div></div>
+    </div>
+
+    <div class="box-label" style="margin-top:2px">CLASSIFIED CHUNKS</div>
+    <div class="chunk-stream" id="chunk-stream">
+      <div style="font-size:7px; color:#666; padding:8px; text-align:center; letter-spacing:1px">
+        chunks appear here after extraction
+      </div>
+    </div>
+  </div>
+
+  <!--  COL 3: GEOMETRY  -->
+  <div class="col" style="flex:0 0 20%">
+    <div class="col-label">VSF GEOMETRY — EMERGING STRUCTURE</div>
+
+    <div class="btn-row">
+      <button class="btn collapse-btn" id="btn-collapse" disabled style="flex:1">⬡ COLLAPSE TO EXODUS</button>
+    </div>
+
+    <div class="box-label">INFERRED DIMENSIONS</div>
+    <div class="geo-scroll" id="geo-dims">
+      <div class="geo-empty">no dimensions extracted</div>
+    </div>
+
+    <div class="box-label" style="margin-top:4px">INFERRED CONSTRAINTS</div>
+    <div class="geo-scroll" id="geo-rules" style="flex:0.8">
+      <div class="geo-empty">no constraints extracted</div>
+    </div>
+  </div>
+
+  <!--  COL 4: OUTPUT  -->
+  <div class="col" style="flex:1">
+    <div class="col-label">EXODUS SKELETON — GENERATED OUTPUT</div>
+
+    <div class="btn-row">
+      <button class="btn dl" id="btn-download" disabled style="flex:1">↓ DOWNLOAD .HTML</button>
+    </div>
+
+    <div class="output-pre" id="output-pre">// collapsed EXODUS skeleton appears here
+//
+// workflow:
+// 1. paste code in the left panel
+// 2. click EXTRACT GEOMETRY
+//    → chunks are classified in parallel via CSS cascade
+//    → δ drops as the geometry resolves
+// 3. click COLLAPSE TO EXODUS
+//    → Server object generated from extracted dims + constraints
+//    → CSS cascade compiled from constraint rules
+//    → full EXODUS skeleton ready to download
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+(function() {
+
+//  EMBEDDED POS SOURCE 
+var POS_SOURCE = "// ============================================================\n// NEXUS POS \u2014 Checkout Module v3.4.1\n// jQuery-based point-of-sale for retail + hospitality\n// ============================================================\n\n$(document).ready(function () {\n\n  // \u2500\u2500 State \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  var state = {\n    cart: [],\n    customer: null,\n    customerTier: 'standard',       // standard | silver | gold | staff\n    paymentMethod: 'none',          // none | cash | card | split | voucher | account\n    paymentStage: 'idle',           // idle | tendering | confirming | complete\n    transactionType: 'sale',        // sale | refund | void | exchange\n    discountCode: null,\n    discountType: 'none',           // none | percentage | fixed | bogo | employee\n    managerOverride: false,\n    ageVerified: false,\n    splitPayments: [],\n    holdQueue: [],\n    currentHoldId: null,\n    taxProfile: 'standard',         // standard | reduced | exempt | hospitality\n    receiptMode: 'print',           // print | email | none\n    register: { id: 'REG-01', operator: null, float: 200.00, totalSales: 0 },\n    shift: { open: false, openTime: null, closeTime: null },\n    inventory: {}\n  };\n\n  // \u2500\u2500 Config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  var TAX_RATES = {\n    standard:    0.20,\n    reduced:     0.05,\n    exempt:      0.00,\n    hospitality: 0.125\n  };\n\n  var TIER_DISCOUNTS = {\n    standard: 0.00,\n    silver:   0.05,\n    gold:     0.10,\n    staff:    0.20\n  };\n\n  var CATEGORY_TAX = {\n    food:      'reduced',\n    beverage:  'standard',\n    tobacco:   'standard',\n    alcohol:   'standard',\n    clothing:  'standard',\n    general:   'standard',\n    pharmacy:  'exempt',\n    service:   'standard'\n  };\n\n  var MANAGER_PIN = '4291';\n  var VOID_LIMIT  = 50.00;\n\n  // \u2500\u2500 Shift Management \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-open-shift').on('click', function () {\n    var pin = $('#operator-pin').val().trim();\n    if (!pin) {\n      showError('Operator PIN required to open shift');\n      return;\n    }\n    $.ajax({\n      url: '/api/operators/verify',\n      method: 'POST',\n      data: { pin: pin },\n      success: function (res) {\n        if (!res.valid) {\n          showError('Invalid operator PIN');\n          return;\n        }\n        state.shift.open = true;\n        state.shift.openTime = new Date();\n        state.register.operator = res.operator;\n        $('#operator-name').text(res.operator.name);\n        $('#shift-status').text('OPEN').addClass('open');\n        $('#btn-open-shift').hide();\n        $('#btn-close-shift').show();\n        $('#pos-main').removeClass('locked');\n        logEvent('SHIFT_OPEN', { operator: res.operator.id });\n      },\n      error: function () { showError('Could not verify operator'); }\n    });\n  });\n\n  $('#btn-close-shift').on('click', function () {\n    if (state.cart.length > 0) {\n      showError('Cannot close shift with active cart. Void or complete transaction first.');\n      return;\n    }\n    if (state.holdQueue.length > 0) {\n      showError('Cannot close shift with held transactions. Recall and complete all held orders.');\n      return;\n    }\n    openManagerOverlay(function () {\n      printZReport();\n      state.shift.open = false;\n      state.shift.closeTime = new Date();\n      $('#shift-status').text('CLOSED').removeClass('open');\n      $('#btn-close-shift').hide();\n      $('#btn-open-shift').show();\n      $('#pos-main').addClass('locked');\n      logEvent('SHIFT_CLOSE', { operator: state.register.operator.id, total: state.register.totalSales });\n    });\n  });\n\n  // \u2500\u2500 Item Scanning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#barcode-input').on('keydown', function (e) {\n    if (e.key !== 'Enter') return;\n    var barcode = $(this).val().trim();\n    $(this).val('');\n    if (!barcode) return;\n    if (!state.shift.open) { showError('Shift not open'); return; }\n    scanItem(barcode);\n  });\n\n  function scanItem(barcode) {\n    $.get('/api/products/' + barcode, function (product) {\n      if (!product) { showError('Product not found: ' + barcode); return; }\n      if (product.discontinued) { showError('Product discontinued \u2014 cannot sell'); return; }\n      if (product.requiresAgeVerification && !state.ageVerified) {\n        promptAgeVerification(function (verified) {\n          if (!verified) { showError('Age verification failed \u2014 item cannot be sold'); return; }\n          state.ageVerified = true;\n          addToCart(product);\n        });\n        return;\n      }\n      if (product.category === 'tobacco' && !state.ageVerified) {\n        promptAgeVerification(function (verified) {\n          if (!verified) { showError('Customer must be 18+ for tobacco products'); return; }\n          state.ageVerified = true;\n          addToCart(product);\n        });\n        return;\n      }\n      if (product.category === 'alcohol' && !state.ageVerified) {\n        promptAgeVerification(function (verified) {\n          if (!verified) { showError('Customer must be 18+ for alcohol products'); return; }\n          state.ageVerified = true;\n          addToCart(product);\n        });\n        return;\n      }\n      addToCart(product);\n    }).fail(function () { showError('Barcode lookup failed'); });\n  }\n\n  // \u2500\u2500 Cart Management \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function addToCart(product, qty) {\n    qty = qty || 1;\n    var existing = state.cart.find(function (i) { return i.sku === product.sku; });\n    if (existing) {\n      existing.qty += qty;\n      existing.lineTotal = calcLineTotal(existing);\n    } else {\n      var taxProfile = CATEGORY_TAX[product.category] || 'standard';\n      var taxRate    = TAX_RATES[taxProfile];\n      var item = {\n        sku:       product.sku,\n        name:      product.name,\n        category:  product.category,\n        unitPrice: product.price,\n        qty:       qty,\n        taxProfile: taxProfile,\n        taxRate:    taxRate,\n        discount:   0,\n        lineTotal:  0\n      };\n      item.lineTotal = calcLineTotal(item);\n      state.cart.push(item);\n    }\n    applyCartDiscounts();\n    renderCart();\n    updateTotals();\n  }\n\n  function removeFromCart(sku) {\n    state.cart = state.cart.filter(function (i) { return i.sku !== sku; });\n    applyCartDiscounts();\n    renderCart();\n    updateTotals();\n  }\n\n  function updateQty(sku, qty) {\n    qty = parseInt(qty);\n    if (isNaN(qty) || qty < 0) return;\n    if (qty === 0) { removeFromCart(sku); return; }\n    var item = state.cart.find(function (i) { return i.sku === sku; });\n    if (!item) return;\n    item.qty = qty;\n    item.lineTotal = calcLineTotal(item);\n    applyCartDiscounts();\n    renderCart();\n    updateTotals();\n  }\n\n  function calcLineTotal(item) {\n    var gross = item.unitPrice * item.qty;\n    var discountAmt = gross * (item.discount / 100);\n    return parseFloat((gross - discountAmt).toFixed(2));\n  }\n\n  // \u2500\u2500 Price Override \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-price-override').on('click', function () {\n    if (!state.cart.length) { showError('No items in cart'); return; }\n    var sku = $('#cart-selected-sku').val();\n    if (!sku) { showError('Select an item to override'); return; }\n    openManagerOverlay(function () {\n      var newPrice = parseFloat($('#override-price').val());\n      if (isNaN(newPrice) || newPrice < 0) { showError('Invalid price'); return; }\n      var item = state.cart.find(function (i) { return i.sku === sku; });\n      if (!item) return;\n      logEvent('PRICE_OVERRIDE', { sku: sku, original: item.unitPrice, override: newPrice, operator: state.register.operator.id });\n      item.unitPrice = newPrice;\n      item.lineTotal = calcLineTotal(item);\n      renderCart();\n      updateTotals();\n    });\n  });\n\n  // \u2500\u2500 Discounts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-apply-discount').on('click', function () {\n    var code = $('#discount-code').val().trim().toUpperCase();\n    if (!code) { showError('Enter a discount code'); return; }\n    $.get('/api/discounts/' + code, function (discount) {\n      if (!discount || !discount.active) { showError('Invalid or expired discount code'); return; }\n      if (discount.minCartValue && getSubtotal() < discount.minCartValue) {\n        showError('Minimum cart value of \u00a3' + discount.minCartValue.toFixed(2) + ' required');\n        return;\n      }\n      if (discount.singleUse && discount.usedCount > 0) {\n        showError('This discount code has already been used');\n        return;\n      }\n      if (discount.customerTierRequired && discount.customerTierRequired !== state.customerTier) {\n        showError('This discount requires ' + discount.customerTierRequired + ' tier membership');\n        return;\n      }\n      state.discountCode = code;\n      state.discountType = discount.type;\n      applyCartDiscounts();\n      renderCart();\n      updateTotals();\n      $('#discount-code-display').text(code).show();\n      showSuccess('Discount applied: ' + discount.description);\n    }).fail(function () { showError('Could not validate discount code'); });\n  });\n\n  $('#btn-remove-discount').on('click', function () {\n    state.discountCode = null;\n    state.discountType = 'none';\n    state.cart.forEach(function (item) { item.discount = 0; item.lineTotal = calcLineTotal(item); });\n    renderCart();\n    updateTotals();\n    $('#discount-code-display').hide();\n  });\n\n  $('#btn-employee-discount').on('click', function () {\n    if (state.customerTier !== 'staff') {\n      showError('Employee discount requires staff tier customer');\n      return;\n    }\n    openManagerOverlay(function () {\n      state.discountType = 'employee';\n      applyCartDiscounts();\n      renderCart();\n      updateTotals();\n    });\n  });\n\n  function applyCartDiscounts() {\n    var tierDiscount = TIER_DISCOUNTS[state.customerTier] || 0;\n    state.cart.forEach(function (item) {\n      item.discount = 0;\n      if (state.discountType === 'percentage' && state.discountCode) {\n        item.discount = getCodeDiscountRate();\n      } else if (state.discountType === 'employee') {\n        item.discount = TIER_DISCOUNTS['staff'] * 100;\n      } else if (tierDiscount > 0) {\n        item.discount = tierDiscount * 100;\n      }\n      if (state.discountType === 'bogo') {\n        applyBogoDiscount(item);\n        return;\n      }\n      item.lineTotal = calcLineTotal(item);\n    });\n    if (state.discountType === 'fixed' && state.discountCode) {\n      applyFixedDiscount();\n    }\n  }\n\n  function applyBogoDiscount(item) {\n    var freeQty  = Math.floor(item.qty / 2);\n    var paidQty  = item.qty - freeQty;\n    item.lineTotal = parseFloat((paidQty * item.unitPrice).toFixed(2));\n  }\n\n  function applyFixedDiscount() {\n    var fixedAmt = getCodeFixedAmount();\n    var subtotal  = getSubtotal();\n    if (fixedAmt >= subtotal) {\n      state.cart.forEach(function (i) { i.lineTotal = 0; });\n      return;\n    }\n    var ratio = 1 - (fixedAmt / subtotal);\n    state.cart.forEach(function (i) {\n      i.lineTotal = parseFloat((i.lineTotal * ratio).toFixed(2));\n    });\n  }\n\n  // \u2500\u2500 Customer Lookup \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-lookup-customer').on('click', function () {\n    var query = $('#customer-search').val().trim();\n    if (!query) return;\n    $.get('/api/customers/search', { q: query }, function (results) {\n      if (!results.length) { showError('No customer found'); return; }\n      if (results.length === 1) {\n        attachCustomer(results[0]);\n      } else {\n        renderCustomerPicker(results, attachCustomer);\n      }\n    });\n  });\n\n  function attachCustomer(customer) {\n    state.customer   = customer;\n    state.customerTier = customer.tier || 'standard';\n    $('#customer-name').text(customer.name);\n    $('#customer-tier').text(customer.tier.toUpperCase()).attr('class', 'tier-badge ' + customer.tier);\n    $('#customer-points').text(customer.loyaltyPoints + ' pts');\n    $('#customer-panel').show();\n    applyCartDiscounts();\n    renderCart();\n    updateTotals();\n  }\n\n  $('#btn-detach-customer').on('click', function () {\n    state.customer     = null;\n    state.customerTier = 'standard';\n    $('#customer-panel').hide();\n    applyCartDiscounts();\n    renderCart();\n    updateTotals();\n  });\n\n  // \u2500\u2500 Loyalty Points \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-redeem-points').on('click', function () {\n    if (!state.customer) { showError('No customer attached'); return; }\n    var points = parseInt($('#redeem-points-input').val());\n    if (isNaN(points) || points <= 0) { showError('Invalid points value'); return; }\n    if (points > state.customer.loyaltyPoints) {\n      showError('Insufficient points. Available: ' + state.customer.loyaltyPoints);\n      return;\n    }\n    var pointsValue = points * 0.01;\n    var subtotal    = getSubtotal();\n    if (pointsValue > subtotal) {\n      showError('Points value exceeds cart total');\n      return;\n    }\n    state.splitPayments.push({ method: 'points', amount: pointsValue, points: points });\n    $('#points-applied').text('\u00a3' + pointsValue.toFixed(2) + ' (' + points + ' pts)').show();\n    updateTotals();\n  });\n\n  // \u2500\u2500 Payment \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-cash').on('click', function () {\n    if (!canTender()) return;\n    state.paymentMethod = 'cash';\n    state.paymentStage  = 'tendering';\n    var due = getAmountDue();\n    $('#cash-due').text('\u00a3' + due.toFixed(2));\n    $('#cash-tender-input').val('').focus();\n    $('#payment-cash-panel').show();\n    $('#payment-method-selector').hide();\n  });\n\n  $('#btn-card').on('click', function () {\n    if (!canTender()) return;\n    state.paymentMethod = 'card';\n    state.paymentStage  = 'tendering';\n    var due = getAmountDue();\n    initiateCardPayment(due, function (result) {\n      if (result.approved) {\n        state.splitPayments.push({ method: 'card', amount: due, ref: result.ref });\n        completeTransaction(result);\n      } else if (result.declined) {\n        showError('Card declined: ' + result.reason);\n        state.paymentMethod = 'none';\n        state.paymentStage  = 'idle';\n      } else if (result.referral) {\n        showError('Card referred \u2014 please call authorisation centre');\n        state.paymentMethod = 'none';\n        state.paymentStage  = 'idle';\n      }\n    });\n  });\n\n  $('#btn-voucher').on('click', function () {\n    if (!canTender()) return;\n    var voucherCode = $('#voucher-code-input').val().trim();\n    if (!voucherCode) { showError('Enter voucher code'); return; }\n    $.post('/api/vouchers/redeem', { code: voucherCode, amount: getAmountDue() }, function (result) {\n      if (!result.valid) { showError('Invalid or expired voucher'); return; }\n      if (result.balance < getAmountDue()) {\n        var remaining = getAmountDue() - result.balance;\n        state.splitPayments.push({ method: 'voucher', amount: result.balance, code: voucherCode });\n        showError('Voucher partially applied. Remaining: \u00a3' + remaining.toFixed(2));\n        updateTotals();\n      } else {\n        state.splitPayments.push({ method: 'voucher', amount: getAmountDue(), code: voucherCode });\n        completeTransaction({ method: 'voucher', ref: voucherCode });\n      }\n    }).fail(function () { showError('Voucher validation failed'); });\n  });\n\n  $('#btn-account').on('click', function () {\n    if (!canTender()) return;\n    if (!state.customer) { showError('Account payment requires attached customer'); return; }\n    if (!state.customer.hasAccount) { showError('Customer does not have a charge account'); return; }\n    if (state.customer.accountBalance + getAmountDue() > state.customer.creditLimit) {\n      showError('Payment would exceed credit limit of \u00a3' + state.customer.creditLimit.toFixed(2));\n      return;\n    }\n    $.post('/api/accounts/charge', {\n      customerId: state.customer.id,\n      amount:     getAmountDue()\n    }, function (result) {\n      if (!result.success) { showError('Account charge failed: ' + result.reason); return; }\n      state.splitPayments.push({ method: 'account', amount: getAmountDue(), ref: result.ref });\n      completeTransaction(result);\n    });\n  });\n\n  $('#btn-confirm-cash').on('click', function () {\n    var tendered = parseFloat($('#cash-tender-input').val());\n    var due      = getAmountDue();\n    if (isNaN(tendered) || tendered < 0) { showError('Invalid tender amount'); return; }\n    if (tendered < due) { showError('Insufficient cash tendered'); return; }\n    var change = tendered - due;\n    state.splitPayments.push({ method: 'cash', amount: due, tendered: tendered, change: change });\n    $('#change-display').text('\u00a3' + change.toFixed(2));\n    $('#change-panel').show();\n    openCashDrawer();\n    completeTransaction({ method: 'cash', change: change });\n  });\n\n  $('#btn-split-payment').on('click', function () {\n    if (!canTender()) return;\n    state.paymentMethod = 'split';\n    $('#split-payment-panel').show();\n    $('#payment-method-selector').hide();\n    updateSplitDisplay();\n  });\n\n  function updateSplitDisplay() {\n    var paid = state.splitPayments.reduce(function (s, p) { return s + p.amount; }, 0);\n    var due  = getTotal() - paid;\n    $('#split-paid').text('\u00a3' + paid.toFixed(2));\n    $('#split-remaining').text('\u00a3' + Math.max(0, due).toFixed(2));\n    if (due <= 0) {\n      $('#btn-complete-split').prop('disabled', false);\n    }\n  }\n\n  // \u2500\u2500 Transaction Completion \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function completeTransaction(paymentResult) {\n    state.paymentStage = 'complete';\n    var txn = buildTransactionRecord(paymentResult);\n    $.post('/api/transactions', txn, function (savedTxn) {\n      state.register.totalSales += txn.total;\n      deductInventory(state.cart);\n      if (state.customer) {\n        awardLoyaltyPoints(state.customer, txn.total);\n      }\n      printReceipt(savedTxn);\n      logEvent('SALE_COMPLETE', { txnId: savedTxn.id, total: txn.total });\n      resetState();\n    }).fail(function () {\n      showError('Transaction save failed \u2014 do not reset drawer');\n    });\n  }\n\n  function buildTransactionRecord(paymentResult) {\n    var subtotal  = getSubtotal();\n    var taxAmount = getTaxAmount();\n    var total     = getTotal();\n    return {\n      timestamp:     new Date().toISOString(),\n      registerId:    state.register.id,\n      operatorId:    state.register.operator.id,\n      customerId:    state.customer ? state.customer.id : null,\n      items:         state.cart.map(function (i) { return {\n        sku: i.sku, name: i.name, qty: i.qty,\n        unitPrice: i.unitPrice, taxRate: i.taxRate,\n        lineTotal: i.lineTotal, discount: i.discount\n      };}),\n      subtotal:      subtotal,\n      taxAmount:     taxAmount,\n      total:         total,\n      discountCode:  state.discountCode,\n      payments:      state.splitPayments,\n      type:          state.transactionType,\n      receiptMode:   state.receiptMode,\n      ageVerified:   state.ageVerified\n    };\n  }\n\n  // \u2500\u2500 Refunds \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-refund').on('click', function () {\n    var receiptId = $('#refund-receipt-input').val().trim();\n    if (!receiptId) { showError('Receipt number required for refund'); return; }\n    $.get('/api/transactions/' + receiptId, function (txn) {\n      if (!txn) { showError('Transaction not found'); return; }\n      if (txn.refunded) { showError('Transaction already refunded'); return; }\n      if (txn.voidedAt) { showError('Cannot refund a voided transaction'); return; }\n      var daysSince = (Date.now() - new Date(txn.timestamp)) / (1000 * 60 * 60 * 24);\n      if (daysSince > 28) {\n        showError('Outside 28-day refund window. Manager override required.');\n        openManagerOverlay(function () { openRefundFlow(txn); });\n        return;\n      }\n      openRefundFlow(txn);\n    }).fail(function () { showError('Could not retrieve transaction'); });\n  });\n\n  function openRefundFlow(txn) {\n    state.transactionType = 'refund';\n    $('#refund-items-list').empty();\n    txn.items.forEach(function (item) {\n      var row = $('<div class=\"refund-item-row\">');\n      row.append('<label><input type=\"checkbox\" class=\"refund-check\" data-sku=\"' + item.sku + '\" data-total=\"' + item.lineTotal + '\" checked> ' + item.name + ' x' + item.qty + ' \u2014 \u00a3' + item.lineTotal.toFixed(2) + '</label>');\n      $('#refund-items-list').append(row);\n    });\n    $('#refund-panel').show();\n    $('#refund-original-txn').val(txn.id);\n    updateRefundTotal();\n  }\n\n  $('.refund-check').on('change', function () { updateRefundTotal(); });\n\n  function updateRefundTotal() {\n    var total = 0;\n    $('.refund-check:checked').each(function () {\n      total += parseFloat($(this).data('total'));\n    });\n    $('#refund-total-display').text('\u00a3' + total.toFixed(2));\n  }\n\n  $('#btn-process-refund').on('click', function () {\n    var originalTxnId = $('#refund-original-txn').val();\n    var refundItems   = [];\n    $('.refund-check:checked').each(function () {\n      refundItems.push({ sku: $(this).data('sku'), amount: $(this).data('total') });\n    });\n    if (!refundItems.length) { showError('Select at least one item to refund'); return; }\n    var refundTotal = refundItems.reduce(function (s, i) { return s + i.amount; }, 0);\n    var refundMethod = $('#refund-method').val();\n    if (refundMethod === 'cash' && refundTotal > state.register.float) {\n      showError('Insufficient float for cash refund. Use card or account credit.');\n      return;\n    }\n    $.post('/api/refunds', {\n      originalTxnId: originalTxnId,\n      items:  refundItems,\n      total:  refundTotal,\n      method: refundMethod\n    }, function (result) {\n      if (!result.success) { showError('Refund failed: ' + result.reason); return; }\n      showSuccess('Refund of \u00a3' + refundTotal.toFixed(2) + ' processed via ' + refundMethod);\n      printRefundReceipt(result);\n      logEvent('REFUND', { originalTxnId: originalTxnId, total: refundTotal, method: refundMethod });\n      $('#refund-panel').hide();\n      state.transactionType = 'sale';\n    });\n  });\n\n  // \u2500\u2500 Void \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-void').on('click', function () {\n    if (!state.cart.length) { showError('Nothing to void'); return; }\n    var total = getTotal();\n    if (total > VOID_LIMIT && !state.managerOverride) {\n      showError('Void over \u00a3' + VOID_LIMIT.toFixed(2) + ' requires manager override');\n      openManagerOverlay(function () {\n        state.managerOverride = true;\n        processVoid();\n      });\n      return;\n    }\n    processVoid();\n  });\n\n  function processVoid() {\n    logEvent('VOID', { items: state.cart.length, total: getTotal(), operator: state.register.operator.id });\n    state.transactionType = 'void';\n    resetState();\n    showSuccess('Transaction voided');\n  }\n\n  // \u2500\u2500 Hold / Recall \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-hold').on('click', function () {\n    if (!state.cart.length) { showError('Nothing to hold'); return; }\n    var holdId = 'HOLD-' + Date.now();\n    state.holdQueue.push({\n      id:       holdId,\n      cart:     JSON.parse(JSON.stringify(state.cart)),\n      customer: state.customer,\n      tier:     state.customerTier,\n      discount: state.discountCode,\n      time:     new Date()\n    });\n    resetState();\n    updateHoldList();\n    showSuccess('Transaction held as ' + holdId);\n  });\n\n  $('#btn-recall').on('click', function () {\n    if (!state.holdQueue.length) { showError('No held transactions'); return; }\n    if (state.cart.length) {\n      showError('Current cart must be voided before recalling a held transaction');\n      return;\n    }\n    $('#hold-list-panel').show();\n    updateHoldList();\n  });\n\n  function updateHoldList() {\n    var list = $('#hold-list');\n    list.empty();\n    state.holdQueue.forEach(function (hold) {\n      var total  = hold.cart.reduce(function (s, i) { return s + i.lineTotal; }, 0);\n      var btn    = $('<button class=\"hold-item\">');\n      btn.text(hold.id + ' \u2014 ' + (hold.customer ? hold.customer.name : 'Guest') + ' \u2014 \u00a3' + total.toFixed(2));\n      btn.on('click', function () {\n        state.cart         = hold.cart;\n        state.customer     = hold.customer;\n        state.customerTier = hold.tier;\n        state.discountCode = hold.discount;\n        state.holdQueue    = state.holdQueue.filter(function (h) { return h.id !== hold.id; });\n        applyCartDiscounts();\n        renderCart();\n        updateTotals();\n        $('#hold-list-panel').hide();\n      });\n      list.append(btn);\n    });\n  }\n\n  // \u2500\u2500 Receipt \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#receipt-mode').on('change', function () {\n    state.receiptMode = $(this).val();\n    if (state.receiptMode === 'email') {\n      if (!state.customer) {\n        showError('Email receipt requires attached customer account');\n        state.receiptMode = 'print';\n        $(this).val('print');\n        return;\n      }\n      if (!state.customer.email) {\n        showError('Customer has no email address on file');\n        state.receiptMode = 'print';\n        $(this).val('print');\n        return;\n      }\n      $('#email-receipt-preview').text(state.customer.email).show();\n    } else {\n      $('#email-receipt-preview').hide();\n    }\n  });\n\n  function printReceipt(txn) {\n    if (state.receiptMode === 'none') return;\n    if (state.receiptMode === 'email') {\n      $.post('/api/receipts/email', { txnId: txn.id, email: state.customer.email });\n      return;\n    }\n    $.post('/api/receipts/print', { txnId: txn.id, registerId: state.register.id });\n  }\n\n  function printRefundReceipt(refund) {\n    $.post('/api/receipts/print', { refundId: refund.id, registerId: state.register.id });\n  }\n\n  // \u2500\u2500 Inventory \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function deductInventory(items) {\n    items.forEach(function (item) {\n      $.post('/api/inventory/deduct', { sku: item.sku, qty: item.qty }, function (result) {\n        if (result.lowStock) {\n          showWarning('Low stock alert: ' + item.name + ' \u2014 ' + result.remaining + ' remaining');\n        }\n        if (result.outOfStock) {\n          showWarning('OUT OF STOCK: ' + item.name);\n        }\n      });\n    });\n  }\n\n  // \u2500\u2500 Loyalty \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function awardLoyaltyPoints(customer, total) {\n    var pointsEarned = 0;\n    if (customer.tier === 'standard') pointsEarned = Math.floor(total);\n    if (customer.tier === 'silver')   pointsEarned = Math.floor(total * 1.5);\n    if (customer.tier === 'gold')     pointsEarned = Math.floor(total * 2);\n    if (customer.tier === 'staff')    pointsEarned = 0; // staff don't earn points\n    if (pointsEarned > 0) {\n      $.post('/api/customers/' + customer.id + '/points', { add: pointsEarned });\n      showSuccess('+' + pointsEarned + ' loyalty points awarded');\n    }\n  }\n\n  // \u2500\u2500 Tax Exemption \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-tax-exempt').on('click', function () {\n    if (!state.customer) { showError('Tax exemption requires customer record'); return; }\n    if (!state.customer.taxExemptNumber) { showError('Customer has no tax exemption number on file'); return; }\n    openManagerOverlay(function () {\n      state.taxProfile = 'exempt';\n      state.cart.forEach(function (item) {\n        item.taxRate    = 0;\n        item.taxProfile = 'exempt';\n        item.lineTotal  = calcLineTotal(item);\n      });\n      renderCart();\n      updateTotals();\n      logEvent('TAX_EXEMPT', { customer: state.customer.id, exemptNo: state.customer.taxExemptNumber });\n      showSuccess('Tax exemption applied \u2014 VAT zero rated');\n    });\n  });\n\n  // \u2500\u2500 Custom Item (no barcode) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#btn-custom-item').on('click', function () {\n    var name  = $('#custom-item-name').val().trim();\n    var price = parseFloat($('#custom-item-price').val());\n    var cat   = $('#custom-item-category').val();\n    if (!name)            { showError('Item name required'); return; }\n    if (isNaN(price))     { showError('Valid price required'); return; }\n    if (price < 0)        { showError('Price cannot be negative'); return; }\n    if (price > 9999)     {\n      openManagerOverlay(function () { commitCustomItem(name, price, cat); });\n      return;\n    }\n    commitCustomItem(name, price, cat);\n  });\n\n  function commitCustomItem(name, price, category) {\n    var product = {\n      sku:      'CUSTOM-' + Date.now(),\n      name:     name,\n      category: category || 'general',\n      price:    price,\n      discontinued:              false,\n      requiresAgeVerification:   false\n    };\n    addToCart(product, 1);\n    $('#custom-item-name').val('');\n    $('#custom-item-price').val('');\n  }\n\n  // \u2500\u2500 Totals & Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function getSubtotal() {\n    return state.cart.reduce(function (s, i) { return s + (i.unitPrice * i.qty); }, 0);\n  }\n\n  function getTaxAmount() {\n    return state.cart.reduce(function (s, i) {\n      var net = i.lineTotal / (1 + i.taxRate);\n      return s + (i.lineTotal - net);\n    }, 0);\n  }\n\n  function getTotal() {\n    return state.cart.reduce(function (s, i) { return s + i.lineTotal; }, 0);\n  }\n\n  function getAmountDue() {\n    var paid = state.splitPayments.reduce(function (s, p) { return s + p.amount; }, 0);\n    return Math.max(0, getTotal() - paid);\n  }\n\n  function updateTotals() {\n    var subtotal  = getSubtotal();\n    var taxAmt    = getTaxAmount();\n    var total     = getTotal();\n    var due       = getAmountDue();\n    $('#display-subtotal').text('\u00a3' + subtotal.toFixed(2));\n    $('#display-tax').text('\u00a3' + taxAmt.toFixed(2));\n    $('#display-total').text('\u00a3' + total.toFixed(2));\n    $('#display-due').text('\u00a3' + due.toFixed(2));\n    $('#btn-cash, #btn-card, #btn-voucher, #btn-account, #btn-split-payment')\n      .prop('disabled', state.cart.length === 0 || !state.shift.open);\n  }\n\n  function renderCart() {\n    var list = $('#cart-items');\n    list.empty();\n    if (!state.cart.length) {\n      list.append('<div class=\"cart-empty\">Cart is empty</div>');\n      return;\n    }\n    state.cart.forEach(function (item) {\n      var row = $('<div class=\"cart-row\" data-sku=\"' + item.sku + '\">');\n      row.append('<span class=\"cart-name\">' + item.name + '</span>');\n      row.append('<span class=\"cart-category tag-' + item.category + '\">' + item.category + '</span>');\n      row.append('<input type=\"number\" class=\"cart-qty\" min=\"0\" value=\"' + item.qty + '\" data-sku=\"' + item.sku + '\">');\n      row.append('<span class=\"cart-unit\">\u00a3' + item.unitPrice.toFixed(2) + '</span>');\n      if (item.discount > 0) {\n        row.append('<span class=\"cart-discount\">-' + item.discount.toFixed(0) + '%</span>');\n      }\n      row.append('<span class=\"cart-total\">\u00a3' + item.lineTotal.toFixed(2) + '</span>');\n      row.append('<button class=\"cart-remove\" data-sku=\"' + item.sku + '\">\u00d7</button>');\n      if (item.taxProfile === 'reduced') row.append('<span class=\"tax-badge reduced\">5%</span>');\n      if (item.taxProfile === 'exempt')  row.append('<span class=\"tax-badge exempt\">0%</span>');\n      list.append(row);\n    });\n  }\n\n  // \u2500\u2500 Event delegation for cart \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  $('#cart-items').on('change', '.cart-qty', function () {\n    updateQty($(this).data('sku'), $(this).val());\n  });\n\n  $('#cart-items').on('click', '.cart-remove', function () {\n    removeFromCart($(this).data('sku'));\n  });\n\n  $('#cart-items').on('click', '.cart-row', function () {\n    $('#cart-items .cart-row').removeClass('selected');\n    $(this).addClass('selected');\n    $('#cart-selected-sku').val($(this).data('sku'));\n  });\n\n  // \u2500\u2500 Manager Override \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function openManagerOverlay(callback) {\n    $('#manager-overlay').show();\n    $('#manager-pin-input').val('').focus();\n    $('#btn-manager-confirm').off('click').on('click', function () {\n      var pin = $('#manager-pin-input').val();\n      if (pin !== MANAGER_PIN) {\n        showError('Invalid manager PIN');\n        return;\n      }\n      state.managerOverride = true;\n      $('#manager-overlay').hide();\n      logEvent('MANAGER_OVERRIDE', { operator: state.register.operator ? state.register.operator.id : 'unknown' });\n      callback();\n    });\n    $('#btn-manager-cancel').off('click').on('click', function () {\n      $('#manager-overlay').hide();\n    });\n  }\n\n  // \u2500\u2500 Age Verification \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function promptAgeVerification(callback) {\n    $('#age-verify-overlay').show();\n    $('#btn-age-confirm').off('click').on('click', function () {\n      var dob = $('#age-dob-input').val();\n      if (!dob) { showError('Date of birth required'); return; }\n      var age = calcAge(new Date(dob));\n      if (age < 18) {\n        showError('Customer is under 18 \u2014 sale refused');\n        $('#age-verify-overlay').hide();\n        callback(false);\n        return;\n      }\n      $('#age-verify-overlay').hide();\n      callback(true);\n    });\n    $('#btn-age-deny').off('click').on('click', function () {\n      $('#age-verify-overlay').hide();\n      callback(false);\n    });\n  }\n\n  function calcAge(dob) {\n    var today = new Date();\n    var age   = today.getFullYear() - dob.getFullYear();\n    var m     = today.getMonth() - dob.getMonth();\n    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;\n    return age;\n  }\n\n  // \u2500\u2500 Utility \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  function canTender() {\n    if (!state.shift.open)    { showError('Shift not open'); return false; }\n    if (!state.cart.length)   { showError('Cart is empty'); return false; }\n    if (state.paymentStage === 'complete') { showError('Transaction already complete'); return false; }\n    return true;\n  }\n\n  function openCashDrawer() {\n    $.post('/api/register/drawer-open', { registerId: state.register.id });\n  }\n\n  function printZReport() {\n    $.post('/api/reports/z', { registerId: state.register.id, operatorId: state.register.operator.id });\n  }\n\n  function initiateCardPayment(amount, callback) {\n    $('#card-terminal-overlay').show();\n    $('#card-amount-display').text('\u00a3' + amount.toFixed(2));\n    $.post('/api/payments/card/initiate', { amount: amount, registerId: state.register.id }, function (session) {\n      pollCardTerminal(session.id, callback);\n    }).fail(function () { showError('Card terminal not responding'); });\n  }\n\n  function pollCardTerminal(sessionId, callback) {\n    var poll = setInterval(function () {\n      $.get('/api/payments/card/status/' + sessionId, function (status) {\n        if (status.complete) {\n          clearInterval(poll);\n          $('#card-terminal-overlay').hide();\n          callback(status.result);\n        }\n      });\n    }, 1000);\n  }\n\n  function getCodeDiscountRate() {\n    return 10; // TODO: fetch from discount object\n  }\n\n  function getCodeFixedAmount() {\n    return 5.00; // TODO: fetch from discount object\n  }\n\n  function logEvent(type, data) {\n    $.post('/api/audit', { type: type, data: data, registerId: state.register.id, ts: new Date().toISOString() });\n  }\n\n  function awardLoyaltyPoints(customer, total) {\n    var pointsEarned = 0;\n    if (customer.tier === 'standard') pointsEarned = Math.floor(total);\n    if (customer.tier === 'silver')   pointsEarned = Math.floor(total * 1.5);\n    if (customer.tier === 'gold')     pointsEarned = Math.floor(total * 2);\n    if (customer.tier === 'staff')    pointsEarned = 0;\n    if (pointsEarned > 0) {\n      $.post('/api/customers/' + customer.id + '/points', { add: pointsEarned });\n    }\n  }\n\n  function showError(msg)   { $('#notification').text(msg).attr('class', 'notification error').show().delay(3000).fadeOut(); }\n  function showSuccess(msg) { $('#notification').text(msg).attr('class', 'notification success').show().delay(3000).fadeOut(); }\n  function showWarning(msg) { $('#notification').text(msg).attr('class', 'notification warning').show().delay(4000).fadeOut(); }\n\n  function resetState() {\n    state.cart            = [];\n    state.paymentMethod   = 'none';\n    state.paymentStage    = 'idle';\n    state.transactionType = 'sale';\n    state.discountCode    = null;\n    state.discountType    = 'none';\n    state.managerOverride = false;\n    state.ageVerified     = false;\n    state.splitPayments   = [];\n    state.currentHoldId   = null;\n    renderCart();\n    updateTotals();\n    $('#payment-method-selector').show();\n    $('#payment-cash-panel, #split-payment-panel, #change-panel, #points-applied').hide();\n    $('#discount-code-display').hide();\n    $('#discount-code').val('');\n    $('#barcode-input').focus();\n  }\n\n  // \u2500\u2500 Init \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  resetState();\n  $('#barcode-input').focus();\n  updateTotals();\n});\n";
+
+// Minimal syntax highlighter — runs once on load
+function highlightCode(code) {
+  var lines = code.split('\n');
+  var html  = '';
+  lines.forEach(function(line, i) {
+    var n    = String(i + 1);
+    var safe = line
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    // Comments
+    safe = safe.replace(/(\/\/[^\n]*)/, '<span class="cmt">$1</span>');
+
+    // Strings (simple, no nesting)
+    safe = safe.replace(/('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g, '<span class="str">$1</span>');
+
+    // Keywords
+    safe = safe.replace(/\b(var|let|const|function|return|if|else|for|while|switch|case|break|new|this|typeof|instanceof|true|false|null|undefined|default|throw|try|catch|finally)\b/g,
+      '<span class="kw">$1</span>');
+
+    // jQuery / common functions
+    safe = safe.replace(/\b(\$|jQuery|\.on|\.ajax|\.get|\.post|\.val|\.text|\.html|\.css|\.show|\.hide|\.prop|\.attr|\.data|\.find|\.each|\.filter|\.map|\.append|\.empty|\.off|\.trigger)(?=\s*[\(\.])/g,
+      '<span class="fn">$1</span>');
+
+    // Numbers
+    safe = safe.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+
+    html += '<span class="ln">' + n + '</span>' + safe + '\n';
+  });
+  return html;
+}
+
+document.getElementById('pos-source-display').innerHTML = highlightCode(POS_SOURCE);
+
+//  CLEAR BUTTON REMOVED — source is fixed 
+// 
+//   SERVER                                                            
+//   Owns the extraction geometry.                                     
+//   Defines what patterns map to what dimensions the space.    
+//   The code being analyzed IS the probabilistic input.               
+//   Each chunk is a character commit. δ = unclassified/total.       
+// 
+var Server = {
+
+  // Pattern alphabet 
+  // These are the "characters" of the code input stream.
+  // Each chunk gets scored against these to produce data-attributes.
+  patterns: [
+    { name: "event",     re: /\.on\s*\(|addEventListener|\.click\s*\(|\.submit\s*\(|\.change\s*\(|\.keyup|\.keydown|\.blur|\.focus/ },
+    { name: "fetch",     re: /\.ajax\s*\(|\bfetch\s*\(|\.get\s*\(|\.post\s*\(|XMLHttpRequest|\baxios\b|\.then\s*\(|async\s+function/ },
+    { name: "condition", re: /\bif\s*\(|\belse\s*(if)?\b|\bswitch\s*\(|\bcase\b|\?[^:\n]{1,40}:|\b===\b|\b!==\b|\b>=\b|\b<=\b/ },
+    { name: "display",   re: /\.html\s*\(|\.text\s*\(|\.css\s*\(|\.addClass\s*\(|\.removeClass\s*\(|\.show\s*\(|\.hide\s*\(|\.append|\.prepend|\.remove\s*\(|innerHTML\s*=|style\./ },
+    { name: "read",      re: /\.val\s*\(\s*\)|\.attr\s*\(|\.data\s*\(|localStorage\.get|sessionStorage\.get|\.prop\s*\(|\.checked\b/ },
+    { name: "write",     re: /\bvar\s+\w+\s*=|\blet\s+\w+\s*=|\bconst\s+\w+\s*=|localStorage\.set|sessionStorage\.set/ },
+    { name: "transform", re: /\.map\s*\(|\.filter\s*\(|\.reduce\s*\(|\.forEach\s*\(|JSON\.parse|JSON\.stringify|\.split\s*\(|\.join\s*\(/ },
+    { name: "noise",     re: /^\s*(\/\/|\/\*|\*|#!)|console\.\w+\s*\(|debugger\b|^\s*$/ }
+  ],
+
+  // Data type signals 
+  dtypes: [
+    { name: "string",  re: /['"`][^'"`\n]*['"`]|\.toString\s*\(|\.trim\s*\(|\.toLowerCase|\.toUpperCase/ },
+    { name: "number",  re: /\b\d+\.?\d*\b|\bparseInt\b|\bparseFloat\b|\bNumber\s*\(|\bMath\./ },
+    { name: "boolean", re: /\btrue\b|\bfalse\b|\b!{1,2}\w|\b&&\b|\b\|\|\b|\b!==\s*(true|false)\b/ },
+    { name: "array",   re: /\[\s*[\]']|\.push\s*\(|\.pop\s*\(|\.length\b|\bArray\b|\.indexOf\s*\(/ },
+    { name: "object",  re: /\{\s*\w+\s*:|\bObject\b|Object\.keys|Object\.values|Object\.assign/ },
+    { name: "dom",     re: /\$\s*\(|document\.|getElementById|querySelector|\.closest\s*\(|\.parent\s*\(|\.children/ }
+  ],
+
+  // Flow direction signals 
+  flows: [
+    { name: "input",     re: /\.val\s*\(\s*\)|\.attr\s*\([^)]+\)|\.data\s*\([^)]+\)|e\.target|event\.target|\.checked\b/ },
+    { name: "output",    re: /\.val\s*\([^)]{2,}|\.html\s*\([^)]{2,}|\.text\s*\([^)]{2,}|\.css\s*\(|\.addClass/ },
+    { name: "transform", re: /\breturn\s+\w|\b=>\s*[\w{(]|\bfunction\s*\(/ },
+    { name: "effect",    re: /\.show\s*\(|\.hide\s*\(|\.addClass\s*\(|\.removeClass\s*\(|\.remove\s*\(|\.empty\s*\(/ }
+  ],
+
+  // Committed extraction state 
+  chunks: [],          // { text, pattern, dtype, flow, role, weight, dimHint, valHint }
+  inferredDims: [],    // { name, values, sources }
+  inferredRules: [],   // { when, then, source }
+
+  //  Chunk the input code into logical units
+  chunkCode: function(code) {
+    var lines = code.split('\n');
+    var chunks = [];
+    var buf = [];
+
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      if (trimmed === '' && buf.length > 0) {
+        chunks.push(buf.join('\n').trim());
+        buf = [];
+      } else if (trimmed !== '') {
+        buf.push(line);
+        // Split on logical boundaries within dense blocks
+        if (/^\s*(if|else|case|}\s*else|for|while)\b/.test(line) && buf.length > 3) {
+          chunks.push(buf.slice(0, -1).join('\n').trim());
+          buf = [line];
+        }
+      }
+    });
+    if (buf.length > 0) chunks.push(buf.join('\n').trim());
+    return chunks.filter(function(c) { return c.length > 2 });
+  },
+
+  // Score a chunk against a pattern set — returns best match 
+  scorePatterns: function(text, patterns) {
+    var best = 'unknown', bestScore = 0;
+    patterns.forEach(function(p) {
+      var matches = (text.match(new RegExp(p.re.source, 'gi')) || []).length;
+      if (matches > bestScore) { bestScore = matches; best = p.name; }
+    });
+    return best;
+  },
+
+  // Extract dimension hints from code text 
+  extractDimHint: function(text) {
+    // Look for: field names in .val() reads, variable names in conditions
+    // select/radio values, named constants
+    var hints = [];
+
+    // jQuery field reads: $('#field-name').val()
+    var fieldReads = text.match(/\$\s*\(['"]#?([\w-]+)['"]\)\s*\.val\s*\(\s*\)/g) || [];
+    fieldReads.forEach(function(m) {
+      var n = m.match(/['"]#?([\w-]+)['"]/);
+      if (n) hints.push(n[1].replace(/-/g,'_'));
+    });
+
+    // Variable names being compared: if (plan === 'x')
+    var comparisons = text.match(/\b(\w+)\s*===?\s*['"`]([^'"`]+)['"`]/g) || [];
+    comparisons.forEach(function(m) {
+      var parts = m.match(/\b(\w+)\s*===?\s*['"`]([^'"`]+)['"`]/);
+      if (parts) hints.push(parts[1] + ':' + parts[2]);
+    });
+
+    return hints;
+  },
+
+  // Extract value hints from conditions 
+  extractValHints: function(text) {
+    var vals = [];
+    var stringLiterals = text.match(/===?\s*['"`]([^'"`]+)['"`]/g) || [];
+    stringLiterals.forEach(function(m) {
+      var v = m.match(/['"`]([^'"`]+)['"`]/);
+      if (v) vals.push(v[1]);
+    });
+    return vals;
+  },
+
+  // Observe δ 
+  observe: function(classified, total) {
+    if (total === 0) return 1.0;
+    var unresolved = total - classified;
+    return parseFloat((unresolved / total).toFixed(4));
+  },
+
+  // Build inferred geometry from classified chunks
+  buildGeometry: function() {
+    this.inferredDims = [];
+    this.inferredRules = [];
+
+    // Collect dimension candidates from dimension-classified chunks
+    var dimMap = {};
+    var self = this;
+
+    this.chunks.forEach(function(chunk) {
+      if (chunk.role !== 'dimension' && chunk.role !== 'constraint') return;
+
+      var hints = self.extractDimHint(chunk.text);
+      hints.forEach(function(hint) {
+        if (hint.indexOf(':') > -1) {
+          var parts = hint.split(':');
+          var dimName = parts[0];
+          var val = parts[1];
+          if (!dimMap[dimName]) dimMap[dimName] = { values: [], sources: [] };
+          if (dimMap[dimName].values.indexOf(val) === -1) {
+            dimMap[dimName].values.push(val);
+            dimMap[dimName].sources.push(chunk.text.split('\n')[0].trim().substring(0,60));
+          }
+        } else {
+          if (!dimMap[hint]) dimMap[hint] = { values: [], sources: [] };
+        }
+      });
+    });
+
+    Object.keys(dimMap).forEach(function(name) {
+      if (name.length > 1 && dimMap[name].values.length > 0) {
+        self.inferredDims.push({
+          name: name,
+          values: dimMap[name].values,
+          sources: dimMap[name].sources.slice(0, 2)
+        });
+      }
+    });
+
+    // Build constraint rules from condition chunks with value hints
+    this.chunks.forEach(function(chunk) {
+      if (chunk.role !== 'constraint') return;
+      var vals = self.extractValHints(chunk.text);
+      if (vals.length === 0) return;
+      var dimHints = self.extractDimHint(chunk.text);
+      var when = {};
+      dimHints.forEach(function(h) {
+        if (h.indexOf(':') > -1) {
+          var p = h.split(':');
+          when[p[0]] = p[1];
+        }
+      });
+      if (Object.keys(when).length > 0) {
+        // What does the condition produce? Look for display mutations as denial signal
+        var hasDeny = /\.hide\s*\(|display.*none|disabled|\.prop\s*\([^,]+,\s*true/.test(chunk.text);
+        self.inferredRules.push({
+          when: when,
+          then: hasDeny ? { sdf: 1, deny: 'TODO: ' + Object.values(when).join('+') + ' denied' }
+                        : { sdf: -1 },
+          source: chunk.text.split('\n')[0].trim().substring(0, 60)
+        });
+      }
+    });
+  },
+
+  // IPC handler
+  handleMessage: function(msg) {
+    switch (msg.type) {
+      case 'CHUNK_CODE':
+        this.chunks = [];
+        var rawChunks = this.chunkCode(msg.code);
+        rawChunks.forEach(function(text) {
+          Server.chunks.push({
+            text: text,
+            pattern: Server.scorePatterns(text, Server.patterns),
+            dtype:   Server.scorePatterns(text, Server.dtypes),
+            flow:    Server.scorePatterns(text, Server.flows),
+            role: 'unknown', weight: 0
+          });
+        });
+        return { type: 'CHUNKS_READY', count: this.chunks.length };
+
+      case 'COMMIT_CLASSIFICATIONS':
+        msg.results.forEach(function(r, i) {
+          if (Server.chunks[i]) {
+            Server.chunks[i].role   = r.role;
+            Server.chunks[i].weight = r.weight;
+          }
+        });
+        return { type: 'CLASSIFIED' };
+
+      case 'BUILD_GEOMETRY':
+        this.buildGeometry();
+        return {
+          type: 'GEOMETRY_READY',
+          dims:  this.inferredDims,
+          rules: this.inferredRules
+        };
+
+      case 'GET_CHUNKS':
+        return { type: 'CHUNKS', chunks: this.chunks };
+
+      default:
+        return { type: 'ERROR', msg: 'unknown: ' + msg.type };
+    }
+  }
+};
+
+
+// 
+//   IPC                                                              
+// 
+
+var IPC = {
+  send: function(msg) { return Server.handleMessage(msg); }
+};
+
+
+// ╔╗
+//   CSS CASCADE — THE CLASSIFICATION RUNTIME                          
+//                                                                     
+//   Compiled from Server's constraint definitions.                    
+//   data-pattern + data-dtype + data-flow → --role, --weight, --sdf   
+//                                                                     
+//   This is not a styling layer. It is a constraint classifier.       
+//   Every code chunk gets classified here. Simultaneously.            
+// 
+
+function buildClassificationCascade() {
+  var css = '';
+  var P = '#probes > div';
+
+  //  Base rule: every probe starts as unknown noise 
+  css += P + ' {\n';
+  css += '  --role: unknown;\n';
+  css += '  --sdf: 1;\n';
+  css += '  --weight: 0;\n';
+  css += '}\n\n';
+
+  //  Pattern-only rules 
+
+  // Pure noise — comments, blanks, console statements
+  css += P + '[data-pattern="noise"] { --role: noise; --sdf: 1; --weight: 0 }\n';
+
+  // Event handlers alone → dimension navigation candidates
+  css += P + '[data-pattern="event"] { --role: dimension; --sdf: -1; --weight: 1 }\n';
+
+  // Fetch alone → server communication
+  css += P + '[data-pattern="fetch"] { --role: server; --sdf: -1; --weight: 1 }\n';
+
+  // Display mutations alone → pure display layer (excluded from geometry)
+  css += P + '[data-pattern="display"] { --role: display; --sdf: 1; --weight: 0 }\n';
+
+  // Data transforms → pipeline (weak constraint signal)
+  css += P + '[data-pattern="transform"] { --role: transform; --sdf: -1; --weight: 1 }\n';
+
+  //  2-attribute rules (higher specificity — override above) ─
+
+  // Condition + input read → strong constraint signal (this is domain logic)
+  css += P + '[data-pattern="condition"][data-flow="input"] {\n';
+  css += '  --role: constraint; --sdf: -1; --weight: 3\n}\n';
+
+  // Condition + dom type → dimension navigator (what element drives the branch)
+  css += P + '[data-pattern="condition"][data-dtype="dom"] {\n';
+  css += '  --role: dimension; --sdf: -1; --weight: 2\n}\n';
+
+  // Read + string → categorical dimension input
+  css += P + '[data-pattern="read"][data-dtype="string"] {\n';
+  css += '  --role: dimension; --sdf: -1; --weight: 2\n}\n';
+
+  // Read + boolean → binary dimension
+  css += P + '[data-pattern="read"][data-dtype="boolean"] {\n';
+  css += '  --role: dimension; --sdf: -1; --weight: 2\n}\n';
+
+  // Event + input → user is navigating a dimension
+  css += P + '[data-pattern="event"][data-flow="input"] {\n';
+  css += '  --role: dimension; --sdf: -1; --weight: 2\n}\n';
+
+  // Fetch + transform → server data shaping
+  css += P + '[data-pattern="fetch"][data-flow="transform"] {\n';
+  css += '  --role: server; --sdf: -1; --weight: 2\n}\n';
+
+  // Write + input → state assignment from user input (dimension commit)
+  css += P + '[data-pattern="write"][data-flow="input"] {\n';
+  css += '  --role: constraint; --sdf: -1; --weight: 2\n}\n';
+
+  // Display + effect → pure side effect, definitely not constraint geometry
+  css += P + '[data-pattern="display"][data-flow="effect"] {\n';
+  css += '  --role: display; --sdf: 1; --weight: 0\n}\n';
+
+  //  3-attribute rules (highest specificity) ─
+
+  // Condition + input + string → this is a categorical constraint rule
+  css += P + '[data-pattern="condition"][data-flow="input"][data-dtype="string"] {\n';
+  css += '  --role: constraint; --sdf: -1; --weight: 3\n}\n';
+
+  // Event + input + dom → dimension navigation via DOM element
+  css += P + '[data-pattern="event"][data-flow="input"][data-dtype="dom"] {\n';
+  css += '  --role: dimension; --sdf: -1; --weight: 3\n}\n';
+
+  // Fetch + transform + object → server returning structured data (server dim source)
+  css += P + '[data-pattern="fetch"][data-flow="transform"][data-dtype="object"] {\n';
+  css += '  --role: server; --sdf: -1; --weight: 3\n}\n';
+
+  var old = document.getElementById('cascade-rules');
+  if (old) old.remove();
+  var style = document.createElement('style');
+  style.id = 'cascade-rules';
+  style.textContent = css;
+  document.head.appendChild(style);
+
+  return css;
+}
+
+
+// ╔╗
+//   CLIENT                                                            
+//   Receives chunks from server.                                      
+//   Builds probe array — one element per chunk.                       
+//   Seeds ALL data-attributes BEFORE any getComputedStyle call.       
+//   One resolveAll() triggers one style recalculation for all N.      
+//   CSS classified every chunk simultaneously.                        
+//   Commits results back to server.                                   
+// 
+
+var Client = {
+  probeContainer: null,
+  probeEls: [],
+  cascadeCSS: '',
+
+  init: function() {
+    this.probeContainer = document.getElementById('probes');
+    this.cascadeCSS = buildClassificationCascade();
+  },
+
+  //  Build probe array ─
+  // One element per chunk. Seed all attributes. No reads yet.
+  buildProbeArray: function(chunks) {
+    this.probeContainer.innerHTML = '';
+    this.probeEls = [];
+    var frag = document.createDocumentFragment();
+    chunks.forEach(function(chunk) {
+      var el = document.createElement('div');
+      el.setAttribute('data-pattern', chunk.pattern);
+      el.setAttribute('data-dtype',   chunk.dtype);
+      el.setAttribute('data-flow',    chunk.flow);
+      frag.appendChild(el);
+      Client.probeEls.push(el);
+    });
+    this.probeContainer.appendChild(frag);
+    // All N probes are now in the DOM, all attributes set.
+    // The cascade is already compiled and injected.
+    // The browser will resolve all N elements in one pass
+    // the moment getComputedStyle is first called.
+  },
+
+  //  Resolve all probes ─
+  // This is the parallel classification step.
+  // One getComputedStyle call on probe[0] triggers one style recalc
+  // for every element in the probe container simultaneously.
+  // All subsequent reads return cached resolved values — no more recalcs.
+  resolveAll: function() {
+    var results = [];
+    for (var i = 0; i < this.probeEls.length; i++) {
+      var cs = getComputedStyle(this.probeEls[i]);
+      results.push({
+        role:   cs.getPropertyValue('--role').trim().replace(/"/g,''),
+        sdf:    cs.getPropertyValue('--sdf').trim(),
+        weight: parseInt(cs.getPropertyValue('--weight').trim()) || 0
+      });
+    }
+    return results;
+  },
+
+  //  Full extraction pipeline ─
+  extract: function(code) {
+    setStatus('scanning');
+
+    // 1. Server chunks the code
+    var res = IPC.send({ type: 'CHUNK_CODE', code: code });
+    var chunkRes = IPC.send({ type: 'GET_CHUNKS' });
+    var chunks = chunkRes.chunks;
+
+    if (chunks.length === 0) {
+      setStatus('idle');
+      return;
+    }
+
+    // 2. Build probe array — all N probes seeded simultaneously
+    this.buildProbeArray(chunks);
+
+    // 3. ONE style recalculation classifies ALL chunks in parallel
+    var classifications = this.resolveAll();
+
+    // 4. Commit classifications back to server
+    IPC.send({ type: 'COMMIT_CLASSIFICATIONS', results: classifications });
+
+    // 5. Compute δ
+    var classifiedCount = classifications.filter(function(r) { return r.role !== 'unknown'; }).length;
+    var delta = Server.observe(classifiedCount, chunks.length);
+
+    // 6. Update UI
+    this.updateUI(chunks, classifications, delta);
+    setStatus('resolved');
+  },
+
+  //  UI Updates ─
+  updateUI: function(chunks, classifications, delta) {
+    // δ meter
+    var hue = Math.round(160 - delta * 160);
+    var fill = document.getElementById('delta-fill');
+    fill.style.width = ((1 - delta) * 100) + '%';
+    fill.style.background = 'hsl(' + hue + ',55%,35%)';
+    var lbl = document.getElementById('delta-label');
+    lbl.textContent = 'δ = ' + delta.toFixed(4);
+    lbl.style.color = 'hsl(' + hue + ',55%,50%)';
+    document.getElementById('delta-note').textContent =
+      Math.round((1 - delta) * 100) + '% of chunks classified — ' +
+      Math.round(delta * chunks.length) + ' remaining uncertain';
+
+    // Count by role
+    var counts = { constraint:0, dimension:0, display:0, server:0, transform:0, noise:0, unknown:0 };
+    classifications.forEach(function(r) { counts[r.role] = (counts[r.role]||0) + 1; });
+
+    document.getElementById('st-total').textContent      = chunks.length;
+    document.getElementById('st-constraint').textContent = counts.constraint || 0;
+    document.getElementById('st-dimension').textContent  = counts.dimension  || 0;
+    document.getElementById('st-display').textContent    = counts.display    || 0;
+    document.getElementById('st-server').textContent     = counts.server     || 0;
+
+    // Probe viz — one dot per chunk, colored by classification
+    var viz = document.getElementById('probe-viz');
+    viz.innerHTML = '';
+    classifications.forEach(function(r) {
+      var dot = document.createElement('div');
+      dot.className = 'probe-dot ' + r.role;
+      dot.title = r.role + ' (w=' + r.weight + ')';
+      viz.appendChild(dot);
+    });
+
+    // Chunk stream
+    var stream = document.getElementById('chunk-stream');
+    stream.innerHTML = '';
+    chunks.forEach(function(chunk, i) {
+      var cls = classifications[i];
+      var row = document.createElement('div');
+      row.className = 'chunk ' + cls.role;
+      var firstLine = chunk.text.split('\n')[0].trim().substring(0, 80);
+      row.innerHTML =
+        '<span class="chunk-role ' + cls.role + '">' + cls.role.toUpperCase() + '</span>' +
+        '<span class="chunk-text">' + escHtml(firstLine) + '</span>' +
+        '<span class="chunk-weight">w' + cls.weight + '</span>';
+      stream.appendChild(row);
+    });
+
+    // Enable collapse
+    document.getElementById('btn-collapse').disabled = false;
+  }
+};
+
+
+// ╔╗
+//   GEOMETRY → EXODUS SKELETON GENERATOR                             
+// 
+
+function generateSkeleton(dims, rules) {
+  var d = dims.map(function(dim) {
+    var vals = dim.values.map(function(v) { return '"' + v + '"' }).join(', ');
+    return '    { name: "' + dim.name + '", values: [' + vals + '] }';
+  }).join(',\n');
+
+  var c = rules.map(function(rule) {
+    var when = JSON.stringify(rule.when);
+    var then = JSON.stringify(rule.then);
+    return '    { when: ' + when + ', then: ' + then + ' }';
+  }).join(',\n');
+
+  var dimNames = dims.map(function(d) { return d.name }).join(', ');
+
+  return [
+'<!DOCTYPE html>',
+'<html lang="en">',
+'<head>',
+'<meta charset="UTF-8">',
+'<title>EXODUS — Generated Application</title>',
+'<!-- Generated by EXODUS Constraint Extractor -->',
+'<!-- Review and complete: TODO markers indicate inferred values to verify -->',
+'<style>',
+'* { margin:0; padding:0; box-sizing:border-box }',
+'body { background:#08080a; color:#888; font-family:monospace; font-size:12px; padding:24px }',
+'#probe { position:absolute; left:-9999px; top:-9999px; width:0; height:0; overflow:hidden; pointer-events:none }',
+'</style>',
+'</head>',
+'<body>',
+'',
+'<div id="probe"></div>',
+'',
+'<!-- ═ GENERATED NAVIGATION UI ═ -->',
+'<div id="nav-controls"></div>',
+'<div id="result" style="margin-top:16px;padding:12px;border:1px solid #222;border-radius:3px;white-space:pre"></div>',
+'',
+'<script>',
+'(function() {',
+'',
+'// ╔╗',
+'//   SERVER — extracted from original codebase via EXODUS      ',
+'//   Review inferred dims and constraints. Fill TODO markers.  ',
+'// ',
+'var Server = {',
+'',
+'  dims: [',
+(d || '    // TODO: no dimensions inferred — add manually'),
+'  ],',
+'',
+'  constraints: [',
+(c || '    // TODO: no constraints inferred — add manually'),
+'  ],',
+'',
+'  navState: [' + dims.map(function(){return'0'}).join(', ') + '],',
+'',
+'  handleMessage: function(msg) {',
+'    if (msg.type === "CONNECT")',
+'      return { dims: this.dims, constraints: this.constraints, navState: this.navState.slice() };',
+'    if (msg.type === "NAV_SET") {',
+'      if (msg.dim >= 0 && msg.dim < this.dims.length)',
+'        this.navState[msg.dim] = msg.val;',
+'      return { type: "NAV_ACK", navState: this.navState.slice() };',
+'    }',
+'  }',
+'};',
+'',
+'var IPC = {',
+'  send: function(msg) { return Server.handleMessage(msg); }',
+'};',
+'',
+'// ╔╗',
+'//   CLIENT — CSS IS THE RUNTIME                               ',
+'// ',
+'var Client = {',
+'  dims: [], navState: [],',
+'  probeEl: document.getElementById("probe"),',
+'',
+'  connect: function() {',
+'    var res = IPC.send({ type: "CONNECT" });',
+'    this.dims = res.dims;',
+'    this.navState = res.navState;',
+'    this.rebuildCascade(Server.constraints);',
+'    this.buildUI();',
+'    this.resolve();',
+'  },',
+'',
+'  rebuildCascade: function(constraints) {',
+'    var css = "#probe { --sdf: -1; --deny: \\"\\"; --reg: VALID }\\n";',
+'    constraints.forEach(function(c) {',
+'      var sel = "#probe";',
+'      for (var k in c.when) sel += "[data-" + k + "=\\"" + c.when[k] + "\\"]";',
+'      var decls = [];',
+'      if (c.then.sdf  !== undefined) decls.push("--sdf: " + c.then.sdf);',
+'      if (c.then.deny !== undefined) decls.push("--deny: \\"" + c.then.deny + "\\"");',
+'      if (c.then.sdf === 1) decls.push("--reg: DENIED");',
+'      css += sel + " { " + decls.join("; ") + " }\\n";',
+'    });',
+'    var old = document.getElementById("cascade-rules");',
+'    if (old) old.remove();',
+'    var s = document.createElement("style");',
+'    s.id = "cascade-rules"; s.textContent = css;',
+'    document.head.appendChild(s);',
+'  },',
+'',
+'  probe: function() {',
+'    var el = this.probeEl;',
+'    this.dims.forEach(function(d, i) {',
+'      el.setAttribute("data-" + d.name, d.values[Client.navState[i]]);',
+'    });',
+'    var cs = getComputedStyle(el);',
+'    return {',
+'      sdf:  cs.getPropertyValue("--sdf").trim(),',
+'      deny: cs.getPropertyValue("--deny").trim().replace(/"/g, ""),',
+'      reg:  cs.getPropertyValue("--reg").trim().replace(/"/g, "")',
+'    };',
+'  },',
+'',
+'  resolve: function() {',
+'    var res = this.probe();',
+'    var allowed = res.sdf === "-1";',
+'    var coord = this.dims.map(function(d, i) {',
+'      return d.name + "=" + d.values[Client.navState[i]];',
+'    }).join("  ");',
+'    var el = document.getElementById("result");',
+'    el.style.color = allowed ? "hsl(160,55%,45%)" : "hsl(0,50%,48%)";',
+'    el.textContent = [',
+'      "COORD   " + coord,',
+'      "SDF     " + res.sdf,',
+'      "RESULT  " + (allowed ? "✓ VALID" : "✗ DENIED — " + res.deny)',
+'    ].join("\\n");',
+'  },',
+'',
+'  buildUI: function() {',
+'    var nav = document.getElementById("nav-controls");',
+'    this.dims.forEach(function(dim, di) {',
+'      var grp = document.createElement("div");',
+'      grp.style.cssText = "margin-bottom:8px";',
+'      var lbl = document.createElement("div");',
+'      lbl.style.cssText = "font-size:9px;letter-spacing:2px;color:#666;margin-bottom:4px";',
+'      lbl.textContent = dim.name.toUpperCase();',
+'      grp.appendChild(lbl);',
+'      var row = document.createElement("div");',
+'      row.style.cssText = "display:flex;gap:4px;flex-wrap:wrap";',
+'      dim.values.forEach(function(val, vi) {',
+'        var btn = document.createElement("button");',
+'        btn.textContent = val;',
+'        btn.style.cssText = "padding:5px 10px;border-radius:2px;font:700 9px/1 monospace;letter-spacing:1px;cursor:pointer;border:1px solid #222;background:#0e0e11;color:#666";',
+'        if (vi === 0) btn.style.cssText += ";border-color:hsl(210,40%,30%);color:hsl(210,60%,60%)"',
+'        btn.addEventListener("click", function() {',
+'          row.querySelectorAll("button").forEach(function(b) {',
+'            b.style.borderColor = "#222"; b.style.color = "#444";',
+'          });',
+'          btn.style.borderColor = "hsl(210,40%,30%)";',
+'          btn.style.color = "hsl(210,60%,60%)";',
+'          Client.navState[di] = vi;',
+'          Client.resolve();',
+'        });',
+'        row.appendChild(btn);',
+'      });',
+'      grp.appendChild(row);',
+'      nav.appendChild(grp);',
+'    });',
+'  }',
+'};',
+'',
+'Client.connect();',
+'',
+'})();',
+'<\/script>',
+'</body>',
+'</html>'
+  ].join('\n');
+}
+
+
+// ╔╗
+//   BOOTSTRAP                                                         
+// 
+
+Client.init();
+
+function setStatus(s) {
+  var el = document.getElementById('status');
+  el.className = 'status ' + s;
+  var labels = { idle:'IDLE', scanning:'SCANNING', resolved:'RESOLVED', collapsed:'COLLAPSED' };
+  el.textContent = labels[s] || s.toUpperCase();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('btn-extract').addEventListener('click', function() {
+  var code = POS_SOURCE;
+  if (!code) return;
+  Client.extract(code);
+});
+
+document.getElementById('btn-clear').addEventListener('click', function() {
+
+  document.getElementById('chunk-stream').innerHTML = '<div style="font-size:7px;color:#666;padding:8px;text-align:center;letter-spacing:1px">chunks appear here after extraction</div>';
+  document.getElementById('probe-viz').innerHTML = '';
+  document.getElementById('geo-dims').innerHTML  = '<div class="geo-empty">no dimensions extracted</div>';
+  document.getElementById('geo-rules').innerHTML = '<div class="geo-empty">no constraints extracted</div>';
+  document.getElementById('output-pre').textContent = '// collapsed EXODUS skeleton appears here';
+  document.getElementById('delta-label').textContent = 'δ = 1.0000';
+  document.getElementById('delta-label').style.color = '#2a2a30';
+  document.getElementById('delta-fill').style.width = '0';
+  document.getElementById('delta-note').textContent = 'awaiting input';
+  ['st-total','st-constraint','st-dimension','st-display','st-server'].forEach(function(id){
+    document.getElementById(id).textContent = '0';
+  });
+  document.getElementById('btn-collapse').disabled = true;
+  document.getElementById('btn-download').disabled = true;
+  setStatus('idle');
+});
+
+document.getElementById('btn-collapse').addEventListener('click', function() {
+  var geoRes = IPC.send({ type: 'BUILD_GEOMETRY' });
+  var dims  = geoRes.dims;
+  var rules = geoRes.rules;
+
+  // Update geometry panel
+  var gd = document.getElementById('geo-dims');
+  if (dims.length === 0) {
+    gd.innerHTML = '<div class="geo-empty">no dimensions inferred — add manually in skeleton</div>';
+  } else {
+    gd.innerHTML = '';
+    dims.forEach(function(dim) {
+      var el = document.createElement('div');
+      el.className = 'geo-dim';
+      el.innerHTML =
+        '<div class="geo-dim-name">' + dim.name + '</div>' +
+        '<div class="geo-dim-vals">' + dim.values.map(function(v){return '· '+v}).join('<br>') + '</div>' +
+        (dim.sources[0] ? '<div class="geo-dim-src">' + escHtml(dim.sources[0]) + '</div>' : '');
+      gd.appendChild(el);
+    });
+  }
+
+  var gr = document.getElementById('geo-rules');
+  if (rules.length === 0) {
+    gr.innerHTML = '<div class="geo-empty">no constraints inferred — add manually in skeleton</div>';
+  } else {
+    gr.innerHTML = '';
+    rules.forEach(function(rule) {
+      var el = document.createElement('div');
+      el.className = 'geo-rule';
+      var whenStr = Object.keys(rule.when).map(function(k){ return k + '=' + rule.when[k] }).join(' + ');
+      var thenStr = rule.then.sdf === 1 ? 'DENY: ' + rule.then.deny : 'ALLOW';
+      el.innerHTML =
+        '<div class="geo-rule-when">WHEN ' + escHtml(whenStr) + '</div>' +
+        '<div class="geo-rule-then">THEN ' + escHtml(thenStr) + '</div>';
+      gr.appendChild(el);
+    });
+  }
+
+  // Generate skeleton
+  var skeleton = generateSkeleton(dims, rules);
+  document.getElementById('output-pre').textContent = skeleton;
+  document.getElementById('btn-download').disabled = false;
+  setStatus('collapsed');
+});
+
+document.getElementById('btn-download').addEventListener('click', function() {
+  var code = document.getElementById('output-pre').textContent;
+  var blob = new Blob([code], { type: 'text/html' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = 'exodus-extracted.html';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+})();
+</script>
+</body>
+</html>

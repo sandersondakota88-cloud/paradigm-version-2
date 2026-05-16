@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
+<title>bootstrap v2 - constraint-level operations</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box }
+body {
+  background: #060608; color: #a0a0aa;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 12px; line-height: 1.5; min-height: 100vh;
+}
+header {
+  padding: 14px 20px; border-bottom: 1px solid #1a1a24;
+  display: flex; justify-content: space-between; align-items: center;
+}
+header h1 { font-size: 11px; letter-spacing: 3px; color: #d8d8e0; }
+header .sub { font-size: 8px; letter-spacing: 2px; color: #44444e; margin-top: 2px; }
+header .spec-ref { font-size: 8px; color: #44444e; letter-spacing: 1px; text-align: right; }
+main {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px;
+  background: #1a1a24; min-height: calc(100vh - 52px);
+}
+main > section { background: #060608; padding: 16px; overflow: auto; }
+.label {
+  font-size: 8px; letter-spacing: 3px; color: #44444e;
+  margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #14141c;
+}
+.panel {
+  background: #0a0a0e; border: 1px solid #14141c; border-radius: 3px;
+  padding: 10px; margin-bottom: 12px;
+}
+.ptitle { font-size: 8px; letter-spacing: 2px; color: #555562; margin-bottom: 6px; }
+input[type="text"] {
+  width: 100%; padding: 6px 8px; background: #050507;
+  border: 1px solid #1e1e28; color: #c0c0c8;
+  font: 12px/1.4 ui-monospace, monospace; border-radius: 2px;
+}
+button {
+  padding: 6px 10px; border: 1px solid #1e1e28; background: #0a0a10;
+  color: #a0a0aa; font: 9px/1 ui-monospace, monospace;
+  letter-spacing: 1.2px; cursor: pointer; border-radius: 2px;
+  margin-right: 3px; margin-bottom: 3px;
+}
+button:hover { border-color: #2e2e42; color: #d8d8e0; }
+button.primary { border-color: #2a4a3a; background: #0a1510; color: #6aa878; }
+button.primary:hover { background: #0e1c16; }
+button.op { border-color: #2a3a5a; background: #0a1018; color: #7a9ac8; }
+button.op:hover { background: #0e1620; }
+.controls { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.metric {
+  display: flex; justify-content: space-between;
+  padding: 2px 0; font-size: 10px; border-bottom: 1px dashed #14141c;
+}
+.metric:last-child { border-bottom: none }
+.metric .k { color: #44444e; letter-spacing: 1px; font-size: 8px; }
+.metric .v { color: #c0c0c8; font-weight: 500; }
+.bar {
+  height: 3px; background: #14141c; border-radius: 2px;
+  overflow: hidden; margin-top: 3px;
+}
+.bar .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2a5a4a, #5a8a7a);
+  transition: width 0.4s;
+}
+.bar.fast .fill { background: linear-gradient(90deg, #4a6a9a, #7a9ac8); }
+.bar.slow .fill { background: linear-gradient(90deg, #6a4a7a, #9a6aa8); }
+#field-view, #trace-view, #out-view, #ops-view, #corr-view {
+  background: #040406; border: 1px solid #14141c; border-radius: 2px;
+  padding: 8px; font-size: 10px; line-height: 1.55;
+  max-height: 280px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+#out-view { max-height: 320px; }
+.c-row {
+  padding: 3px 0; border-bottom: 1px dashed #12121a; font-size: 10px;
+}
+.c-row:last-child { border-bottom: none }
+.c-row .k { color: #44444e; font-size: 8px; letter-spacing: 1px; }
+.c-row .v { color: #a0a0aa; }
+.c-row.seed .v { color: #b8a8d8; }
+.c-row.derived .v { color: #8aa8a0; }
+.c-row.meta .v { color: #c8b0d8; }
+.c-row.meta .k { color: #66567e; }
+.t-entry { padding: 2px 0; font-size: 9px; }
+.t-entry .scope { color: #44444e; font-size: 8px; }
+.t-entry .op { color: #9898c0; font-size: 9px; }
+.t-entry .delta { color: #d8c8a0; font-family: ui-monospace, monospace; }
+.out-entry {
+  padding: 8px; margin-bottom: 8px; background: #080810;
+  border-left: 2px solid #2a4a3a; border-radius: 2px;
+}
+.out-entry .in { color: #d8d8e0; font-weight: 500; font-size: 11px; margin-bottom: 4px; }
+.out-entry .desc { color: #a0a0aa; font-size: 10px; margin-bottom: 4px; }
+.out-entry .meta { color: #555562; font-size: 8px; font-family: ui-monospace, monospace; }
+.out-entry .generated { color: #c8b8a0; font-size: 9px; margin-top: 4px; }
+.out-entry .chose { color: #7a9ac8; font-size: 9px; margin-top: 4px; font-style: italic; }
+.op-entry {
+  padding: 6px 8px; margin-bottom: 6px; background: #080810;
+  border-left: 2px solid #2a3a5a; border-radius: 2px; font-size: 10px;
+}
+.op-entry .op-label { color: #7a9ac8; font-weight: 500; letter-spacing: 1px; }
+.op-entry .op-detail { color: #8a8a9a; font-size: 9px; margin-top: 3px; }
+.corr-row {
+  font-size: 9px; padding: 2px 0;
+  border-bottom: 1px dashed #12121a; font-family: ui-monospace, monospace;
+}
+.corr-row:last-child { border-bottom: none }
+.corr-row .pair { color: #a0a0aa; }
+.corr-row .strength { color: #c8b0d8; }
+.info {
+  font-size: 10px; color: #555562; font-family: Georgia, serif;
+  line-height: 1.7; padding: 8px 10px; background: #0a0a10;
+  border-left: 2px solid #2a2a3a; border-radius: 2px; margin-bottom: 12px;
+}
+.info em { color: #9a9aa8; font-style: italic; }
+.warn {
+  padding: 6px 10px; background: #180a0a;
+  border-left: 2px solid #4a2a2a; color: #a87a7a;
+  font-size: 10px; margin-bottom: 10px; display: none;
+}
+.warn.shown { display: block }
+footer {
+  grid-column: 1 / -1; padding: 8px 20px;
+  font-size: 8px; color: #2a2a34; letter-spacing: 1px;
+  background: #0a0a10; border-top: 1px solid #14141c; text-align: center;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>BOOTSTRAP v2</h1>
+    <div class="sub">constraint-level operations / step 2 of roadmap</div>
+  </div>
+  <div class="spec-ref">
+    consume / generate / develop / correlate<br/>
+    choose / reason / differentiate
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="label">INPUT / FIELD</div>
+    <div class="info">
+      v2 adds the four missing constraint-level operations. The field
+      <em>operates on itself</em> between inputs - developing patterns
+      across its constraints, correlating them, choosing which to apply
+      (SE-03 modulation finally has a consumer), and reasoning about
+      differences. Meta-constraints are first-class (SE-01). The seed
+      still cannot resolve.
+    </div>
+    <div class="panel">
+      <div class="ptitle">INPUT (source-agnostic)</div>
+      <input type="text" id="input-box" placeholder="type anything, press enter"/>
+      <div class="controls">
+        <button class="primary" id="btn-submit">SUBMIT</button>
+        <button id="btn-tick">TICK</button>
+        <button id="btn-reset">RESET</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">FIELD-LEVEL OPERATIONS (on demand)</div>
+      <div class="controls">
+        <button class="op" id="btn-develop">DEVELOP PATTERNS</button>
+        <button class="op" id="btn-correlate">CORRELATE</button>
+        <button class="op" id="btn-reason">REASON / DIFFERENTIATE</button>
+        <button class="op" id="btn-auto">AUTO TICK x 20</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">DELTA / SUBSTRATE</div>
+      <div class="metric"><span class="k">FIELD DELTA</span><span class="v" id="m-delta">-</span></div>
+      <div class="bar"><div class="fill" id="bar-delta" style="width:0%"></div></div>
+      <div class="metric"><span class="k">FAST LAYER</span><span class="v" id="m-fast">-</span></div>
+      <div class="bar fast"><div class="fill" id="bar-fast" style="width:0%"></div></div>
+      <div class="metric"><span class="k">SLOW LAYER</span><span class="v" id="m-slow">-</span></div>
+      <div class="bar slow"><div class="fill" id="bar-slow" style="width:0%"></div></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">FIELD STATE</div>
+      <div class="metric"><span class="k">CONSTRAINTS</span><span class="v" id="m-live">-</span></div>
+      <div class="metric"><span class="k">META (patterns)</span><span class="v" id="m-meta">-</span></div>
+      <div class="metric"><span class="k">CORRELATIONS</span><span class="v" id="m-corr">-</span></div>
+      <div class="metric"><span class="k">INPUTS SEEN</span><span class="v" id="m-inputs">-</span></div>
+      <div class="metric"><span class="k">STEP</span><span class="v" id="m-step">-</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">CONSTRAINTS / OPERATIONS</div>
+    <div class="panel">
+      <div class="ptitle">CONSTRAINTS (base + meta)</div>
+      <div id="field-view"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">OPERATIONS LOG (field-level)</div>
+      <div id="ops-view"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">CORRELATIONS (pairwise)</div>
+      <div id="corr-view"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">OUTPUT / TRACE</div>
+    <div class="warn" id="warn-ascii">ASCII self-check failed. See console.</div>
+    <div class="panel">
+      <div class="ptitle">DESCRIPTIONS (newest first)</div>
+      <div id="out-view"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">TRACE (algorithm 22)</div>
+      <div id="trace-view"></div>
+    </div>
+  </section>
+</main>
+
+<footer>BOOTSTRAP v2 | step 2 of roadmap | constraint-level operations on a self-characterizing field</footer>
+
+<script>
+(function() {
+"use strict";
+
+(function asciiSelfCheck() {
+  try {
+    var src = document.currentScript && document.currentScript.textContent || "";
+    for (var i = 0; i < src.length; i++) {
+      var c = src.charCodeAt(i);
+      if (c > 0x7E && c !== 0x0A && c !== 0x09) {
+        var warn = document.getElementById("warn-ascii");
+        if (warn) warn.className = "warn shown";
+        console.error("ASCII self-check failed at byte " + i + ": U+" + c.toString(16));
+        return;
+      }
+    }
+  } catch (e) { }
+})();
+
+var Guards = {
+  RESERVED: { "__proto__": 1, "constructor": 1, "prototype": 1 },
+  isReserved: function(k) { return Object.prototype.hasOwnProperty.call(this.RESERVED, k); },
+  clampString: function(s, max) {
+    if (typeof s !== "string") s = String(s == null ? "" : s);
+    if (s.length > max) s = s.substring(0, max);
+    return s;
+  }
+};
+
+var CFG = Object.freeze({
+  INPUT_MAX: 512,
+  FIELD_LIVE_CAP: 160,
+  FIELD_AGED_CAP: 64,
+  TRACE_CAP: 512,
+  OUT_CAP: 32,
+  OPS_LOG_CAP: 48,
+  CORR_CAP: 200,
+  FAST_DECAY: 0.85,
+  SLOW_STEP: 0.002,
+  MOD_SIGMA: 0.15,
+  GEN_DELTA_THRESH: 0.35,
+  CORR_MIN_USES: 2,
+  CORR_THRESH: 0.3,
+  SELECT_WEIGHT_EXP: 1.5,
+  AUTO_TICK_COUNT: 20
+});
+
+var Field = {
+  SEED: Object.freeze({
+    id: "seed::what-is-delta",
+    kind: "seed",
+    question: "what is delta?",
+    when: "always",
+    then: "assert(delta = compute(field.state))",
+    birth: 0,
+    uses: 0,
+    permanent: true,
+    weight: 1.0
+  }),
+  constraints: [],
+  aged: [],
+  correlations: Object.create(null),
+  inputCount: 0,
+  step: 0,
+  lastDelta: 1.0,
+  fast: 0.0,
+  slow: 0.5,
+  slowHistory: 0,
+
+  reset: function() {
+    this.constraints = [Object.assign({ weight: 1.0 }, this.SEED)];
+    this.aged = [];
+    this.correlations = Object.create(null);
+    this.inputCount = 0;
+    this.step = 0;
+    this.lastDelta = 1.0;
+    this.fast = 0.0;
+    this.slow = 0.5;
+    this.slowHistory = 0;
+  },
+
+  computeDelta: function() {
+    var n = this.constraints.length;
+    if (n === 0) return 1.0;
+    var unresolved = 0, stale = 0;
+    for (var i = 0; i < n; i++) {
+      var c = this.constraints[i];
+      if (c.kind === "seed") { unresolved += 1; }
+      else if (c.uses === 0) { unresolved += 1; }
+      else {
+        var age = this.step - (c.lastUsed || 0);
+        var ageBudget = (c.kind === "meta") ? 16 : 24;
+        stale += Math.min(1, age / ageBudget);
+      }
+    }
+    var raw = (unresolved + stale * 0.5) / n;
+    if (raw < 0) raw = 0;
+    if (raw > 1) raw = 1;
+    return raw;
+  },
+
+  evaluate: function(input) {
+    if (!input || typeof input !== "string") return { matched: [], unmatched: true, novelty: 1.0 };
+    var lower = input.toLowerCase();
+    var tokens = lower.split(/\s+/).filter(function(t) { return t.length > 0; });
+    var matched = [];
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (c.kind === "seed") continue;
+      if (c.kind === "meta") {
+        if (this._metaMatches(c, input, lower, tokens)) matched.push(i);
+      } else {
+        if (c.pattern && this._baseMatches(c, input, lower, tokens)) matched.push(i);
+      }
+    }
+    var novelty;
+    if (this.constraints.length <= 1) novelty = 1.0;
+    else novelty = 1.0 - (matched.length / (this.constraints.length - 1));
+    return { matched: matched, unmatched: matched.length === 0, novelty: novelty };
+  },
+
+  _baseMatches: function(c, input, lower, tokens) {
+    var p = c.pattern;
+    if (!p) return false;
+    if (p.type === "has-token") return tokens.indexOf(p.token) >= 0;
+    if (p.type === "length-range") return input.length >= p.min && input.length <= p.max;
+    if (p.type === "contains-substr") return lower.indexOf(p.substr) >= 0;
+    if (p.type === "char-class") {
+      if (p.cls === "digits") return /\d/.test(input);
+      if (p.cls === "alpha") return /[a-zA-Z]/.test(input);
+      if (p.cls === "symbol") return /[^\w\s]/.test(input);
+    }
+    if (p.type === "co-occurs") return tokens.indexOf(p.a) >= 0 && tokens.indexOf(p.b) >= 0;
+    return false;
+  },
+
+  _metaMatches: function(c, input, lower, tokens) {
+    if (!c.refs || c.refs.length === 0) return false;
+    for (var i = 0; i < c.refs.length; i++) {
+      var ref = this._findById(c.refs[i]);
+      if (!ref) return false;
+      if (ref.kind === "meta") {
+        if (!this._metaMatches(ref, input, lower, tokens)) return false;
+      } else {
+        if (!this._baseMatches(ref, input, lower, tokens)) return false;
+      }
+    }
+    return true;
+  },
+
+  _findById: function(id) {
+    for (var i = 0; i < this.constraints.length; i++) {
+      if (this.constraints[i].id === id) return this.constraints[i];
+    }
+    return null;
+  },
+
+  generate: function(input, evalResult) {
+    if (!input) return [];
+    var lower = input.toLowerCase();
+    var tokens = lower.split(/\s+/).filter(function(t) { return t.length > 0; });
+    var gen = [];
+    if (evalResult.novelty < CFG.GEN_DELTA_THRESH) return gen;
+
+    for (var i = 0; i < tokens.length && gen.length < 3; i++) {
+      var t = tokens[i];
+      if (t.length < 2 || t.length > 32) continue;
+      if (this._hasPatternLike("has-token", t)) continue;
+      gen.push(this._mkBase("has-token", { token: t }, "input contains '" + Guards.clampString(t, 24) + "'"));
+    }
+    var L = input.length;
+    if (!this._hasPatternCovering("length-range", L)) {
+      var lo = Math.max(1, L - 8);
+      var hi = L + 8;
+      gen.push(this._mkBase("length-range", { min: lo, max: hi }, "length in [" + lo + "," + hi + "]"));
+    }
+    if (/\d/.test(input) && !this._hasPatternLike("char-class", "digits"))
+      gen.push(this._mkBase("char-class", { cls: "digits" }, "contains digits"));
+    if (/[a-zA-Z]/.test(input) && !this._hasPatternLike("char-class", "alpha"))
+      gen.push(this._mkBase("char-class", { cls: "alpha" }, "contains letters"));
+    if (/[^\w\s]/.test(input) && !this._hasPatternLike("char-class", "symbol"))
+      gen.push(this._mkBase("char-class", { cls: "symbol" }, "contains symbol"));
+    if (tokens.length >= 2 && gen.length < 5) {
+      var a = tokens[0], b = tokens[tokens.length - 1];
+      if (a !== b && a.length >= 3 && b.length >= 3 && !this._hasCoOccurrence(a, b)) {
+        gen.push(this._mkBase("co-occurs", { a: a, b: b },
+          "'" + Guards.clampString(a, 16) + "' with '" + Guards.clampString(b, 16) + "'"));
+      }
+    }
+    return gen;
+  },
+
+  _mkBase: function(type, pattern, desc) {
+    return {
+      id: "c::" + (++Field._idCtr),
+      kind: "derived",
+      pattern: Object.assign({ type: type }, pattern),
+      desc: Guards.clampString(desc, 120),
+      birth: Field.step,
+      lastUsed: Field.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+
+  _mkMeta: function(refs, desc, kind) {
+    return {
+      id: "m::" + (++Field._idCtr),
+      kind: "meta",
+      metaKind: kind || "pattern",
+      refs: refs.slice(),
+      desc: Guards.clampString(desc, 160),
+      birth: Field.step,
+      lastUsed: Field.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+
+  _hasPatternLike: function(type, arg) {
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (!c.pattern || c.pattern.type !== type) continue;
+      if (type === "has-token" && c.pattern.token === arg) return true;
+      if (type === "char-class" && c.pattern.cls === arg) return true;
+    }
+    return false;
+  },
+
+  _hasPatternCovering: function(type, value) {
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (!c.pattern || c.pattern.type !== type) continue;
+      if (type === "length-range" && value >= c.pattern.min && value <= c.pattern.max) return true;
+    }
+    return false;
+  },
+
+  _hasCoOccurrence: function(a, b) {
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (!c.pattern || c.pattern.type !== "co-occurs") continue;
+      if ((c.pattern.a === a && c.pattern.b === b) || (c.pattern.a === b && c.pattern.b === a)) return true;
+    }
+    return false;
+  },
+
+  integrate: function(newConstraints) {
+    for (var i = 0; i < newConstraints.length; i++) this.constraints.push(newConstraints[i]);
+    this._enforceCaps();
+  },
+
+  _enforceCaps: function() {
+    if (this.constraints.length <= CFG.FIELD_LIVE_CAP) return;
+    var withIdx = [];
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (c.kind === "seed") continue;
+      var recency = this.step - (c.lastUsed || 0);
+      var score = (c.uses || 0) * 10 + (c.weight || 1) * 5 - recency;
+      withIdx.push({ idx: i, score: score });
+    }
+    withIdx.sort(function(a, b) { return a.score - b.score; });
+    var toEvict = this.constraints.length - CFG.FIELD_LIVE_CAP;
+    var evictIdx = Object.create(null);
+    for (var j = 0; j < toEvict && j < withIdx.length; j++) evictIdx[withIdx[j].idx] = true;
+    var kept = [];
+    for (var k = 0; k < this.constraints.length; k++) {
+      if (evictIdx[k]) this.aged.push(this.constraints[k]);
+      else kept.push(this.constraints[k]);
+    }
+    this.constraints = kept;
+    while (this.aged.length > CFG.FIELD_AGED_CAP) this.aged.shift();
+  },
+
+  updateCorrelations: function(matchedIndices) {
+    for (var i = 0; i < matchedIndices.length; i++) {
+      for (var j = i + 1; j < matchedIndices.length; j++) {
+        var ca = this.constraints[matchedIndices[i]];
+        var cb = this.constraints[matchedIndices[j]];
+        if (!ca || !cb || ca.kind === "seed" || cb.kind === "seed") continue;
+        var key = this._corrKey(ca.id, cb.id);
+        if (!this.correlations[key]) {
+          this.correlations[key] = { a: ca.id, b: cb.id, coFire: 0, lastSeen: 0 };
+        }
+        this.correlations[key].coFire++;
+        this.correlations[key].lastSeen = this.step;
+      }
+    }
+    this._enforceCorrCap();
+  },
+
+  _corrKey: function(a, b) { return (a < b) ? (a + "::" + b) : (b + "::" + a); },
+
+  _enforceCorrCap: function() {
+    var keys = Object.keys(this.correlations);
+    if (keys.length <= CFG.CORR_CAP) return;
+    var entries = keys.map(function(k) {
+      return { key: k, score: Field.correlations[k].coFire + (Field.correlations[k].lastSeen / 100) };
+    });
+    entries.sort(function(a, b) { return a.score - b.score; });
+    var toEvict = keys.length - CFG.CORR_CAP;
+    for (var i = 0; i < toEvict; i++) delete this.correlations[entries[i].key];
+  },
+
+  topCorrelations: function(limit) {
+    limit = limit || 20;
+    var out = [];
+    for (var k in this.correlations) {
+      if (!Object.prototype.hasOwnProperty.call(this.correlations, k)) continue;
+      out.push(this.correlations[k]);
+    }
+    out.sort(function(a, b) { return b.coFire - a.coFire; });
+    return out.slice(0, limit);
+  },
+
+  developPatterns: function() {
+    var produced = [];
+    var corrs = this.topCorrelations(30);
+    for (var i = 0; i < corrs.length; i++) {
+      var corr = corrs[i];
+      var ca = this._findById(corr.a);
+      var cb = this._findById(corr.b);
+      if (!ca || !cb) continue;
+      if ((ca.uses || 0) < CFG.CORR_MIN_USES) continue;
+      if ((cb.uses || 0) < CFG.CORR_MIN_USES) continue;
+      if (this._hasMetaWithRefs([corr.a, corr.b])) continue;
+      var ratio = corr.coFire / Math.max(ca.uses, cb.uses);
+      if (ratio < CFG.CORR_THRESH) continue;
+      var desc = "pattern: " + (ca.desc || ca.id) + " + " + (cb.desc || cb.id) +
+                 "  (coFire=" + corr.coFire + ", ratio=" + ratio.toFixed(2) + ")";
+      produced.push(this._mkMeta([corr.a, corr.b], desc, "pair"));
+    }
+    var families = {};
+    for (var j = 0; j < this.constraints.length; j++) {
+      var c = this.constraints[j];
+      if (c.kind !== "derived" || !c.pattern) continue;
+      var fam = c.pattern.type;
+      if (!families[fam]) families[fam] = [];
+      families[fam].push(c.id);
+    }
+    for (var famName in families) {
+      if (!Object.prototype.hasOwnProperty.call(families, famName)) continue;
+      var members = families[famName];
+      if (members.length < 3) continue;
+      if (this._hasFamilyMetaFor(famName)) continue;
+      var famDesc = "family: " + members.length + " constraints of type '" + famName + "'";
+      var fm = this._mkMeta(members, famDesc, "family");
+      fm.familyType = famName;
+      produced.push(fm);
+    }
+    if (produced.length > 0) this.integrate(produced);
+    return produced;
+  },
+
+  _hasMetaWithRefs: function(refs) {
+    var sortedRefs = refs.slice().sort().join("|");
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (c.kind !== "meta" || !c.refs) continue;
+      var cRefs = c.refs.slice().sort().join("|");
+      if (cRefs === sortedRefs) return true;
+    }
+    return false;
+  },
+
+  _hasFamilyMetaFor: function(famType) {
+    for (var i = 0; i < this.constraints.length; i++) {
+      var c = this.constraints[i];
+      if (c.metaKind === "family" && c.familyType === famType) return true;
+    }
+    return false;
+  },
+
+  chooseFromMatches: function(matchedIndices) {
+    if (matchedIndices.length === 0) return [];
+    var chosen = [];
+    for (var i = 0; i < matchedIndices.length; i++) {
+      var idx = matchedIndices[i];
+      var c = this.constraints[idx];
+      if (!c) continue;
+      var recency = this.step - (c.lastUsed || 0);
+      var recencyFactor = 1.0 / (1.0 + recency * 0.05);
+      var fastBias = 1.0 + this.fast * 0.5;
+      var base = (c.weight || 1.0) * Math.pow(recencyFactor, CFG.SELECT_WEIGHT_EXP) * fastBias;
+      chosen.push({ idx: idx, effectiveWeight: base });
+    }
+    chosen.sort(function(a, b) { return b.effectiveWeight - a.effectiveWeight; });
+    return chosen;
+  },
+
+  reason: function() {
+    var findings = [];
+    var derived = this.constraints.filter(function(c) { return c.kind === "derived" && (c.uses || 0) >= 2; });
+    if (derived.length < 2) {
+      findings.push({ kind: "observation", text: "not enough established constraints to differentiate yet" });
+      return findings;
+    }
+    for (var i = 0; i < derived.length && findings.length < 6; i++) {
+      var c = derived[i];
+      var sameType = derived.filter(function(d) {
+        return d !== c && d.pattern && c.pattern && d.pattern.type === c.pattern.type;
+      });
+      if (sameType.length === 0) {
+        findings.push({
+          kind: "isolated",
+          text: c.desc + " is the only constraint of type '" + c.pattern.type + "'"
+        });
+        continue;
+      }
+      var neighbor = sameType[0];
+      var diff = this._differentiate(c, neighbor);
+      findings.push({
+        kind: "differentiation",
+        text: "'" + c.desc + "' vs '" + neighbor.desc + "': " + diff
+      });
+    }
+    var unused = this.constraints.filter(function(c) { return c.kind === "derived" && (c.uses || 0) === 0; });
+    if (unused.length > 0) {
+      findings.push({
+        kind: "observation",
+        text: unused.length + " constraint(s) never matched any input since creation"
+      });
+    }
+    return findings;
+  },
+
+  _differentiate: function(a, b) {
+    if (!a.pattern || !b.pattern) return "patterns missing";
+    if (a.pattern.type !== b.pattern.type) return "different types";
+    var t = a.pattern.type;
+    if (t === "has-token") return "tokens: '" + a.pattern.token + "' vs '" + b.pattern.token + "'";
+    if (t === "length-range") return "ranges: [" + a.pattern.min + "," + a.pattern.max + "] vs [" + b.pattern.min + "," + b.pattern.max + "]";
+    if (t === "char-class") return "classes: " + a.pattern.cls + " vs " + b.pattern.cls;
+    if (t === "co-occurs") return "pairs: '" + a.pattern.a + "+" + a.pattern.b + "' vs '" + b.pattern.a + "+" + b.pattern.b + "'";
+    return "same type, different instance";
+  },
+
+  markUsed: function(matchedIndices) {
+    for (var i = 0; i < matchedIndices.length; i++) {
+      var c = this.constraints[matchedIndices[i]];
+      if (c && c.kind !== "seed") {
+        c.uses = (c.uses || 0) + 1;
+        c.lastUsed = this.step;
+        c.weight = Math.min(3.0, (c.weight || 1.0) + 0.02);
+      }
+    }
+    if (this.constraints[0] && this.constraints[0].kind === "seed") {
+      this.constraints[0].uses = (this.constraints[0].uses || 0) + 1;
+    }
+  },
+
+  modulate: function(delta) {
+    var deviation = delta - this.slow;
+    this.fast = this.fast * CFG.FAST_DECAY + deviation * CFG.MOD_SIGMA;
+    this.slow = this.slow * (1 - CFG.SLOW_STEP) + delta * CFG.SLOW_STEP;
+    this.slowHistory++;
+  }
+};
+Field._idCtr = 0;
+
+var Trace = {
+  entries: [],
+  append: function(scope, op, deltaVal, detail) {
+    this.entries.push({
+      step: Field.step,
+      scope: String(scope || "field"),
+      op: String(op || ""),
+      delta: +deltaVal,
+      detail: Guards.clampString(detail || "", 100)
+    });
+    while (this.entries.length > CFG.TRACE_CAP) this.entries.shift();
+  },
+  clear: function() { this.entries = []; }
+};
+
+var OpsLog = {
+  entries: [],
+  append: function(opLabel, detail) {
+    this.entries.unshift({
+      step: Field.step,
+      op: String(opLabel),
+      detail: Guards.clampString(detail || "", 140)
+    });
+    while (this.entries.length > CFG.OPS_LOG_CAP) this.entries.pop();
+  },
+  clear: function() { this.entries = []; }
+};
+
+var Processor = {
+  process: function(input) {
+    input = Guards.clampString(input, CFG.INPUT_MAX);
+    if (!input) return null;
+    Field.step++;
+    Field.inputCount++;
+    var eval_ = Field.evaluate(input);
+    var deltaPre = Field.computeDelta();
+    Trace.append("field", "input-observed", deltaPre, "len=" + input.length);
+    Trace.append("field", "seed-eval", deltaPre, "what is delta? -> " + deltaPre.toFixed(4));
+    var chosen = Field.chooseFromMatches(eval_.matched);
+    var chosenIndices = chosen.map(function(c) { return c.idx; });
+    var generated = Field.generate(input, eval_);
+    if (generated.length > 0) {
+      Field.integrate(generated);
+      Trace.append("field", "generated", deltaPre, "+" + generated.length + " base");
+    }
+    Field.markUsed(chosenIndices);
+    if (chosenIndices.length >= 2) {
+      Field.updateCorrelations(chosenIndices);
+      Trace.append("field", "correlated", deltaPre, "pairs updated");
+    }
+    var deltaPost = Field.computeDelta();
+    Field.lastDelta = deltaPost;
+    Field.modulate(deltaPost);
+    Trace.append("field", "modulated", deltaPost, "fast=" + Field.fast.toFixed(3) + " slow=" + Field.slow.toFixed(3));
+    return this.describe(input, eval_, chosen, generated, deltaPre, deltaPost);
+  },
+
+  describe: function(input, eval_, chosen, generated, deltaPre, deltaPost) {
+    var matchedDescs = [];
+    var chosenDescs = [];
+    for (var i = 0; i < chosen.length && i < 8; i++) {
+      var c = Field.constraints[chosen[i].idx];
+      if (c && c.desc) {
+        chosenDescs.push(c.desc + " [w=" + chosen[i].effectiveWeight.toFixed(2) + "]");
+        matchedDescs.push(c.desc);
+      }
+    }
+    var genDescs = [];
+    for (var j = 0; j < generated.length; j++) {
+      if (generated[j].desc) genDescs.push(generated[j].desc);
+    }
+    var shift = deltaPost - deltaPre;
+    var shiftLabel;
+    if (Math.abs(shift) < 0.01) shiftLabel = "stable";
+    else if (shift < 0) shiftLabel = "resolving (-" + Math.abs(shift).toFixed(3) + ")";
+    else shiftLabel = "destabilizing (+" + shift.toFixed(3) + ")";
+    var posture;
+    if (chosen.length === 0 && generated.length === 0) posture = "no field-response";
+    else if (chosen.length === 0) posture = "novel; generated " + generated.length + " new";
+    else if (generated.length === 0) posture = "recognized; " + chosen.length + " constraint(s) chosen";
+    else posture = "partially recognized; " + chosen.length + " chosen / " + generated.length + " new";
+    return {
+      input: input, posture: posture, matched: matchedDescs, chosen: chosenDescs,
+      generated: genDescs, deltaPre: deltaPre, deltaPost: deltaPost, shift: shiftLabel,
+      fast: Field.fast, slow: Field.slow, novelty: eval_.novelty, step: Field.step
+    };
+  },
+
+  runDevelop: function() {
+    var produced = Field.developPatterns();
+    Trace.append("field", "develop-patterns", Field.computeDelta(), "+" + produced.length + " meta");
+    OpsLog.append("DEVELOP PATTERNS",
+      produced.length === 0
+        ? "no new patterns (insufficient correlation or already developed)"
+        : "produced " + produced.length + " meta-constraint(s)"
+    );
+    Field.lastDelta = Field.computeDelta();
+    Field.modulate(Field.lastDelta);
+    return produced;
+  },
+
+  runCorrelate: function() {
+    var top = Field.topCorrelations(10);
+    Trace.append("field", "correlate-inspect", Field.lastDelta, top.length + " top pairs");
+    OpsLog.append("CORRELATE",
+      top.length === 0
+        ? "no correlations yet"
+        : "top " + top.length + " pairs inspected"
+    );
+    return top;
+  },
+
+  runReason: function() {
+    var findings = Field.reason();
+    Trace.append("field", "reason", Field.lastDelta, findings.length + " findings");
+    for (var i = 0; i < findings.length && i < 4; i++) {
+      OpsLog.append("REASON", findings[i].text);
+    }
+    if (findings.length === 0) OpsLog.append("REASON", "no findings");
+    return findings;
+  },
+
+  autoTick: function(count) {
+    count = count || CFG.AUTO_TICK_COUNT;
+    var produced = 0;
+    for (var i = 0; i < count; i++) {
+      Field.step++;
+      var d = Field.computeDelta();
+      Field.modulate(d);
+      Field.lastDelta = d;
+      Trace.append("field", "tick", d, "auto " + (i + 1) + "/" + count);
+      if ((i % 5) === 4) {
+        var newMetas = Field.developPatterns();
+        produced += newMetas.length;
+        if (newMetas.length > 0) {
+          Trace.append("field", "auto-develop", Field.computeDelta(), "+" + newMetas.length + " meta");
+        }
+      }
+    }
+    OpsLog.append("AUTO TICK x" + count, "produced " + produced + " meta-constraint(s)");
+  }
+};
+
+var UI = {
+  outputs: [],
+  mount: function() {
+    var byId = function(id) { return document.getElementById(id); };
+    byId("btn-submit").addEventListener("click", function() { UI.submit(); });
+    byId("btn-tick").addEventListener("click", function() { UI.tick(); });
+    byId("btn-reset").addEventListener("click", function() { UI.reset(); });
+    byId("btn-develop").addEventListener("click", function() { UI.develop(); });
+    byId("btn-correlate").addEventListener("click", function() { UI.correlate(); });
+    byId("btn-reason").addEventListener("click", function() { UI.reason(); });
+    byId("btn-auto").addEventListener("click", function() { UI.auto(); });
+    byId("input-box").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") { e.preventDefault(); UI.submit(); }
+    });
+    Field.reset();
+    this.render();
+  },
+  submit: function() {
+    var inp = document.getElementById("input-box");
+    var val = inp.value;
+    if (!val || !val.trim()) return;
+    var desc = Processor.process(val);
+    if (desc) {
+      this.outputs.unshift(desc);
+      while (this.outputs.length > CFG.OUT_CAP) this.outputs.pop();
+    }
+    inp.value = "";
+    this.render();
+  },
+  tick: function() {
+    Field.step++;
+    var d = Field.computeDelta();
+    Field.modulate(d);
+    Field.lastDelta = d;
+    Trace.append("field", "tick", d, "manual");
+    this.render();
+  },
+  reset: function() {
+    Field.reset();
+    Trace.clear();
+    OpsLog.clear();
+    this.outputs = [];
+    Trace.append("field", "reset", 1.0, "seed-only");
+    this.render();
+  },
+  develop: function() { Processor.runDevelop(); this.render(); },
+  correlate: function() { Processor.runCorrelate(); this.render(); },
+  reason: function() { Processor.runReason(); this.render(); },
+  auto: function() { Processor.autoTick(); this.render(); },
+  render: function() {
+    this.renderMetrics();
+    this.renderConstraints();
+    this.renderOps();
+    this.renderCorrelations();
+    this.renderTrace();
+    this.renderOutputs();
+  },
+  renderMetrics: function() {
+    var d = Field.lastDelta;
+    this._text("m-delta", d.toFixed(4));
+    this._bar("bar-delta", d);
+    this._text("m-fast", Field.fast.toFixed(4));
+    this._bar("bar-fast", Math.min(1, Math.max(0, Field.fast + 0.5)));
+    this._text("m-slow", Field.slow.toFixed(4));
+    this._bar("bar-slow", Field.slow);
+    var live = Field.constraints.length;
+    var meta = 0, base = 0, seed = 0;
+    for (var i = 0; i < live; i++) {
+      var c = Field.constraints[i];
+      if (c.kind === "seed") seed++;
+      else if (c.kind === "meta") meta++;
+      else base++;
+    }
+    this._text("m-live", live + " (base=" + base + " seed=" + seed + ")");
+    this._text("m-meta", String(meta));
+    this._text("m-corr", String(Object.keys(Field.correlations).length));
+    this._text("m-inputs", String(Field.inputCount));
+    this._text("m-step", String(Field.step));
+  },
+  renderConstraints: function() {
+    var view = document.getElementById("field-view");
+    if (!view) return;
+    view.innerHTML = "";
+    var sorted = Field.constraints.slice();
+    sorted.sort(function(a, b) {
+      if (a.kind === "seed") return -1;
+      if (b.kind === "seed") return 1;
+      if (a.kind === "meta" && b.kind !== "meta") return -1;
+      if (b.kind === "meta" && a.kind !== "meta") return 1;
+      return (b.birth || 0) - (a.birth || 0);
+    });
+    for (var i = 0; i < sorted.length && i < 50; i++) {
+      var c = sorted[i];
+      var row = document.createElement("div");
+      row.className = "c-row " + c.kind;
+      var descText;
+      if (c.kind === "seed") descText = "[seed] " + c.question;
+      else if (c.kind === "meta") descText = "[" + (c.metaKind || "meta") + "] " + (c.desc || "") + "  (uses=" + (c.uses || 0) + ")";
+      else descText = "[" + (c.pattern && c.pattern.type || "?") + "] " + (c.desc || "") + "  (uses=" + (c.uses || 0) + " w=" + (c.weight || 1).toFixed(2) + ")";
+      var k = document.createElement("div"); k.className = "k"; k.textContent = c.id;
+      var v = document.createElement("div"); v.className = "v"; v.textContent = descText;
+      row.appendChild(k); row.appendChild(v);
+      view.appendChild(row);
+    }
+  },
+  renderOps: function() {
+    var view = document.getElementById("ops-view");
+    if (!view) return;
+    view.innerHTML = "";
+    if (OpsLog.entries.length === 0) {
+      var hint = document.createElement("div");
+      hint.style.color = "#44444e"; hint.style.fontStyle = "italic"; hint.style.fontSize = "9px";
+      hint.textContent = "no field-level ops yet.";
+      view.appendChild(hint);
+      return;
+    }
+    for (var i = 0; i < OpsLog.entries.length; i++) {
+      var e = OpsLog.entries[i];
+      var box = document.createElement("div");
+      box.className = "op-entry";
+      var lbl = document.createElement("div"); lbl.className = "op-label";
+      lbl.textContent = "[" + e.step + "] " + e.op;
+      var det = document.createElement("div"); det.className = "op-detail";
+      det.textContent = e.detail;
+      box.appendChild(lbl); box.appendChild(det);
+      view.appendChild(box);
+    }
+  },
+  renderCorrelations: function() {
+    var view = document.getElementById("corr-view");
+    if (!view) return;
+    view.innerHTML = "";
+    var top = Field.topCorrelations(15);
+    if (top.length === 0) {
+      var hint = document.createElement("div");
+      hint.style.color = "#44444e"; hint.style.fontStyle = "italic"; hint.style.fontSize = "9px";
+      hint.textContent = "no correlations yet.";
+      view.appendChild(hint);
+      return;
+    }
+    for (var i = 0; i < top.length; i++) {
+      var c = top[i];
+      var row = document.createElement("div");
+      row.className = "corr-row";
+      var pair = document.createElement("span"); pair.className = "pair";
+      pair.textContent = c.a + " <-> " + c.b + " ";
+      var s = document.createElement("span"); s.className = "strength";
+      s.textContent = "coFire=" + c.coFire;
+      row.appendChild(pair); row.appendChild(s);
+      view.appendChild(row);
+    }
+  },
+  renderTrace: function() {
+    var view = document.getElementById("trace-view");
+    if (!view) return;
+    view.innerHTML = "";
+    var recent = Trace.entries.slice(-36).reverse();
+    for (var i = 0; i < recent.length; i++) {
+      var e = recent[i];
+      var row = document.createElement("div");
+      row.className = "t-entry";
+      var s1 = document.createElement("span"); s1.className = "scope";
+      s1.textContent = "[" + String(e.step).padStart(3, "0") + "] ";
+      var s2 = document.createElement("span"); s2.className = "op";
+      s2.textContent = e.op + " ";
+      var s3 = document.createElement("span"); s3.className = "delta";
+      s3.textContent = "d=" + (+e.delta).toFixed(3) + (e.detail ? "  " + e.detail : "");
+      row.appendChild(s1); row.appendChild(s2); row.appendChild(s3);
+      view.appendChild(row);
+    }
+  },
+  renderOutputs: function() {
+    var view = document.getElementById("out-view");
+    if (!view) return;
+    view.innerHTML = "";
+    if (this.outputs.length === 0) {
+      var hint = document.createElement("div");
+      hint.style.color = "#44444e"; hint.style.fontStyle = "italic"; hint.style.fontSize = "9px";
+      hint.textContent = "no inputs yet.";
+      view.appendChild(hint);
+      return;
+    }
+    for (var i = 0; i < this.outputs.length; i++) {
+      var d = this.outputs[i];
+      var box = document.createElement("div");
+      box.className = "out-entry";
+      var inp = document.createElement("div"); inp.className = "in";
+      inp.textContent = 'input: "' + Guards.clampString(d.input, 80) + '"';
+      box.appendChild(inp);
+      var desc = document.createElement("div"); desc.className = "desc";
+      desc.textContent = d.posture;
+      box.appendChild(desc);
+      if (d.chosen.length > 0) {
+        var ch = document.createElement("div"); ch.className = "chose";
+        ch.textContent = "chose: " + d.chosen.slice(0, 4).join(" | ");
+        box.appendChild(ch);
+      }
+      if (d.generated.length > 0) {
+        var g = document.createElement("div"); g.className = "generated";
+        g.textContent = "+ " + d.generated.join(" / ");
+        box.appendChild(g);
+      }
+      var meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = "step=" + d.step + "  d " + d.deltaPre.toFixed(3) + " -> " + d.deltaPost.toFixed(3) +
+        "  " + d.shift + "  fast=" + d.fast.toFixed(2);
+      box.appendChild(meta);
+      view.appendChild(box);
+    }
+  },
+  _text: function(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  },
+  _bar: function(id, frac) {
+    var el = document.getElementById(id);
+    if (el) el.style.width = (Math.min(1, Math.max(0, frac)) * 100).toFixed(1) + "%";
+  }
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", function() { UI.mount(); });
+} else {
+  UI.mount();
+}
+
+})();
+</script>
+
+</body>
+</html>

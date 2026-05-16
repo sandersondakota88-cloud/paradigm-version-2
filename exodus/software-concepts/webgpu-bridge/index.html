@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VSF / EXODUS - GPU Bridge Harness</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box }
+  body {
+    background: #0a0a0f; color: #c0c0c8;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.5;
+    padding: 24px;
+  }
+  h1 { font-size: 14px; letter-spacing: 3px; color: #e0e0e8; margin-bottom: 4px; }
+  .sub { font-size: 10px; color: #666672; letter-spacing: 1.5px; margin-bottom: 20px; }
+  .header {
+    padding-bottom: 16px; border-bottom: 1px solid #1a1a24;
+    margin-bottom: 20px;
+  }
+  .info {
+    font-size: 12px; color: #7a7a84;
+    background: #0e0e14; border-left: 2px solid #2a4a5a;
+    padding: 10px 14px; margin-bottom: 20px;
+    white-space: pre-wrap;
+  }
+  .controls { margin-bottom: 16px; }
+  button {
+    background: #14142a; color: #c0c0e0;
+    border: 1px solid #2a2a4a; border-radius: 3px;
+    padding: 8px 18px; font-family: inherit; font-size: 11px;
+    letter-spacing: 1.5px; cursor: pointer;
+    margin-right: 8px;
+  }
+  button:hover { background: #1e1e3a; border-color: #3a3a6a; }
+  button.run { border-color: #2a4a3a; background: #0a1a10; color: #6aae7a; }
+  button.run:hover { background: #0e2418; }
+  #log {
+    background: #060608; border: 1px solid #1a1a24;
+    border-radius: 3px; padding: 12px;
+    min-height: 400px;
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+  #log > div { padding: 2px 0; }
+  #log > div.pass { color: #6aae7a; }
+  #log > div.fail { color: #ca6a6a; }
+  #log > div.warn { color: #d0a040; }
+  #log > div.info { color: #7a9ab0; }
+  .footer { margin-top: 16px; font-size: 10px; color: #444450; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VSF / EXODUS  -  GPU BRIDGE HARNESS</h1>
+  <div class="sub">algorithm #16 verification: css cascade == js stack machine == wgsl compute shader</div>
+</div>
+
+<div class="info">This harness compiles 11 {when,then} constraints into a 70-instruction postfix u32
+buffer, then resolves all 2,880 coordinates of the loan-eligibility state space
+through three different execution substrates:
+
+  1. CSS oracle   -- pure-JS port of constraints.md section 4
+  2. JS oracle    -- plain-JS stack machine (identical semantics to the shader)
+  3. GPU path     -- WGSL compute shader via WebGPU
+
+All three must agree byte-for-byte. If they do, the constraint geometry is
+substrate-independent -- the same rules resolve identically whether run by
+browser style recalc, a JavaScript interpreter, or a compute shader. If one
+diverges, the JS oracle is the reference (proven correct by the Node-side
+test-oracle.js, which ran before this page was built).
+
+Serve this directory via a local HTTP server (fetch does not work from file://).
+A one-liner: python3 -m http.server 8080, then open http://localhost:8080/.</div>
+
+<div class="controls">
+  <button class="run" id="run-btn">RUN VERIFICATION</button>
+  <button id="disasm-btn">SHOW DISASSEMBLY</button>
+</div>
+
+<div id="log"></div>
+
+<div class="footer">click RUN to load resolve.wgsl, compile the constraints, dispatch the shader, and diff the outputs.</div>
+
+<script type="module" src="./harness.mjs"></script>
+</body>
+</html>

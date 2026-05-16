@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
+<title>constraint substrate - Phase 4a - reflexive surface</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box }
+body { background: #060608; color: #a0a0aa; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; min-height: 100vh; }
+header { padding: 14px 20px; border-bottom: 1px solid #1a1a24; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+header h1 { font-size: 11px; letter-spacing: 3px; color: #d8d8e0; }
+header .sub { font-size: 8px; letter-spacing: 2px; color: #44444e; margin-top: 2px; }
+header .badges { display: flex; gap: 6px; }
+header .badge { padding: 4px 10px; border-radius: 2px; font-size: 9px; letter-spacing: 1px; }
+header .er-badge.gpu-ready { background: #0a1a14; color: #6aa878; border: 1px solid #2a4a3a; }
+header .er-badge.cpu-fallback { background: #1a1408; color: #c8a078; border: 1px solid #4a3a2a; }
+header .er-badge.error { background: #1a0808; color: #c87878; border: 1px solid #4a2a2a; }
+header .er-badge.initializing { background: #0a0a14; color: #7a8ac8; border: 1px solid #2a3a4a; }
+header .ct-badge { background: #0a141a; color: #7ac8b0; border: 1px solid #2a4a4a; }
+header .ct-badge.idle { background: #0a0a10; color: #555562; border: 1px solid #1a1a24; }
+main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: #1a1a24; min-height: calc(100vh - 90px); }
+main > section { background: #060608; padding: 16px; overflow: auto; }
+.label { font-size: 8px; letter-spacing: 3px; color: #44444e; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #14141c; }
+.panel { background: #0a0a0e; border: 1px solid #14141c; border-radius: 3px; padding: 10px; margin-bottom: 12px; }
+.ptitle { font-size: 8px; letter-spacing: 2px; color: #555562; margin-bottom: 6px; }
+input[type="text"] { width: 100%; padding: 6px 8px; background: #050507; border: 1px solid #1e1e28; color: #c0c0c8; font: 12px/1.4 ui-monospace, monospace; border-radius: 2px; }
+button { padding: 6px 10px; border: 1px solid #1e1e28; background: #0a0a10; color: #a0a0aa; font: 9px/1 ui-monospace, monospace; letter-spacing: 1.2px; cursor: pointer; border-radius: 2px; margin-right: 3px; margin-bottom: 3px; }
+button:hover { border-color: #2e2e42; color: #d8d8e0; }
+button.primary { border-color: #2a4a3a; background: #0a1510; color: #6aa878; }
+button.op { border-color: #2a3a5a; background: #0a1018; color: #7a9ac8; }
+button.danger { border-color: #4a2a2a; background: #150a0a; color: #c87878; }
+.controls { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.metric { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; border-bottom: 1px dashed #14141c; }
+.metric:last-child { border-bottom: none }
+.metric .k { color: #44444e; letter-spacing: 1px; font-size: 8px; }
+.metric .v { color: #c0c0c8; font-weight: 500; }
+.bar { height: 3px; background: #14141c; border-radius: 2px; overflow: hidden; margin-top: 3px; }
+.bar .fill { height: 100%; transition: width 0.4s; background: linear-gradient(90deg, #2a5a4a, #5a8a7a); }
+.bar.fast .fill { background: linear-gradient(90deg, #4a6a9a, #7a9ac8); }
+.bar.slow .fill { background: linear-gradient(90deg, #6a4a7a, #9a6aa8); }
+.bar.gap  .fill { background: linear-gradient(90deg, #8a6a4a, #c8a078); }
+.bar.exec .fill { background: linear-gradient(90deg, #4a8a7a, #7ac8b0); }
+.bar.execgap .fill { background: linear-gradient(90deg, #c89878, #e8b8a0); }
+#field-view, #trace-view, #out-view, #pred-view, #sub-view, #ops-view, #corr-view, #queue-view, #committed-view {
+  background: #040406; border: 1px solid #14141c; border-radius: 2px; padding: 8px;
+  font-size: 10px; line-height: 1.55; max-height: 240px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+#out-view, #trace-view { max-height: 320px; }
+.c-row { padding: 3px 0; border-bottom: 1px dashed #12121a; font-size: 10px; }
+.c-row .k { color: #44444e; font-size: 8px; letter-spacing: 1px; }
+.c-row .v { color: #a0a0aa; }
+.c-row.seed .v { color: #b8a8d8; }
+.c-row.derived .v { color: #8aa8a0; }
+.c-row.predictive .v { color: #c8a078; }
+.c-row.ratified .v { color: #8ad8a8; }
+.c-row.meta .v { color: #c8b0d8; }
+.t-entry { padding: 2px 0; font-size: 9px; }
+.t-entry .scope { color: #44444e; font-size: 8px; }
+.t-entry .scope.ct { color: #4a8a7a; }
+.t-entry .scope.er { color: #7a9ac8; }
+.t-entry .op { color: #9898c0; font-size: 9px; }
+.t-entry .delta { color: #d8c8a0; }
+.t-entry.predicted { background: #18100a; padding-left: 4px; border-left: 2px solid #c8a078; }
+.t-entry.ratified { background: #0a1810; padding-left: 4px; border-left: 2px solid #8ad8a8; }
+.t-entry.frame { background: #0a0a14; padding-left: 4px; border-left: 2px solid #4a5a8a; color: #6a7aa8; }
+#surface-view { background: #040406; border: 1px solid #14141c; border-radius: 2px; padding: 8px; max-height: 320px; overflow-y: auto; }
+.s-clause { padding: 5px 6px 5px 10px; margin-bottom: 4px; background: #08100c; border-left: 2px solid #4a6a5a; border-radius: 2px; font-size: 10px; line-height: 1.4; }
+.s-clause.formed { border-left-color: #c8b0d8; background: #100c14; }
+.s-clause.landed { border-left-color: #8ad8a8; background: #0a1810; }
+.s-clause.named { border-left-color: #aaccdc; background: #0c1620; }
+.s-clause.consolidated { border-left-color: #d8c8a0; background: #18140a; }
+.s-clause.settled { border-left-color: #6aa878; background: #0a1410; }
+.s-clause.diverged { border-left-color: #c87878; background: #180a0a; }
+.s-clause.reaching { border-left-color: #c8a078; background: #18100a; }
+.s-clause .verb { color: #c0c0c8; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; font-size: 9px; }
+.s-clause .body { color: #a0a0aa; margin-top: 2px; }
+.s-clause .step { color: #44444e; font-size: 8px; margin-left: 4px; }
+.out-entry { padding: 8px; margin-bottom: 8px; background: #080810; border-left: 2px solid #2a4a3a; border-radius: 2px; }
+.out-entry.ratified { border-left-color: #8ad8a8; background: #081810; }
+.out-entry .in { color: #d8d8e0; font-weight: 500; font-size: 11px; margin-bottom: 4px; }
+.out-entry .desc { color: #a0a0aa; font-size: 10px; margin-bottom: 4px; }
+.out-entry .meta { color: #555562; font-size: 8px; }
+.sub-row { padding: 5px 6px; margin-bottom: 4px; background: #081018; border-left: 2px solid #4a6a8a; border-radius: 2px; font-size: 10px; }
+.sub-row.recently-named { border-left-color: #aaccdc; background: #0c1620; }
+.sub-row .sub-name { color: #aaccdc; font-weight: 500; letter-spacing: 1px; }
+.sub-row .sub-meta { color: #666678; font-size: 8px; margin-top: 2px; }
+.op-entry { padding: 6px 8px; margin-bottom: 6px; background: #080810; border-left: 2px solid #2a3a5a; border-radius: 2px; font-size: 10px; }
+.op-entry .op-label { color: #7a9ac8; font-weight: 500; letter-spacing: 1px; }
+.op-entry .op-detail { color: #8a8a9a; font-size: 9px; margin-top: 3px; }
+.queue-row { padding: 3px 6px; margin-bottom: 3px; background: #081420; border-left: 2px solid #4a6a8a; border-radius: 2px; font-size: 9px; font-family: ui-monospace, monospace; }
+.queue-row.in-flight { background: #0c1c2c; border-left-color: #aaccdc; color: #c0d8e8; }
+.queue-row.committed { background: #08140c; border-left-color: #4a7a5a; color: #8ac0a0; }
+.queue-row .qkind { font-weight: 500; letter-spacing: 1px; }
+.queue-row .qmeta { color: #666678; font-size: 8px; margin-left: 6px; }
+.corr-row { font-size: 9px; padding: 2px 0; border-bottom: 1px dashed #12121a; }
+.info { font-size: 10px; color: #555562; font-family: Georgia, serif; line-height: 1.7; padding: 8px 10px; background: #0a0a10; border-left: 2px solid #2a2a3a; border-radius: 2px; margin-bottom: 12px; }
+.info em { color: #9a9aa8; font-style: italic; }
+.warn { padding: 6px 10px; background: #180a0a; border-left: 2px solid #4a2a2a; color: #a87a7a; font-size: 10px; margin-bottom: 10px; display: none; }
+.warn.shown { display: block }
+footer { padding: 8px 20px; font-size: 8px; color: #2a2a34; letter-spacing: 1px; background: #0a0a10; border-top: 1px solid #14141c; text-align: center; }
+.scope-divider { font-size: 8px; letter-spacing: 3px; color: #2a2a34; margin: 14px 0 8px 0; padding-top: 8px; border-top: 1px dashed #1a1a24; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CONSTRAINT SUBSTRATE - PHASE 4a</h1>
+    <div class="sub">CT engine + ER engine + reflexive surface, all coupled through field via delta and observation</div>
+  </div>
+  <div class="badges">
+    <span id="er-badge" class="badge er-badge initializing">ER: initializing</span>
+    <span id="ct-badge" class="badge ct-badge idle">CT: idle</span>
+  </div>
+</header>
+<main>
+  <section>
+    <div class="label">CT ENGINE / RUNTIME</div>
+    <div class="info">Phase 3 splits the host into two engines coordinating through the shared field. The <em>CT engine</em> processes operations sequentially, owns persistent state, and tracks <em>execution-scope delta</em>. The <em>ER engine</em> resolves constraints in parallel and tracks <em>render-scope delta</em>. Per <em>SE-06</em>, neither commands the other; both read the field and produce delta at their own positions. The <em>gap</em> between exec and render delta is observable from the host but neither engine consults the other's delta to decide what to do.</div>
+
+    <div class="panel"><div class="ptitle">INPUT (intake)</div>
+      <input type="text" id="input-box" placeholder="enqueues an op for the CT engine"/>
+      <div class="controls">
+        <button class="primary" id="btn-submit">SUBMIT</button>
+        <button id="btn-tick">ENQUEUE TICK</button>
+        <button id="btn-step">STEP CT</button>
+      </div>
+      <div class="controls">
+        <button id="btn-pause" class="primary">PAUSE LOOP</button>
+        <button id="btn-resume">RESUME LOOP</button>
+      </div>
+    </div>
+
+    <div class="panel"><div class="ptitle">FIELD-LEVEL OPERATIONS</div>
+      <div class="controls">
+        <button class="op" id="btn-develop">DEVELOP</button>
+        <button class="op" id="btn-correlate">CORRELATE</button>
+        <button class="op" id="btn-reason">REASON</button>
+        <button class="op" id="btn-promote">PROMOTE</button>
+      </div>
+      <div class="controls">
+        <button class="op" id="btn-snapshot">SNAPSHOT</button>
+        <button class="op" id="btn-flush">FLUSH TRACE</button>
+      </div>
+    </div>
+
+    <div class="panel"><div class="ptitle">RESET</div>
+      <div class="controls">
+        <button class="danger" id="btn-reset">RESET FIELD</button>
+        <button class="danger" id="btn-clear-persist">CLEAR PERSISTENCE</button>
+      </div>
+    </div>
+
+    <div class="scope-divider">EXECUTION SCOPE (CT engine)</div>
+
+    <div class="panel"><div class="ptitle">EXEC-DELTA (sequential ops)</div>
+      <div class="metric"><span class="k">EXEC SCALAR</span><span class="v" id="m-exec-d">-</span></div>
+      <div class="bar exec"><div class="fill" id="bar-exec-d" style="width:0%"></div></div>
+      <div class="metric"><span class="k">EXEC FAST</span><span class="v" id="m-exec-fast">-</span></div>
+      <div class="bar exec"><div class="fill" id="bar-exec-fast" style="width:0%"></div></div>
+      <div class="metric"><span class="k">EXEC SLOW</span><span class="v" id="m-exec-slow">-</span></div>
+      <div class="bar slow"><div class="fill" id="bar-exec-slow" style="width:0%"></div></div>
+      <div class="metric"><span class="k">EXEC GAP</span><span class="v" id="m-exec-gap">-</span></div>
+      <div class="bar execgap"><div class="fill" id="bar-exec-gap" style="width:0%"></div></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">CT ENGINE STATE</div>
+      <div class="metric"><span class="k">PENDING OPS</span><span class="v" id="m-ct-pending">0</span></div>
+      <div class="metric"><span class="k">IN-FLIGHT</span><span class="v" id="m-ct-inflight">none</span></div>
+      <div class="metric"><span class="k">OPS EXECUTED</span><span class="v" id="m-ct-executed">0</span></div>
+      <div class="metric"><span class="k">EXEC-PREDICTIONS</span><span class="v" id="m-ct-predictions">0</span></div>
+      <div class="metric"><span class="k">SNAPSHOTS</span><span class="v" id="m-ct-snapshots">0</span></div>
+      <div class="metric"><span class="k">TRACE FLUSHES</span><span class="v" id="m-ct-flushes">0</span></div>
+      <div class="metric"><span class="k">PERSISTENCE</span><span class="v" id="m-ct-persist">unknown</span></div>
+    </div>
+
+    <div class="scope-divider">RENDER SCOPE (ER engine)</div>
+
+    <div class="panel"><div class="ptitle">RENDER-DELTA (parallel constraints)</div>
+      <div class="metric"><span class="k">RENDER SCALAR</span><span class="v" id="m-delta">-</span></div>
+      <div class="bar"><div class="fill" id="bar-delta" style="width:0%"></div></div>
+      <div class="metric"><span class="k">RENDER FAST</span><span class="v" id="m-fast-d">-</span></div>
+      <div class="bar fast"><div class="fill" id="bar-fast-d" style="width:0%"></div></div>
+      <div class="metric"><span class="k">RENDER SLOW</span><span class="v" id="m-slow-d">-</span></div>
+      <div class="bar slow"><div class="fill" id="bar-slow-d" style="width:0%"></div></div>
+      <div class="metric"><span class="k">RENDER GAP</span><span class="v" id="m-gap">-</span></div>
+      <div class="bar gap"><div class="fill" id="bar-gap" style="width:0%"></div></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">ER ENGINE STATE</div>
+      <div class="metric"><span class="k">PIPELINE</span><span class="v" id="m-er-pipeline">-</span></div>
+      <div class="metric"><span class="k">FRAMES RUN</span><span class="v" id="m-er-frames">-</span></div>
+      <div class="metric"><span class="k">LAST DISPATCH</span><span class="v" id="m-er-dispatch">-</span></div>
+      <div class="metric"><span class="k">CONSTRAINTS</span><span class="v" id="m-er-input">-</span></div>
+    </div>
+
+    <div class="scope-divider">FIELD STATE</div>
+
+    <div class="panel"><div class="ptitle">FIELD</div>
+      <div class="metric"><span class="k">CONSTRAINTS</span><span class="v" id="m-total">-</span></div>
+      <div class="metric"><span class="k">DERIVED / PRED / RAT / META</span><span class="v" id="m-kinds">-</span></div>
+      <div class="metric"><span class="k">SUB-CASCADES</span><span class="v" id="m-sub">-</span></div>
+      <div class="metric"><span class="k">CORRELATIONS</span><span class="v" id="m-corr">-</span></div>
+      <div class="metric"><span class="k">INPUTS / NAMED</span><span class="v" id="m-inputs">-</span></div>
+      <div class="metric"><span class="k">RATIFICATIONS</span><span class="v" id="m-rats">-</span></div>
+      <div class="metric"><span class="k">STEP</span><span class="v" id="m-step">-</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">CT QUEUE / FIELD CONTENT</div>
+
+    <div class="panel"><div class="ptitle">CT OPERATION QUEUE</div>
+      <div id="queue-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">CT COMMITTED (recent)</div>
+      <div id="committed-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">SUB-CASCADES</div>
+      <div id="sub-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">CONSTRAINTS</div>
+      <div id="field-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">PREDICTIONS (render scope)</div>
+      <div id="pred-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">OPERATIONS LOG</div>
+      <div id="ops-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">CORRELATIONS</div>
+      <div id="corr-view"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">REFLEXIVE SURFACE / OUTPUT / TRACE</div>
+    <div class="warn" id="warn-ascii">ASCII self-check failed.</div>
+
+    <div class="panel">
+      <div class="ptitle">REFLEXIVE SURFACE - structural transitions</div>
+      <div id="surface-stats" style="font-size:8px;color:#555562;margin-bottom:6px;letter-spacing:1px;"></div>
+      <div id="surface-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">DESCRIPTIONS (newest first)</div>
+      <div id="out-view"></div>
+    </div>
+
+    <div class="panel"><div class="ptitle">TRACE (per-engine annotated)</div>
+      <div id="trace-view"></div>
+    </div>
+
+    <div class="panel" style="grid-column: 1 / -1;">
+      <div class="ptitle">DEBUG DUMP (copy-pasteable)</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:9px;letter-spacing:1px;flex-wrap:wrap;">
+        <select id="debug-source" style="background:#0a0a0e;color:#aaa;border:1px solid #333;padding:2px 4px;font-family:inherit;font-size:9px;">
+          <option value="all">ALL</option>
+          <option value="trace" selected>TRACE</option>
+          <option value="surface">SURFACE CLAUSES</option>
+          <option value="field">FIELD SUMMARY</option>
+          <option value="recall">RECALL STATE</option>
+          <option value="compounds">COMPOUNDS</option>
+        </select>
+        <label style="display:inline-flex;gap:4px;align-items:center;cursor:pointer;">
+          <input type="checkbox" id="debug-autorefresh" checked />
+          AUTO-REFRESH
+        </label>
+        <input id="debug-tail" type="number" min="10" max="500" value="60" style="background:#0a0a0e;color:#aaa;border:1px solid #333;padding:2px 4px;font-family:inherit;font-size:9px;width:50px;" />
+        <span style="color:#555;">tail</span>
+        <button id="btn-debug-refresh" style="font-size:9px;padding:2px 8px;">REFRESH</button>
+        <button id="btn-debug-copy" style="font-size:9px;padding:2px 8px;">COPY</button>
+        <span id="debug-copy-status" style="color:#5a5;font-size:9px;"></span>
+      </div>
+      <textarea id="debug-dump" readonly spellcheck="false"
+        style="width:100%;height:240px;background:#06060a;color:#9090a0;border:1px solid #222;font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;line-height:1.4;padding:8px;resize:vertical;white-space:pre;overflow:auto;"></textarea>
+    </div>
+  </section>
+</main>
+<footer>CONSTRAINT SUBSTRATE Phase 4d - CT + ER + reflexive surface (Pass A + Pass B) + storage substrate (recall) - all coupled through field</footer>
+
+<script src="field.js"></script>
+<script src="constraint-compiler.js"></script>
+<script src="cpu-oracle.js"></script>
+<script src="er-engine.js"></script>
+<script src="ct-engine.js"></script>
+<script src="reflexive-surface.js"></script>
+<script src="storage-adapter.js"></script>
+<script>
+(function () {
+"use strict";
+
+(function asciiSelfCheck() {
+  try {
+    const scripts = document.querySelectorAll("script:not([src])");
+    for (const s of scripts) {
+      const src = s.textContent || "";
+      for (let i = 0; i < src.length; i++) {
+        const c = src.charCodeAt(i);
+        if (c > 0x7E && c !== 0x0A && c !== 0x09) {
+          const w = document.getElementById("warn-ascii");
+          if (w) w.className = "warn shown";
+          return;
+        }
+      }
+    }
+  } catch (e) {}
+})();
+
+// Pull dependencies from window
+const FieldModule = window.FieldModule;
+const Field = FieldModule.Field;
+const Trace = FieldModule.Trace;
+const OpsLog = FieldModule.OpsLog;
+const CFG = FieldModule.CFG;
+const Guards = FieldModule.Guards;
+
+const ER = window.ERengineModule;
+const CT = window.CTengineModule;
+const Compiler = window.ConstraintCompiler;
+const RS = window.ReflexiveSurfaceModule;
+const SA = window.StorageAdapterModule;
+
+// ===========================================================================
+// HOST RUNTIME
+//
+// Per PROJECT_SPLIT: the runtime IS the two engines plus the shared field.
+// This block is the orchestration shell. Its only jobs:
+//   - Initialize both engines and the reflexive surface
+//   - Run the frame loop (rAF)
+//   - Render UI
+//   - Mediate user input intake (which is enqueueing CT ops)
+//
+// It contains NO field logic, NO delta computation, NO constraint
+// generation. Those live in field.js. Engine internals live in
+// ct-engine.js and er-engine.js. Reflexive surface lives in
+// reflexive-surface.js.
+//
+// The reflexive surface is an OBSERVER. It reads field state to
+// detect structural transitions; it never writes. This honors O1
+// (observation is read-only). The host calls surface.observe() each
+// frame; the surface decides what to emit based on what it sees.
+// ===========================================================================
+
+const er = new ER.ERengine();
+const ct = new CT.CTengine();
+const surface = new RS.ReflexiveSurface();
+
+// Phase 4c: storage adapter. Browser environment will use IndexedDB
+// backend automatically (the adapter chooses based on availability).
+// Bound to CT engine so:
+//   - Recall fires when render-scope gap rises (CT reads adapter)
+//   - Eligible records (ratified, promoted compounds) persist back
+//     after each input op (CT writes adapter, fire-and-forget)
+//
+// Open is async; we kick it off immediately and let the rAF loop
+// proceed. While the adapter is opening, recall is effectively a
+// no-op (storageBinding is set but adapter.opened is false until the
+// open promise resolves).
+const storage = new SA.StorageAdapter();
+storage.open()
+  .then(() => { console.info("storage adapter ready (" + storage.backendKind + ")"); })
+  .catch(e => { console.warn("storage adapter open failed:", e && e.message); });
+ct.bindStorage(storage, SA.PersistenceEligibility);
+
+// Bind: CT engine needs the ER engine and the compiler so it can
+// dispatch input ops to ER for parallel resolution. This is NOT a
+// command channel: CT engine asks ER to evaluate a (field, input) pair,
+// which is the same as ER reading the field state and producing match
+// results. The binding makes that read possible.
+ct.bind(er, Compiler);
+
+// The reflexive surface gets NO binding. It is decoupled from both
+// engines. It reads Field state directly. This is structurally
+// load-bearing: the surface is not part of the engines' coupling
+// path.
+
+const Host = {
+  outputs: [],
+  loopRunning: true,
+  rafId: null,
+  lastFrameTS: 0,
+  framesSinceUiUpdate: 0,
+
+  async init() {
+    const byId = id => document.getElementById(id);
+
+    byId("btn-submit").addEventListener("click", () => Host.submit());
+    byId("btn-tick").addEventListener("click", () => Host.enqueueTick());
+    byId("btn-step").addEventListener("click", () => Host.stepOnce());
+    byId("btn-pause").addEventListener("click", () => Host.pauseLoop());
+    byId("btn-resume").addEventListener("click", () => Host.resumeLoop());
+    byId("btn-develop").addEventListener("click", () => Host.enqueueOp("develop"));
+    byId("btn-correlate").addEventListener("click", () => Host.enqueueOp("correlate"));
+    byId("btn-reason").addEventListener("click", () => Host.enqueueOp("reason"));
+    byId("btn-promote").addEventListener("click", () => Host.enqueueOp("promote"));
+    byId("btn-snapshot").addEventListener("click", () => Host.enqueueOp("snapshot"));
+    byId("btn-flush").addEventListener("click", () => Host.enqueueOp("trace-flush"));
+    byId("btn-reset").addEventListener("click", () => Host.reset());
+    byId("btn-clear-persist").addEventListener("click", () => Host.clearPersist());
+    // Phase 4d: debug dump panel
+    byId("btn-debug-refresh").addEventListener("click", () => {
+      Host._debugForceRender = true;
+      Host._renderDebug();
+    });
+    byId("btn-debug-copy").addEventListener("click", () => Host._copyDebug());
+    byId("debug-source").addEventListener("change", () => {
+      Host._debugForceRender = true;
+      Host._renderDebug();
+    });
+    byId("debug-tail").addEventListener("change", () => {
+      Host._debugForceRender = true;
+      Host._renderDebug();
+    });
+    byId("input-box").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); Host.submit(); }
+    });
+
+    // Try to restore from persistence
+    if (CT.PersistAdapter.available()) {
+      const restored = ct.restoreFromSnapshot();
+      if (restored) {
+        OpsLog.append("RESTORE", "field at step " + Field.step + " (" + Field.constraints.length + " constraints)");
+      } else {
+        Field.reset();
+      }
+    } else {
+      Field.reset();
+    }
+    Field.refreshVectorDelta();
+    Field.refreshExecVectorDelta();
+
+    // Initialize ER engine (fetches WGSL shader, requests GPU adapter)
+    Host.setER("initializing", "ER: initializing");
+    const erState = await er.init(async () => {
+      const r = await fetch("resolve-fresh.wgsl");
+      return await r.text();
+    });
+    if (erState === "gpu-ready") Host.setER("gpu-ready", "ER: GPU ready");
+    else if (erState === "cpu-fallback") Host.setER("cpu-fallback", "ER: CPU fallback");
+    else Host.setER("error", "ER: error");
+
+    Host.render();
+    Host.startLoop();
+  },
+
+  // -------------------------------------------------------------------
+  // FRAME LOOP
+  //
+  // The host runs at requestAnimationFrame cadence. Each frame:
+  //   1. Tick the CT engine (process at most one op)
+  //   2. Update UI bindings (throttled to ~10 Hz)
+  //
+  // The CT engine's step() is async (because evaluateAsync is async).
+  // We don't block the rAF callback waiting for it; we fire-and-forget,
+  // letting the next frame proceed. If a step is in flight when the
+  // next frame fires, we skip and try again next frame.
+  // -------------------------------------------------------------------
+  startLoop() {
+    let stepInFlight = false;
+    const tick = async (ts) => {
+      if (!Host.loopRunning) { Host.rafId = null; return; }
+      const dt = ts - Host.lastFrameTS;
+      Host.lastFrameTS = ts;
+
+      if (!stepInFlight && ct.hasWork()) {
+        stepInFlight = true;
+        ct.step().then(() => { stepInFlight = false; }).catch(e => {
+          stepInFlight = false;
+          console.error("CT step error:", e);
+        });
+      }
+
+      // UI update throttle: every ~6 frames (~10 Hz at 60fps)
+      Host.framesSinceUiUpdate++;
+      if (Host.framesSinceUiUpdate >= 6) {
+        Host.framesSinceUiUpdate = 0;
+        // Observe the field for structural transitions before render.
+        // surface.observe() is read-only with respect to Field; it
+        // detects transitions by diffing against its prior snapshot
+        // and emits clauses. The host uses those clauses for the
+        // surface panel; nothing else is affected.
+        try { surface.observe(); }
+        catch (e) { console.error("surface.observe error:", e); }
+        Host.render();
+      }
+
+      Host.rafId = requestAnimationFrame(tick);
+    };
+    Host.rafId = requestAnimationFrame(tick);
+  },
+  pauseLoop() {
+    Host.loopRunning = false;
+    if (Host.rafId) cancelAnimationFrame(Host.rafId);
+    Host.rafId = null;
+    Host.setCT("idle", "CT: paused");
+    Host.render();
+  },
+  resumeLoop() {
+    if (Host.loopRunning) return;
+    Host.loopRunning = true;
+    Host.startLoop();
+  },
+
+  // -------------------------------------------------------------------
+  // INTAKE: user actions enqueue ops on the CT engine
+  // -------------------------------------------------------------------
+  submit() {
+    const inp = document.getElementById("input-box");
+    const v = inp.value;
+    if (!v || !v.trim()) return;
+    ct.enqueueInput(v);
+    inp.value = "";
+    Host.render();
+  },
+  enqueueTick() { ct.enqueueInternal("tick", {}); Host.render(); },
+  enqueueOp(kind) { ct.enqueueInternal(kind, {}); Host.render(); },
+
+  async stepOnce() {
+    if (!ct.hasWork()) {
+      OpsLog.append("STEP", "no work pending");
+      Host.render();
+      return;
+    }
+    Host.setCT("active", "CT: stepping");
+    const result = await ct.step();
+    if (result && result.ok && result.kind === "input" && result.result && !result.result.skipped) {
+      Host.outputs.unshift(Host._buildOutput(result.result));
+      while (Host.outputs.length > CFG.OUT_CAP) Host.outputs.pop();
+    }
+    Host.setCT("idle", "CT: idle");
+    // Observe field for structural transitions after the step commits.
+    try { surface.observe(); }
+    catch (e) { console.error("surface.observe error:", e); }
+    Host.render();
+  },
+
+  reset() {
+    Host.pauseLoop();
+    Field.reset();
+    Field.refreshVectorDelta();
+    Field.refreshExecVectorDelta();
+    Trace.clear();
+    OpsLog.clear();
+    surface.clear();
+    Host.outputs = [];
+    Trace.append("ct", "reset", null, "field returned to seed-only");
+    OpsLog.append("RESET", "field reset to seed");
+    Host.resumeLoop();
+    Host.render();
+  },
+  clearPersist() {
+    ct.clearPersistence();
+    // Phase 4c: also clear the storage substrate (constraints, trace,
+    // surface clauses persisted across sessions). Fire-and-forget; the
+    // adapter handles the actual deletion.
+    if (storage && storage.opened) {
+      storage.clear()
+        .then(() => OpsLog.append("CLEAR", "storage substrate cleared"))
+        .catch(e => OpsLog.append("CLEAR", "storage clear failed: " + (e && e.message)));
+    }
+    OpsLog.append("CLEAR", "persistence cleared");
+    Host.render();
+  },
+
+  _buildOutput(r) {
+    return {
+      input: r.input,
+      step: Field.step,
+      chosen: r.chosen,
+      generated: r.generated,
+      predictions: r.predictions,
+      ratified: r.ratified,
+      named: r.named || [],
+      vBefore: r.vBefore,
+      vAfter: r.vAfter
+    };
+  },
+
+  setER(cls, text) {
+    const el = document.getElementById("er-badge");
+    if (el) { el.className = "badge er-badge " + cls; el.textContent = text; }
+  },
+  setCT(cls, text) {
+    const el = document.getElementById("ct-badge");
+    if (el) { el.className = "badge ct-badge " + cls; el.textContent = text; }
+  },
+
+  // -------------------------------------------------------------------
+  // RENDER
+  // -------------------------------------------------------------------
+  render() {
+    Host._renderMetrics();
+    Host._renderSurface();
+    Host._renderQueue();
+    Host._renderCommitted();
+    Host._renderSubcascades();
+    Host._renderField();
+    Host._renderPredictions();
+    Host._renderOps();
+    Host._renderCorrelations();
+    Host._renderTrace();
+    Host._renderOutputs();
+    Host._renderCTbadge();
+    Host._renderDebug();
+  },
+  _renderCTbadge() {
+    if (!Host.loopRunning) return; // already paused; preserve label
+    if (Field.ctInFlightOp) Host.setCT("active", "CT: " + Field.ctInFlightOp.kind);
+    else if (Field.ctPendingOps.length > 0) Host.setCT("active", "CT: " + Field.ctPendingOps.length + " queued");
+    else Host.setCT("idle", "CT: idle");
+  },
+  _t(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; },
+  _b(id, frac) { const el = document.getElementById(id); if (el) el.style.width = (Guards.clamp01(frac) * 100).toFixed(1) + "%"; },
+
+  _renderMetrics() {
+    // Render-scope
+    Host._t("m-delta", Field.scalarDelta.toFixed(4));
+    Host._b("bar-delta", Field.scalarDelta);
+    Host._t("m-fast-d", Field.fastDelta.toFixed(4));
+    Host._b("bar-fast-d", Field.fastDelta);
+    Host._t("m-slow-d", Field.slowDelta.toFixed(4));
+    Host._b("bar-slow-d", Field.slowDelta);
+    Host._t("m-gap", Field.gap.toFixed(4));
+    Host._b("bar-gap", Math.min(1, Field.gap * 3));
+
+    // Exec-scope
+    Host._t("m-exec-d", Field.execScalarDelta.toFixed(4));
+    Host._b("bar-exec-d", Field.execScalarDelta);
+    Host._t("m-exec-fast", Field.execFastDelta.toFixed(4));
+    Host._b("bar-exec-fast", Field.execFastDelta);
+    Host._t("m-exec-slow", Field.execSlowDelta.toFixed(4));
+    Host._b("bar-exec-slow", Field.execSlowDelta);
+    Host._t("m-exec-gap", Field.execGap.toFixed(4));
+    Host._b("bar-exec-gap", Math.min(1, Field.execGap * 3));
+
+    // Field counts
+    let d = 0, p = 0, r = 0, m = 0;
+    for (const c of Field.constraints) {
+      if (c.kind === "derived") d++;
+      else if (c.kind === "predictive") p++;
+      else if (c.kind === "ratified") r++;
+      else if (c.kind === "meta") m++;
+    }
+    Host._t("m-total", String(Field.constraints.length));
+    Host._t("m-kinds", d + " / " + p + " / " + r + " / " + m);
+    Host._t("m-sub", String(Field.subcascades.length));
+    Host._t("m-corr", String(Object.keys(Field.correlations).length));
+    Host._t("m-inputs", Field.inputCount + " / " + Field.namedCount);
+    Host._t("m-rats", String(Field.ratCount));
+    Host._t("m-step", String(Field.step));
+
+    // CT engine
+    const ctStats = ct.getStats();
+    Host._t("m-ct-pending", String(ctStats.pending));
+    Host._t("m-ct-inflight", ctStats.inFlight || "none");
+    Host._t("m-ct-executed", String(ctStats.opsExecuted));
+    Host._t("m-ct-predictions", String(ctStats.predictionsExec));
+    Host._t("m-ct-snapshots", String(ctStats.snapshots));
+    Host._t("m-ct-flushes", String(ctStats.traceFlushes));
+    Host._t("m-ct-persist", ctStats.persistAvailable ? "available (localStorage)" : "unavailable");
+
+    // ER engine
+    Host._t("m-er-pipeline", er.state);
+    Host._t("m-er-frames", String(er.framesRun));
+    Host._t("m-er-dispatch", er.lastDispatchMS.toFixed(2) + " ms");
+    Host._t("m-er-input", er.lastCompiled ? ("n=" + er.lastCompiled.constraintCount) : "-");
+  },
+
+  _renderQueue() {
+    const view = document.getElementById("queue-view"); if (!view) return;
+    view.innerHTML = "";
+    if (Field.ctInFlightOp) {
+      const r = document.createElement("div"); r.className = "queue-row in-flight";
+      const k = document.createElement("span"); k.className = "qkind"; k.textContent = "[ACTIVE] " + Field.ctInFlightOp.kind;
+      r.appendChild(k);
+      view.appendChild(r);
+    }
+    if (Field.ctPendingOps.length === 0 && !Field.ctInFlightOp) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "queue empty.";
+      view.appendChild(h);
+      return;
+    }
+    for (let i = 0; i < Math.min(Field.ctPendingOps.length, 12); i++) {
+      const op = Field.ctPendingOps[i];
+      const r = document.createElement("div"); r.className = "queue-row";
+      const k = document.createElement("span"); k.className = "qkind"; k.textContent = "[" + (i+1) + "] " + op.kind;
+      const m = document.createElement("span"); m.className = "qmeta";
+      m.textContent = "enqueued@" + op.enqueuedAt;
+      r.appendChild(k); r.appendChild(m);
+      view.appendChild(r);
+    }
+    if (Field.ctPendingOps.length > 12) {
+      const o = document.createElement("div"); o.className = "qmeta";
+      o.textContent = "...and " + (Field.ctPendingOps.length - 12) + " more";
+      view.appendChild(o);
+    }
+  },
+
+  _renderCommitted() {
+    const view = document.getElementById("committed-view"); if (!view) return;
+    view.innerHTML = "";
+    const recent = Field.ctCommittedQueue.slice(-12).reverse();
+    if (recent.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no committed ops yet.";
+      view.appendChild(h);
+      return;
+    }
+    for (const r of recent) {
+      const row = document.createElement("div"); row.className = "queue-row committed";
+      const k = document.createElement("span"); k.className = "qkind"; k.textContent = r.kind;
+      const m = document.createElement("span"); m.className = "qmeta"; m.textContent = "@" + r.atStep;
+      row.appendChild(k); row.appendChild(m);
+      view.appendChild(row);
+    }
+  },
+
+  _renderSubcascades() {
+    const view = document.getElementById("sub-view"); if (!view) return;
+    view.innerHTML = "";
+    if (Field.subcascades.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no sub-cascades yet.";
+      view.appendChild(h);
+      return;
+    }
+    for (const sc of Field.subcascades) {
+      const row = document.createElement("div");
+      const recently = (Field.step - sc.lastNamed) < 5 && sc.lastNamed >= 0;
+      row.className = "sub-row" + (recently ? " recently-named" : "");
+      const nm = document.createElement("div"); nm.className = "sub-name";
+      nm.textContent = sc.name + "  (" + sc.familyType + ")";
+      const mt = document.createElement("div"); mt.className = "sub-meta";
+      mt.textContent = "members=" + sc.memberIds.length + "  named=" + sc.namedCount
+        + "  local-d=" + Field.computeSubcascadeDelta(sc).toFixed(3)
+        + "  fid=" + sc.fidAtBirth.toFixed(3);
+      row.appendChild(nm); row.appendChild(mt);
+      view.appendChild(row);
+    }
+  },
+
+  _renderField() {
+    const view = document.getElementById("field-view"); if (!view) return;
+    view.innerHTML = "";
+    const sorted = Field.constraints.slice().sort((a, b) => {
+      if (a.kind === "seed") return -1;
+      if (b.kind === "seed") return 1;
+      if (a.kind === "ratified" && b.kind !== "ratified") return -1;
+      if (b.kind === "ratified" && a.kind !== "ratified") return 1;
+      return (b.birth || 0) - (a.birth || 0);
+    });
+    for (let i = 0; i < sorted.length && i < 50; i++) {
+      const c = sorted[i];
+      if (c.kind === "predictive") continue;
+      const row = document.createElement("div"); row.className = "c-row " + c.kind;
+      let txt;
+      if (c.kind === "seed") txt = "[seed] " + c.question;
+      else if (c.kind === "meta") txt = "[" + (c.metaKind || "meta") + "] " + (c.desc || "")
+        + "  (uses=" + (c.uses || 0) + ")";
+      else txt = "[" + (c.pattern && c.pattern.type || "?") + "] " + (c.desc || "")
+        + "  (uses=" + (c.uses || 0) + " w=" + (c.weight || 1).toFixed(2) + ")";
+      const k = document.createElement("div"); k.className = "k"; k.textContent = c.id;
+      const v = document.createElement("div"); v.className = "v"; v.textContent = txt;
+      row.appendChild(k); row.appendChild(v);
+      view.appendChild(row);
+    }
+  },
+
+  _renderPredictions() {
+    const view = document.getElementById("pred-view"); if (!view) return;
+    view.innerHTML = "";
+    const preds = Field.constraints.filter(c => c.kind === "predictive");
+    if (preds.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no active render-scope predictions.";
+      view.appendChild(h);
+      return;
+    }
+    for (const c of preds.sort((a, b) => (b.birth || 0) - (a.birth || 0))) {
+      const row = document.createElement("div"); row.className = "c-row predictive";
+      const age = Field.step - c.birth;
+      const k = document.createElement("div"); k.className = "k"; k.textContent = c.id;
+      const v = document.createElement("div"); v.className = "v";
+      v.textContent = "[" + (c.pattern && c.pattern.type || "?") + "] " + (c.desc || "")
+        + "  (age=" + age + "/" + CFG.PRED_AGE_LIMIT + ")";
+      row.appendChild(k); row.appendChild(v);
+      view.appendChild(row);
+    }
+  },
+
+  _renderOps() {
+    const view = document.getElementById("ops-view"); if (!view) return;
+    view.innerHTML = "";
+    if (OpsLog.entries.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no operations yet.";
+      view.appendChild(h);
+      return;
+    }
+    for (const e of OpsLog.entries) {
+      const box = document.createElement("div"); box.className = "op-entry";
+      const lbl = document.createElement("div"); lbl.className = "op-label";
+      lbl.textContent = "[" + e.step + "] " + e.op;
+      const det = document.createElement("div"); det.className = "op-detail";
+      det.textContent = e.detail;
+      box.appendChild(lbl); box.appendChild(det);
+      view.appendChild(box);
+    }
+  },
+
+  _renderCorrelations() {
+    const view = document.getElementById("corr-view"); if (!view) return;
+    view.innerHTML = "";
+    const top = Field.topCorrelations(15);
+    if (top.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no correlations yet.";
+      view.appendChild(h);
+      return;
+    }
+    for (const c of top) {
+      const row = document.createElement("div"); row.className = "corr-row";
+      row.textContent = c.a + " <-> " + c.b + "  coFire=" + c.coFire;
+      view.appendChild(row);
+    }
+  },
+
+  _renderSurface() {
+    const view = document.getElementById("surface-view");
+    const stats = document.getElementById("surface-stats");
+    if (!view) return;
+    view.innerHTML = "";
+
+    // Stats line
+    if (stats) {
+      const s = surface.stats();
+      const byKind = Object.keys(s.byKind)
+        .sort()
+        .map(k => k + "=" + s.byKind[k])
+        .join(" ");
+      stats.textContent = "EMITTED " + s.totalEmitted +
+        " | BUFFERED " + s.buffered + "/" + s.cap +
+        (byKind ? " | " + byKind : "");
+    }
+
+    const recent = surface.recent(20);
+    if (recent.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e";
+      h.style.fontStyle = "italic";
+      h.style.fontSize = "9px";
+      h.textContent = "no structural transitions yet. " +
+        "the surface will surface them as they happen.";
+      view.appendChild(h);
+      return;
+    }
+
+    for (const c of recent) {
+      const row = document.createElement("div");
+      row.className = "s-clause " + c.kind;
+      const verb = document.createElement("span");
+      verb.className = "verb";
+      verb.textContent = c.kind;
+      const step = document.createElement("span");
+      step.className = "step";
+      step.textContent = "@" + c.step;
+      const body = document.createElement("div");
+      body.className = "body";
+      body.textContent = c.text;
+      const head = document.createElement("div");
+      head.appendChild(verb);
+      head.appendChild(step);
+      row.appendChild(head);
+      row.appendChild(body);
+      view.appendChild(row);
+    }
+  },
+
+  _renderTrace() {
+    const view = document.getElementById("trace-view"); if (!view) return;
+    view.innerHTML = "";
+    const recent = Trace.entries.slice(-40).reverse();
+    for (const e of recent) {
+      const row = document.createElement("div"); row.className = "t-entry" + (e.tag ? " " + e.tag : "");
+      const s1 = document.createElement("span"); s1.className = "scope " + e.scope;
+      s1.textContent = "[" + e.scope.toUpperCase() + " " + String(e.step).padStart(3, "0") + "] ";
+      const s2 = document.createElement("span"); s2.className = "op";
+      s2.textContent = e.op + " ";
+      const s3 = document.createElement("span"); s3.className = "delta";
+      s3.textContent = "s=" + e.scalar.toFixed(2) + " f=" + e.fast.toFixed(2)
+        + " l=" + e.slow.toFixed(2) + "  " + (e.detail || "");
+      row.appendChild(s1); row.appendChild(s2); row.appendChild(s3);
+      view.appendChild(row);
+    }
+  },
+
+  // Phase 4d: debug dump panel. Renders a copy-pasteable plain-text
+  // snapshot of the current state. The "source" select controls what
+  // gets dumped; "tail" caps how many lines from each section. The
+  // user can copy this into chat for review.
+  //
+  // The panel is rendered every UI cycle (~10Hz) when auto-refresh
+  // is on. With auto-refresh off, only manual refresh or copy-click
+  // updates it.
+  _renderDebug() {
+    const ta = document.getElementById("debug-dump");
+    if (!ta) return;
+    // Never stomp the textarea while the user is interacting with it.
+    // Focus alone is enough: if you're focused on the textarea, you
+    // are either reading it, selecting in it, or about to copy from
+    // it. Auto-refresh state does not matter here - the user wins.
+    if (document.activeElement === ta) return;
+    // Also respect a non-empty selection that includes this textarea,
+    // even if focus has moved to the COPY button. This catches the
+    // window between Cmd+A (or drag-select) and Cmd+C.
+    if (ta.selectionStart !== ta.selectionEnd) return;
+    const source = (document.getElementById("debug-source") || {}).value || "trace";
+    const tailRaw = (document.getElementById("debug-tail") || {}).value || "60";
+    const tail = Math.max(10, Math.min(500, parseInt(tailRaw, 10) || 60));
+    const auto = document.getElementById("debug-autorefresh");
+    // Auto-refresh OFF: only refresh on explicit refresh/copy clicks
+    // (those bypass the auto-refresh guard by calling this directly).
+    // We can't tell here whether we were called from a button click or
+    // from the render loop, so we use a per-instance flag set by the
+    // explicit handlers.
+    if (auto && !auto.checked && !Host._debugForceRender) return;
+    Host._debugForceRender = false;
+    const next = Host._buildDebugText(source, tail);
+    // Avoid setting .value if nothing changed - prevents browser side
+    // effects (some browsers reset scrollTop on .value assignment even
+    // when the value is identical).
+    if (ta.value !== next) ta.value = next;
+  },
+
+  _buildDebugText(source, tail) {
+    const lines = [];
+    const ts = new Date().toISOString();
+    lines.push("=== DEBUG DUMP @ " + ts + " (source=" + source + " tail=" + tail + ") ===");
+    lines.push("phase: 4d  step: " + Field.step + "  inputCount: " + Field.inputCount);
+    lines.push("ER: " + (er.state || "unknown") +
+      "  storage: " + (storage && storage.opened ? storage.backendKind : "not-open") +
+      "  loop: " + (Host.loopRunning ? "running" : "paused"));
+
+    if (source === "all" || source === "field") {
+      lines.push("");
+      lines.push("--- FIELD SUMMARY ---");
+      lines.push("constraints: " + Field.constraints.length +
+        "  aged: " + (Field.aged ? Field.aged.length : 0) +
+        "  subcascades: " + Field.subcascades.length +
+        "  ratCount: " + Field.ratCount +
+        "  namedCount: " + Field.namedCount);
+      lines.push("delta(scalar): " + Field.scalarDelta.toFixed(4) +
+        "  fast: " + Field.fastDelta.toFixed(4) +
+        "  slow: " + Field.slowDelta.toFixed(4) +
+        "  gap: " + Field.gap.toFixed(4));
+      lines.push("execDelta: " + Field.execScalarDelta.toFixed(4) +
+        "  execGap: " + Field.execGap.toFixed(4));
+      lines.push("queue: pending=" + Field.ctPendingOps.length +
+        "  inflight=" + (Field.ctInFlightOp ? Field.ctInFlightOp.kind : "none") +
+        "  committed=" + Field.ctCommittedQueue.length);
+      // breakdown by kind
+      const byKind = Object.create(null);
+      for (const c of Field.constraints) byKind[c.kind] = (byKind[c.kind] || 0) + 1;
+      const kindStr = Object.keys(byKind).sort()
+        .map(k => k + "=" + byKind[k]).join("  ");
+      lines.push("by kind: " + kindStr);
+      lines.push("compoundFidelity entries: " +
+        Object.keys(Field.compoundFidelity || {}).length +
+        "  generationHistory: " + (Field.compoundGenerationHistory || []).length);
+      lines.push("recallWindow: " + (Field.recallWindow || []).length +
+        "  recallEventLog: " + (Field.recallEventLog || []).length +
+        "  lastMatchedCompoundIds: " + (Field.lastMatchedCompoundIds || []).length);
+    }
+
+    if (source === "all" || source === "trace") {
+      lines.push("");
+      lines.push("--- TRACE (last " + tail + ") ---");
+      const entries = (Trace.entries || []).slice(-tail);
+      for (const e of entries) {
+        const tag = e.tag ? "[" + e.tag + "]" : "";
+        lines.push(
+          "[" + String(e.step).padStart(4, "0") + " " + e.scope.toUpperCase() + "] " +
+          e.op + " s=" + e.scalar.toFixed(3) +
+          " f=" + e.fast.toFixed(3) +
+          " l=" + e.slow.toFixed(3) +
+          (e.detail ? "  " + e.detail : "") +
+          (tag ? "  " + tag : "")
+        );
+      }
+    }
+
+    if (source === "all" || source === "surface") {
+      lines.push("");
+      lines.push("--- SURFACE CLAUSES (last " + tail + ") ---");
+      const clauses = (surface.clauses || []).slice(-tail);
+      for (const c of clauses) {
+        const src = c.source || "?";
+        lines.push(
+          "[" + String(c.step).padStart(4, "0") + " " + src + "] " +
+          c.kind + ": " + c.text
+        );
+      }
+      lines.push("(total emitted: " + surface.totalEmitted + ")");
+    }
+
+    if (source === "all" || source === "recall") {
+      lines.push("");
+      lines.push("--- RECALL STATE ---");
+      lines.push("recall events triggered (session): " + (ct.recallEventsTriggered || 0));
+      lines.push("recall matches produced (session): " + (ct.recallMatchesProduced || 0));
+      lines.push("persisted constraint count (session): " + (ct.persistedConstraintCount || 0));
+      lines.push("recall gap threshold: " + CFG.RECALL_GAP_THRESH +
+        "  current gap: " + Field.gap.toFixed(4) +
+        "  would trigger: " + Field.shouldTriggerRecall());
+      lines.push("");
+      lines.push("recall window contents (transient, this frame):");
+      const win = Field.recallWindow || [];
+      if (win.length === 0) {
+        lines.push("  (empty)");
+      } else {
+        for (const r of win.slice(0, Math.min(tail, win.length))) {
+          lines.push("  " + r.id + " kind=" + r.kind +
+            " w=" + (r.weight || 0).toFixed(2) +
+            " uses=" + (r.uses || 0) +
+            " recalls=" + (r.recallSuccessCount || 0) +
+            (r.desc ? "  " + String(r.desc).slice(0, 60) : ""));
+        }
+      }
+      lines.push("");
+      lines.push("recall event log (last " + Math.min(tail, (Field.recallEventLog || []).length) + "):");
+      const log = (Field.recallEventLog || []).slice(-tail);
+      for (const ev of log) {
+        const p = ev.payload || {};
+        lines.push("  [" + String(ev.step).padStart(4, "0") + "] " + ev.kind +
+          " id=" + (p.id || "?") +
+          " desc=" + (p.desc ? String(p.desc).slice(0, 60) : "?"));
+      }
+    }
+
+    if (source === "all" || source === "compounds") {
+      lines.push("");
+      lines.push("--- COMPOUNDS ---");
+      const compounds = Field.constraints.filter(c => c.kind === "compound");
+      lines.push("total compounds: " + compounds.length);
+      const promoted = compounds.filter(c => c.promoted);
+      lines.push("promoted: " + promoted.length);
+      lines.push("");
+      for (const c of compounds.slice(-tail)) {
+        const fid = (Field.compoundFidelity || {})[c.id];
+        const fidStr = fid ? " fid=" + (fid.observations.reduce((s,x)=>s+x,0)/Math.max(1,fid.observations.length)).toFixed(3) +
+          " fires=" + fid.totalFires : "";
+        lines.push("  " + c.id +
+          " w=" + (c.weight || 0).toFixed(2) +
+          " uses=" + (c.uses || 0) +
+          " promoted=" + (c.promoted ? "Y" : "N") +
+          fidStr);
+        if (c.pattern && c.pattern.render) {
+          lines.push("    render: " + JSON.stringify(c.pattern.render));
+          lines.push("    exec:   " + JSON.stringify(c.pattern.exec));
+        }
+        if (c.desc) lines.push("    desc: " + String(c.desc).slice(0, 100));
+      }
+    }
+
+    lines.push("");
+    lines.push("=== END DUMP ===");
+    return lines.join("\n");
+  },
+
+  _copyDebug() {
+    const ta = document.getElementById("debug-dump");
+    if (!ta) return;
+    // Refresh first so the copy reflects the moment of click.
+    // Force the render through any auto-off guard.
+    Host._debugForceRender = true;
+    Host._renderDebug();
+    const status = document.getElementById("debug-copy-status");
+    const setStatus = (msg, color) => {
+      if (status) { status.textContent = msg; status.style.color = color || "#5a5"; }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(
+        () => {
+          setStatus("copied " + ta.value.length + " chars", "#5a5");
+          setTimeout(() => setStatus("", "#5a5"), 2000);
+        },
+        () => {
+          // fallback to legacy
+          ta.focus(); ta.select();
+          try {
+            document.execCommand("copy");
+            setStatus("copied (fallback)", "#5a5");
+            setTimeout(() => setStatus("", "#5a5"), 2000);
+          } catch (e) {
+            setStatus("copy failed - select manually", "#a55");
+          }
+        }
+      );
+    } else {
+      ta.focus(); ta.select();
+      try {
+        document.execCommand("copy");
+        setStatus("copied (legacy)", "#5a5");
+        setTimeout(() => setStatus("", "#5a5"), 2000);
+      } catch (e) {
+        setStatus("copy unavailable - select manually", "#a55");
+      }
+    }
+  },
+
+  _renderOutputs() {
+    const view = document.getElementById("out-view"); if (!view) return;
+    view.innerHTML = "";
+    if (Host.outputs.length === 0) {
+      const h = document.createElement("div");
+      h.style.color = "#44444e"; h.style.fontStyle = "italic"; h.style.fontSize = "9px";
+      h.textContent = "no descriptions yet. submit input - it enqueues a CT op.";
+      view.appendChild(h);
+      return;
+    }
+    for (const o of Host.outputs) {
+      const box = document.createElement("div");
+      box.className = "out-entry" + (o.ratified > 0 ? " ratified" : "");
+      const inp = document.createElement("div"); inp.className = "in";
+      inp.textContent = "[" + o.step + "] \"" + o.input + "\"";
+      box.appendChild(inp);
+
+      if (o.named && o.named.length) {
+        const n = document.createElement("div"); n.className = "desc";
+        n.textContent = "NAMED: " + o.named.join(", "); n.style.color = "#aaccdc";
+        box.appendChild(n);
+      }
+      const summary = document.createElement("div"); summary.className = "desc";
+      summary.textContent = "chosen=" + o.chosen + " generated=" + o.generated
+        + " predictions=" + o.predictions + " ratified=" + o.ratified;
+      box.appendChild(summary);
+
+      const m = document.createElement("div"); m.className = "meta";
+      m.textContent = "render-d: " + o.vBefore.scalar.toFixed(3) + " -> " + o.vAfter.scalar.toFixed(3)
+        + " | gap: " + o.vAfter.gap.toFixed(3);
+      box.appendChild(m);
+      view.appendChild(box);
+    }
+  }
+};
+
+// ---- Bootstrap ----
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => Host.init());
+} else {
+  Host.init();
+}
+
+// Expose for console debugging
+window.__phase4 = { Field, Trace, OpsLog, ct, er, surface, storage, Host };
+
+})();
+</script>
+</body>
+</html>

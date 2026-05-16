@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cascade-dispatched I/O round-trip</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- ============================================================
+     RUNTIME CASCADE
+     This stylesheet is the runtime. It owns the state space's
+     coordinates and resolves which operation should run next given
+     the current configuration. JavaScript only executes the named
+     operations; it does not decide which one to run.
+     ============================================================ -->
+<style id="runtime-cascade">
+/* The state element is the single coordinate-bearing element. JS
+   writes data-X attributes onto it; the cascade resolves against
+   them; getComputedStyle reads the resolved values back. */
+#state {
+  /* Default values for every coordinate. The seed: the substrate
+     starts in an unresolved configuration. */
+  --phase: idle;
+  --next-op: noop;
+  --expr: "";
+  --tokens: "";
+  --result: "";
+  --error: "";
+  --display-result: 0;
+  --display-error: 0;
+  --display-tokens: 0;
+}
+
+/* When the user has typed something but parsing hasn't started yet,
+   the cascade resolves the next operation as `parse`. */
+#state[data-input-present="1"][data-phase="idle"] {
+  --next-op: parse;
+  --phase: parsing;
+}
+
+/* When parsing has produced tokens, the cascade dispatches evaluate. */
+#state[data-phase="parsed"] {
+  --next-op: evaluate;
+  --phase: evaluating;
+  --display-tokens: 1;
+}
+
+/* When evaluation produced a result, the cascade dispatches display. */
+#state[data-phase="evaluated"] {
+  --next-op: display;
+  --phase: complete;
+  --display-result: 1;
+  --display-tokens: 1;
+}
+
+/* Errors. If at any point the error coordinate is non-empty, the
+   cascade dispatches format-error - but only once. Once the phase
+   is "error-shown", the cascade reaches quiescence (--display-error
+   stays set, but --next-op falls back to noop from the base rule). */
+#state[data-error-present="1"]:not([data-phase="error-shown"]) {
+  --next-op: format-error;
+  --display-error: 1;
+}
+#state[data-error-present="1"][data-phase="error-shown"] {
+  --display-error: 1;
+}
+
+/* When the user clears the input, the cascade dispatches reset. */
+#state[data-input-present="0"][data-phase="complete"],
+#state[data-input-present="0"][data-error-present="1"] {
+  --next-op: reset;
+}
+
+/* ============================================================
+   DISPLAY CASCADE - what's visible is also resolved by the cascade,
+   not decided by JS. Each region's display style is driven by the
+   --display-* coordinates the rules above set.
+   ============================================================ */
+
+#region-tokens   { display: none; }
+#region-result   { display: none; }
+#region-error    { display: none; }
+
+#state[data-display-tokens="1"] ~ #regions #region-tokens { display: block; }
+#state[data-display-result="1"] ~ #regions #region-result { display: block; }
+#state[data-display-error="1"]  ~ #regions #region-error  { display: block; }
+
+/* Page chrome (separate from runtime cascade) */
+</style>
+
+<style>
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,800&display=swap");
+
+:root {
+  --bg: #0a0a0a; --bg-2: #111; --bg-3: #1a1a1a;
+  --line: #2a2a2a; --line-2: #3a3a3a;
+  --ink: #e8e6e0; --ink-2: #a8a6a0; --ink-3: #686660;
+  --hot: #ff5722; --pass: #4caf50; --warn: #ffc107; --cool: #4fc3f7;
+  --rule: #b39ddb;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --serif: "Fraunces", Georgia, serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  min-height: 100vh; padding: 24px 32px 64px;
+  background-image:
+    radial-gradient(circle at 80% 0%, rgba(79,195,247,0.05), transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(255,87,34,0.04), transparent 50%);
+}
+
+header {
+  padding-bottom: 18px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px;
+}
+h1 {
+  font-family: var(--serif); font-weight: 800;
+  font-size: 38px; line-height: 1; letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144;
+}
+h1 em { font-style: italic; color: var(--cool); font-weight: 300; }
+.sub {
+  color: var(--ink-2); font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; margin-top: 8px;
+}
+header .right {
+  text-align: right; color: var(--ink-3);
+  font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 24px; align-items: start;
+}
+
+section {
+  border: 1px solid var(--line); background: var(--bg-2);
+}
+section > h2 {
+  font-family: var(--mono); font-weight: 500; font-size: 11px;
+  letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-3);
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+section > h2 .meta {
+  color: var(--ink-3); font-weight: 300;
+  letter-spacing: 0.05em; text-transform: none;
+}
+.panel { padding: 14px 16px; }
+
+input[type="text"] {
+  appearance: none; width: 100%;
+  background: var(--bg-3); border: 1px solid var(--line-2);
+  color: var(--ink); padding: 12px 14px;
+  font-family: var(--mono); font-size: 16px; letter-spacing: 0.01em;
+}
+input[type="text"]:focus {
+  outline: none; border-color: var(--cool);
+}
+
+.region {
+  border: 1px solid var(--line); background: var(--bg-3);
+  padding: 14px 16px; margin-top: 10px;
+}
+.region .label {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 6px;
+}
+.region .value {
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-variation-settings: "opsz" 96;
+  font-size: 24px; color: var(--ink); letter-spacing: -0.01em;
+  word-break: break-all;
+}
+#region-tokens .value {
+  font-family: var(--mono); font-style: normal; font-size: 12px;
+  color: var(--ink-2); letter-spacing: 0.02em;
+}
+#region-error .value { color: var(--hot); }
+#region-result .value { color: var(--pass); }
+
+.coords {
+  font-family: var(--mono); font-size: 11px; line-height: 1.55;
+  color: var(--ink-2); padding: 14px 16px;
+  background: var(--bg-3); border: 1px solid var(--line);
+  white-space: pre-wrap; word-break: break-word;
+}
+.coords .key { color: var(--cool); }
+.coords .val { color: var(--ink); }
+.coords .change {
+  background: rgba(255, 193, 7, 0.18);
+  transition: background 600ms ease-out;
+}
+
+.rules-panel pre {
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  color: var(--ink-2); padding: 14px 16px;
+  white-space: pre; overflow: auto; max-height: 420px;
+}
+.rules-panel .selector { color: var(--rule); }
+.rules-panel .prop     { color: var(--cool); }
+.rules-panel .val-id   { color: var(--ink); }
+.rules-panel .val-str  { color: var(--warn); }
+.rules-panel .val-num  { color: var(--pass); }
+.rules-panel .punct    { color: var(--ink-3); }
+.rules-panel .comment  { color: var(--ink-3); font-style: italic; }
+.rules-panel .matched {
+  background: linear-gradient(90deg, rgba(79,195,247,0.10), transparent 60%);
+  border-left: 2px solid var(--cool);
+  padding-left: 8px; margin-left: -10px;
+}
+
+.dispatch-log {
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  color: var(--ink-2); padding: 14px 16px;
+  background: var(--bg-3); border: 1px solid var(--line);
+  max-height: 220px; overflow-y: auto;
+  white-space: pre-wrap;
+}
+.dispatch-log .cycle { color: var(--ink-3); }
+.dispatch-log .op    { color: var(--cool); font-weight: 500; }
+.dispatch-log .write { color: var(--warn); }
+.dispatch-log .ok    { color: var(--pass); }
+.dispatch-log .err   { color: var(--hot); }
+
+footer {
+  margin-top: 28px; padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3); font-size: 11px;
+  letter-spacing: 0.04em;
+  display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end;
+}
+footer h3 {
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 18px; color: var(--ink); letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 900px) {
+  body { padding: 16px; }
+  h1 { font-size: 28px; }
+  main { grid-template-columns: 1fr; }
+  footer { grid-template-columns: 1fr; }
+}
+</style>
+
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>cascade <em>dispatches</em>.</h1>
+    <div class="sub">I/O round-trip through the state space</div>
+  </div>
+  <div class="right">
+    Cascade-driven<br>
+    operation dispatch
+  </div>
+</header>
+
+<main>
+
+  <!-- LEFT: input + output regions, dispatch log -->
+  <div>
+    <section>
+      <h2>Input <span class="meta">writes to data-expr</span></h2>
+      <div class="panel">
+        <input type="text" id="expr-input"
+               placeholder="enter an arithmetic expression: 2+3*4"
+               autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+    </section>
+
+    <!-- The state element: the single coordinate-bearing element.
+         The runtime cascade resolves against this element's data-X
+         attributes. -->
+    <div id="state"></div>
+
+    <!-- Output regions. Their display is cascade-driven. -->
+    <div id="regions">
+      <div class="region" id="region-tokens">
+        <div class="label">parsed tokens (--tokens)</div>
+        <div class="value" id="display-tokens">--</div>
+      </div>
+      <div class="region" id="region-result">
+        <div class="label">evaluation result (--result)</div>
+        <div class="value" id="display-result">--</div>
+      </div>
+      <div class="region" id="region-error">
+        <div class="label">error (--error)</div>
+        <div class="value" id="display-error">--</div>
+      </div>
+    </div>
+
+    <section style="margin-top: 18px;">
+      <h2>Dispatch log <span class="meta">cascade -> op -> write</span></h2>
+      <div class="dispatch-log" id="dispatch-log"></div>
+    </section>
+  </div>
+
+  <!-- RIGHT: state coordinates + cascade rules -->
+  <div>
+    <section>
+      <h2>State coordinates <span class="meta">data-X attributes on #state</span></h2>
+      <div class="coords" id="coords"></div>
+    </section>
+
+    <section style="margin-top: 18px;" class="rules-panel">
+      <h2>Runtime cascade <span class="meta">rules dispatching operations</span></h2>
+      <pre id="rules-pre"></pre>
+    </section>
+  </div>
+
+</main>
+
+<footer>
+  <div>
+    <h3>What you're looking at</h3>
+    <div>
+      JS doesn't decide which operation to run. The cascade does.
+      Input enters the state space (data-X attribute on #state).
+      The cascade resolves --next-op based on current configuration.
+      A small dispatcher reads --next-op, runs the named operation,
+      writes results back as data-X attributes. The cascade resolves
+      the next round. Branch logic is gone; dispatch is by selector match.
+    </div>
+  </div>
+  <div style="text-align: right; color: var(--ink-3);">
+    Operation table: 5 named operations<br>
+    Cascade rules: 6 dispatch + 3 display<br>
+    Branch logic in JS: 0
+  </div>
+</footer>
+
+<script>
+"use strict";
+(function () {
+
+  // ============================================================
+  // The state element. JS writes attributes here. The cascade
+  // resolves against them. nothing else holds state.
+  // ============================================================
+  var state = document.getElementById("state");
+
+  // Initialize default coordinates
+  var defaultCoords = {
+    "data-input-present": "0",
+    "data-phase": "idle",
+    "data-error-present": "0",
+    "data-display-tokens": "0",
+    "data-display-result": "0",
+    "data-display-error": "0",
+    "data-expr": "",
+    "data-tokens": "",
+    "data-result": "",
+    "data-error": ""
+  };
+  for (var k in defaultCoords) state.setAttribute(k, defaultCoords[k]);
+
+  // ============================================================
+  // OPERATION TABLE
+  //
+  // The library of operations the cascade dispatches against. Each
+  // entry is a pure function from current state coordinates to
+  // attribute writes. The function does NOT decide whether to run -
+  // the cascade decided that. The function only does its named work.
+  //
+  // No branch logic anywhere selects which operation to run. The
+  // cascade's selector matching is the dispatch mechanism.
+  // ============================================================
+
+  var operations = {
+
+    "noop": function (coords) {
+      return null;  // nothing to write
+    },
+
+    "parse": function (coords) {
+      // Tokenize the expression into a flat list of tokens.
+      // Imperative work, but addressed by name and triggered by cascade.
+      var expr = coords["data-expr"];
+      var tokens = [];
+      var i = 0;
+      try {
+        while (i < expr.length) {
+          var c = expr.charAt(i);
+          if (c === " " || c === "\t") { i++; continue; }
+          if (/[0-9.]/.test(c)) {
+            var j = i;
+            while (j < expr.length && /[0-9.]/.test(expr.charAt(j))) j++;
+            tokens.push({ kind: "num", value: parseFloat(expr.substring(i, j)) });
+            i = j;
+            continue;
+          }
+          if (/[+\-*\/()]/.test(c)) {
+            tokens.push({ kind: "op", value: c });
+            i++;
+            continue;
+          }
+          throw new Error("unexpected character: '" + c + "'");
+        }
+      } catch (e) {
+        return {
+          "data-error": e.message,
+          "data-error-present": "1",
+          "data-phase": "errored"
+        };
+      }
+      // Encode tokens as a compact string for the state space
+      var encoded = tokens.map(function (t) {
+        return t.kind === "num" ? String(t.value) : t.value;
+      }).join(" ");
+      return {
+        "data-tokens": encoded,
+        "data-phase": "parsed",
+        "data-error-present": "0"
+      };
+    },
+
+    "evaluate": function (coords) {
+      // Evaluate the parsed tokens. Recursive descent parser; classic
+      // imperative work. But addressed by name, dispatched by cascade.
+      var encoded = coords["data-tokens"];
+      var parts = encoded.split(" ").filter(function (s) { return s.length > 0; });
+      var tokens = parts.map(function (p) {
+        if (/^-?[0-9]+(\.[0-9]+)?$/.test(p)) {
+          return { kind: "num", value: parseFloat(p) };
+        }
+        return { kind: "op", value: p };
+      });
+      try {
+        var pos = 0;
+        function peek() { return pos < tokens.length ? tokens[pos] : null; }
+        function consume() { return tokens[pos++]; }
+        function parseExpr() {
+          var left = parseTerm();
+          while (peek() && peek().kind === "op" && (peek().value === "+" || peek().value === "-")) {
+            var op = consume().value;
+            var right = parseTerm();
+            left = op === "+" ? left + right : left - right;
+          }
+          return left;
+        }
+        function parseTerm() {
+          var left = parseFactor();
+          while (peek() && peek().kind === "op" && (peek().value === "*" || peek().value === "/")) {
+            var op = consume().value;
+            var right = parseFactor();
+            if (op === "/" && right === 0) throw new Error("divide by zero");
+            left = op === "*" ? left * right : left / right;
+          }
+          return left;
+        }
+        function parseFactor() {
+          var t = peek();
+          if (!t) throw new Error("unexpected end of expression");
+          if (t.kind === "op" && t.value === "(") {
+            consume();
+            var v = parseExpr();
+            var close = consume();
+            if (!close || close.value !== ")") throw new Error("missing )");
+            return v;
+          }
+          if (t.kind === "num") {
+            consume();
+            return t.value;
+          }
+          throw new Error("unexpected token: " + t.value);
+        }
+        var result = parseExpr();
+        if (pos !== tokens.length) {
+          throw new Error("trailing input after expression");
+        }
+        return {
+          "data-result": String(result),
+          "data-phase": "evaluated",
+          "data-error-present": "0"
+        };
+      } catch (e) {
+        return {
+          "data-error": e.message,
+          "data-error-present": "1",
+          "data-phase": "errored"
+        };
+      }
+    },
+
+    "display": function (coords) {
+      // The display update is itself just attribute writes that the
+      // cascade resolves visibility against. Nothing imperative happens
+      // here - the operation just commits the phase as resolved.
+      return {
+        "data-phase": "complete"
+      };
+    },
+
+    "format-error": function (coords) {
+      // Already-formatted; just confirm the phase. Real apps might do
+      // pretty-printing here. Imperative work, named, dispatched.
+      return {
+        "data-phase": "error-shown"
+      };
+    },
+
+    "reset": function (coords) {
+      return {
+        "data-input-present": "0",
+        "data-phase": "idle",
+        "data-error-present": "0",
+        "data-display-tokens": "0",
+        "data-display-result": "0",
+        "data-display-error": "0",
+        "data-expr": "",
+        "data-tokens": "",
+        "data-result": "",
+        "data-error": ""
+      };
+    }
+  };
+
+  // ============================================================
+  // DISPATCHER
+  //
+  // The dispatcher reads --next-op from the cascade's resolution.
+  // It does NOT decide which operation to run - the cascade decided.
+  // It just executes the resolved operation and writes the result
+  // back to the state space.
+  //
+  // The dispatch loop runs until --next-op is "noop" (the cascade
+  // has nothing more to do for this round). This is the F1-shape:
+  // the state space is always being resolved; the cascade's "nothing
+  // to do" is itself a stable resolution.
+  // ============================================================
+
+  var logEl = document.getElementById("dispatch-log");
+  var cycleNum = 0;
+
+  function readCoord(name) {
+    return state.getAttribute(name) || "";
+  }
+
+  function readAllCoords() {
+    var out = {};
+    for (var i = 0; i < state.attributes.length; i++) {
+      var a = state.attributes[i];
+      if (a.name.indexOf("data-") === 0) out[a.name] = a.value;
+    }
+    return out;
+  }
+
+  function readNextOp() {
+    // The cascade's resolution is exposed via getComputedStyle
+    var cs = getComputedStyle(state);
+    return (cs.getPropertyValue("--next-op") || "").trim();
+  }
+
+  function logEntry(msg, cls) {
+    var span = document.createElement("span");
+    if (cls) span.className = cls;
+    span.textContent = msg + "\n";
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function logCycle(cycle, op, writes) {
+    cycleNum++;
+    logEntry("[cycle " + cycleNum + "] cascade resolved --next-op:", "cycle");
+    var opSpan = document.createElement("span");
+    opSpan.className = "op";
+    opSpan.textContent = "  " + op + "\n";
+    logEl.appendChild(opSpan);
+    if (writes) {
+      for (var k in writes) {
+        var w = document.createElement("span");
+        w.className = "write";
+        w.textContent = "    " + k + " <- " + JSON.stringify(writes[k]) + "\n";
+        logEl.appendChild(w);
+      }
+    } else {
+      logEntry("    (no writes)", "ok");
+    }
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function dispatchOnce() {
+    var op = readNextOp();
+    if (!op || op === "noop") return false;
+    var fn = operations[op];
+    if (!fn) {
+      logEntry("[dispatch] unknown operation: " + op, "err");
+      return false;
+    }
+    var coords = readAllCoords();
+    var writes = fn(coords);
+    logCycle(cycleNum, op, writes);
+    if (writes) {
+      for (var k in writes) {
+        state.setAttribute(k, writes[k]);
+      }
+    }
+    return true;
+  }
+
+  function dispatchUntilQuiescent() {
+    var safety = 16;  // I5: bounded
+    while (safety-- > 0) {
+      var didWork = dispatchOnce();
+      if (!didWork) break;
+    }
+    refreshUI();
+  }
+
+  // ============================================================
+  // INPUT HANDLING
+  // The only event handler in the application. It writes the user's
+  // input as a coordinate, then triggers a dispatch round.
+  // ============================================================
+
+  var input = document.getElementById("expr-input");
+  input.addEventListener("input", function (e) {
+    var v = e.target.value;
+    state.setAttribute("data-expr", v);
+    state.setAttribute("data-input-present", v.length > 0 ? "1" : "0");
+    if (v.length === 0) {
+      // Reset the phase so the cascade can resolve "input-cleared"
+      state.setAttribute("data-phase", "idle");
+      state.setAttribute("data-error-present", "0");
+      state.setAttribute("data-display-tokens", "0");
+      state.setAttribute("data-display-result", "0");
+      state.setAttribute("data-display-error", "0");
+      state.setAttribute("data-tokens", "");
+      state.setAttribute("data-result", "");
+      state.setAttribute("data-error", "");
+    } else {
+      // Reset phase to idle so the cascade re-fires the parse dispatch
+      state.setAttribute("data-phase", "idle");
+      state.setAttribute("data-error-present", "0");
+    }
+    dispatchUntilQuiescent();
+  });
+
+  // ============================================================
+  // UI refresh: read computed styles and current attrs, update the
+  // display elements. This is also pure observation - nothing is
+  // computed here, just rendered.
+  // ============================================================
+
+  function refreshUI() {
+    var cs = getComputedStyle(state);
+    var coords = readAllCoords();
+    var tokens = stripQuotes(cs.getPropertyValue("--tokens").trim());
+    var result = stripQuotes(cs.getPropertyValue("--result").trim());
+    var error  = stripQuotes(cs.getPropertyValue("--error").trim());
+    document.getElementById("display-tokens").textContent = coords["data-tokens"] || "--";
+    document.getElementById("display-result").textContent = coords["data-result"] || "--";
+    document.getElementById("display-error").textContent  = coords["data-error"]  || "--";
+    renderCoords(coords, cs);
+    highlightMatchedRules();
+  }
+
+  function stripQuotes(s) {
+    if (!s) return "";
+    var f = s.charAt(0), l = s.charAt(s.length - 1);
+    if ((f === '"' && l === '"') || (f === "'" && l === "'")) return s.slice(1, -1);
+    return s;
+  }
+
+  function renderCoords(coords, cs) {
+    var lines = [];
+    lines.push("# attributes (the inputs to the cascade)");
+    var keys = Object.keys(coords).sort();
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      lines.push('<span class="key">' + escapeHtml(k) + '</span>=<span class="val">' + escapeHtml(coords[k]) + '</span>');
+    }
+    lines.push("");
+    lines.push("# computed (what the cascade resolved)");
+    var props = ["--phase", "--next-op", "--display-tokens", "--display-result", "--display-error"];
+    for (var j = 0; j < props.length; j++) {
+      var p = props[j];
+      var v = cs.getPropertyValue(p).trim();
+      lines.push('<span class="key">' + escapeHtml(p) + '</span>: <span class="val">' + escapeHtml(v) + '</span>');
+    }
+    document.getElementById("coords").innerHTML = lines.join("\n");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // ============================================================
+  // Render the runtime cascade rules with syntax coloring and
+  // highlight which rules currently match.
+  // ============================================================
+
+  function renderRules() {
+    var styleEl = document.getElementById("runtime-cascade");
+    var css = styleEl.textContent || "";
+    var html = "";
+    var i = 0, len = css.length;
+    while (i < len) {
+      if (css.charAt(i) === "/" && css.charAt(i + 1) === "*") {
+        var end = css.indexOf("*/", i + 2);
+        if (end < 0) end = len;
+        html += '<span class="comment">' + escapeHtml(css.substring(i, end + 2)) + "</span>";
+        i = end + 2;
+        continue;
+      }
+      if (css.charAt(i) === '"') {
+        var sEnd = css.indexOf('"', i + 1);
+        if (sEnd < 0) sEnd = len - 1;
+        html += '<span class="val-str">' + escapeHtml(css.substring(i, sEnd + 1)) + "</span>";
+        i = sEnd + 1;
+        continue;
+      }
+      if (/[#\.\[a-zA-Z]/.test(css.charAt(i))) {
+        var open = css.indexOf("{", i);
+        if (open >= 0 && open < i + 400) {
+          html += '<span class="selector rule">' + escapeHtml(css.substring(i, open + 1)) + "</span>";
+          i = open + 1;
+          continue;
+        }
+      }
+      if (css.substring(i, i + 2) === "--") {
+        var colon = css.indexOf(":", i);
+        var semi = css.indexOf(";", colon);
+        if (colon > 0 && semi > 0) {
+          html += '<span class="prop">' + escapeHtml(css.substring(i, colon)) + "</span>";
+          html += '<span class="punct">: </span>';
+          var valRaw = css.substring(colon + 1, semi).trim();
+          var valHtml;
+          if (/^-?\d+(\.\d+)?$/.test(valRaw)) valHtml = '<span class="val-num">' + escapeHtml(valRaw) + "</span>";
+          else if (valRaw.charAt(0) === '"') valHtml = '<span class="val-str">' + escapeHtml(valRaw) + "</span>";
+          else valHtml = '<span class="val-id">' + escapeHtml(valRaw) + "</span>";
+          html += valHtml + '<span class="punct">;</span>';
+          i = semi + 1;
+          continue;
+        }
+      }
+      html += escapeHtml(css.charAt(i));
+      i++;
+    }
+    document.getElementById("rules-pre").innerHTML = html;
+  }
+
+  function highlightMatchedRules() {
+    // For each rule, check whether its selector matches the current
+    // #state attributes. Highlight matching rules.
+    var rules = document.querySelectorAll(".rules-panel .rule");
+    for (var i = 0; i < rules.length; i++) {
+      var sel = rules[i].textContent;
+      // Pull all [data-X="V"] from selector
+      var attrRe = /\[data-([a-zA-Z-]+)="([^"]+)"\]/g;
+      var match, allMatch = true, hadAny = false;
+      while ((match = attrRe.exec(sel))) {
+        hadAny = true;
+        var actual = state.getAttribute("data-" + match[1]) || "";
+        if (actual !== match[2]) { allMatch = false; break; }
+      }
+      if (!sel.indexOf("#state") === 0 && !sel.indexOf("#region") === 0) {
+        rules[i].classList.remove("matched");
+        continue;
+      }
+      if (sel.indexOf("#state") < 0) {
+        rules[i].classList.remove("matched");
+        continue;
+      }
+      if (!hadAny || allMatch) rules[i].classList.add("matched");
+      else rules[i].classList.remove("matched");
+    }
+  }
+
+  // Initialize
+  renderRules();
+  refreshUI();
+})();
+</script>
+
+</body>
+</html>

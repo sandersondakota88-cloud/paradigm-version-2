@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rich Substrate Duel · 15 Abilities + Meta-Substrate Coupling</title>
+<style>
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: white; color: #111;
+    padding: 14px; max-width: 1400px; margin: 0 auto;
+    font-size: 11px; line-height: 1.45;
+  }
+  h1 { font-size: 13px; letter-spacing: 2px; margin: 0 0 12px 0; }
+  h2 { font-size: 10px; letter-spacing: 1px; margin: 0 0 6px 0; color: #555; text-transform: uppercase; }
+  h3 { font-size: 10px; margin: 0 0 6px 0; color: #333; }
+  .box { border: 1px solid #999; padding: 10px 12px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-meta { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 10px; }
+  .col { flex: 1; }
+  .hp-bar { height: 14px; border: 1px solid #999; background: #f0f0f0; margin-top: 2px; }
+  .hp-fill { height: 100%; transition: width 0.2s; }
+  .hp-fill.a { background: #2c5a8a; }
+  .hp-fill.b { background: #8a4a2c; }
+  .log {
+    height: 320px; overflow-y: auto;
+    background: #fafafa; padding: 8px;
+    font-size: 10px; line-height: 1.4;
+    border: 1px solid #ccc;
+  }
+  .log div { margin-bottom: 1px; }
+  .log .a { color: #2c5a8a; }
+  .log .b { color: #8a4a2c; }
+  .log .sys { color: #666; }
+  .log .meta { color: #6a3a8a; }
+  .log .crit { color: #c25500; font-weight: 700; }
+  .log .miss { color: #888; font-style: italic; }
+  .log .promote { color: #5a2a8a; font-weight: 700; }
+  .log .ratify { color: #1a4f8a; }
+  button {
+    font-family: inherit; font-size: 11px; padding: 7px 12px; margin-right: 4px;
+    border: 1px solid #888; background: #f8f8f8; cursor: pointer; letter-spacing: 1px;
+  }
+  button:hover:not(:disabled) { background: #e8e8e8; }
+  button:disabled { color: #aaa; cursor: not-allowed; background: #fcfcfc; }
+  .stat { font-size: 10px; color: #777; }
+  .note { font-size: 9px; color: #999; margin-top: 6px; }
+  .substrate-box {
+    border: 1px solid #bbb; padding: 6px; background: #fbfbfd;
+    font-size: 10px;
+  }
+  .substrate-box.meta { border-color: #6a3a8a; background: #f8f4fc; }
+  .substrate-box h2 { color: #444; margin-bottom: 3px; font-size: 9px; }
+  .substrate-box.meta h2 { color: #6a3a8a; }
+  .substrate-box .out {
+    font-weight: 700; color: #222;
+    padding: 1px 3px; background: #f0f0f4; display: inline-block; font-size: 9px;
+  }
+  .substrate-box .stats { font-size: 9px; color: #666; }
+  .ability-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font-size: 9px; }
+  .ability-cell {
+    padding: 3px 4px; border: 1px solid #ddd; background: #fafafa;
+    border-radius: 2px;
+  }
+  .ability-cell.cd { background: #fbe8e8; color: #888; }
+  .ability-cell.ready { background: #eaf6ec; }
+  .ability-name { font-weight: 700; }
+  .ability-state { font-size: 8px; color: #888; }
+  .effect-list { font-size: 9px; color: #666; }
+  .effect-active {
+    display: inline-block; padding: 1px 5px; background: #fef0d8; border-radius: 2px;
+    margin-right: 4px; margin-top: 2px;
+  }
+  table { width: 100%; }
+  .report-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .report-table th, .report-table td { padding: 4px 6px; border: 1px solid #ddd; text-align: left; }
+  .report-table th { background: #f0f0f0; font-size: 9px; letter-spacing: 1px; }
+  .report-table .winner-a { background: #e8f0f8; }
+  .report-table .winner-b { background: #f8efe8; }
+</style>
+</head>
+<body>
+
+<!-- Player A and B probes for each upstream substrate, plus meta probe -->
+<div style="position:absolute;left:-9999px;top:-9999px;">
+  <div id="probe-a-pres"></div><div id="probe-a-threat"></div>
+  <div id="probe-a-dbecon"></div><div id="probe-a-exploit"></div>
+  <div id="probe-a-router"></div>
+  <div id="probe-b-pres"></div><div id="probe-b-threat"></div>
+  <div id="probe-b-dbecon"></div><div id="probe-b-exploit"></div>
+  <div id="probe-b-router"></div>
+  <div id="probe-meta"></div>
+</div>
+<style id="cascade-a-pres"></style><style id="cascade-a-threat"></style>
+<style id="cascade-a-dbecon"></style><style id="cascade-a-exploit"></style>
+<style id="cascade-a-router"></style>
+<style id="cascade-b-pres"></style><style id="cascade-b-threat"></style>
+<style id="cascade-b-dbecon"></style><style id="cascade-b-exploit"></style>
+<style id="cascade-b-router"></style>
+<style id="cascade-meta"></style>
+
+<h1>RICH SUBSTRATE DUEL · 15 ABILITIES · META-SUBSTRATE COUPLED</h1>
+
+<div class="box">
+  <div class="row">
+    <div class="col">
+      Round <strong id="round">1</strong> of 10 ·
+      A <strong id="score-a">0</strong> ·
+      B <strong id="score-b">0</strong>
+    </div>
+    <div class="col" style="text-align:right;">
+      <span class="stat" id="status">ready</span>
+    </div>
+  </div>
+</div>
+
+<div class="row-2">
+  <div class="box">
+    <h3>Player A &middot; HP <strong id="a-hp">200</strong> / 200</h3>
+    <div class="hp-bar"><div class="hp-fill a" id="a-bar" style="width:100%"></div></div>
+    <div class="effect-list" id="a-effects" style="margin-top:4px">&nbsp;</div>
+    <div style="margin-top:8px"><strong style="font-size:9px">Abilities</strong></div>
+    <div class="ability-grid" id="a-abilities"></div>
+  </div>
+  <div class="box">
+    <h3>Player B &middot; HP <strong id="b-hp">200</strong> / 200</h3>
+    <div class="hp-bar"><div class="hp-fill b" id="b-bar" style="width:100%"></div></div>
+    <div class="effect-list" id="b-effects" style="margin-top:4px">&nbsp;</div>
+    <div style="margin-top:8px"><strong style="font-size:9px">Abilities</strong></div>
+    <div class="ability-grid" id="b-abilities"></div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Controls</h2>
+  <button id="btn-run">RUN SIMULATION (10 rounds)</button>
+  <button id="btn-step">SINGLE TURN</button>
+  <button id="btn-reset">RESET</button>
+  <button id="btn-copy">COPY ALL DATA</button>
+  <span class="stat" id="copy-confirm" style="margin-left:8px; color: #2c8a4a; font-weight:700;"></span>
+  <span class="stat" id="speed-info" style="margin-left:12px;">turn speed: <input type="range" id="speed-slider" min="0" max="500" value="20" style="vertical-align:middle"> <span id="speed-val">20ms</span></span>
+</div>
+
+<div class="row-meta">
+  <div class="box">
+    <h3>Player A substrates</h3>
+    <div id="a-subs"></div>
+    <div style="margin-top:6px;font-size:9px"><strong>Router:</strong> <span id="a-router-out">—</span> <span class="stat">tier: <span id="a-router-tier">—</span></span></div>
+  </div>
+  <div class="box">
+    <h3>Meta-substrate (cross-lattice coupling)</h3>
+    <div id="meta-sub"></div>
+    <div class="note">Observes ratification events from both lattices. Produces tokens each lattice reads as additional input. Has its own field, seed, dynamics.</div>
+  </div>
+  <div class="box">
+    <h3>Player B substrates</h3>
+    <div id="b-subs"></div>
+    <div style="margin-top:6px;font-size:9px"><strong>Router:</strong> <span id="b-router-out">—</span> <span class="stat">tier: <span id="b-router-tier">—</span></span></div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Combat log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="box">
+  <h2>Round-by-round report</h2>
+  <table class="report-table" id="report-table">
+    <thead><tr><th>Round</th><th>Winner</th><th>Turns</th><th>A · cons / rat / sub</th><th>B · cons / rat / sub</th><th>Meta · cons / rat / sub</th></tr></thead>
+    <tbody id="report-body"></tbody>
+  </table>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+// ============================================================================
+// CONFIGURATION
+// Moderate parameters between fast-heat-up and slow-burn. Both players
+// use the same config so any difference in outcome traces to play
+// dynamics rather than parameter asymmetry.
+// ============================================================================
+const CFG = {
+  FIELD_LIVE_CAP: 80, FIELD_AGED_CAP: 40, TRACE_CAP: 200,
+  CORR_CAP: 100, SUB_CASCADE_CAP: 12,
+  FAST_WINDOW: 8, FAST_DECAY: 0.85, SLOW_STEP: 0.005,
+  GEN_NOVELTY_THRESH: 0.25, GAP_PREDICT_THRESH: 0.10,
+  PRED_MAX_NEW_PER_STEP: 1, PRED_AGE_LIMIT: 16, PRED_WEIGHT_BOOST: 1.8,
+  // Moderate ratification: 2 confirmations across distinct contexts.
+  RATIFY_REQUIRED_CONFIRMATIONS: 2,
+  CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 2,
+  FIDELITY_WINDOW: 5, FIDELITY_PROMOTE: 0.018, FIDELITY_MIN_FIRES: 2
+};
+
+// ============================================================================
+// THE 15 ABILITIES
+// Each carries: cooldown, effect signature, damage profile, special behavior.
+// The substrate observes the player's ability choice each turn and can
+// learn patterns about which abilities follow which.
+// ============================================================================
+const ABILITIES = [
+  // Baseline damage and recovery
+  { id: 'atk',     name: 'Attack',         cd: 0,  desc: '10 ±3 dmg, no cd' },
+  { id: 'heavy',   name: 'Heavy Strike',   cd: 4,  desc: '18-24 dmg, 4t cd' },
+  { id: 'heal',    name: 'Heal',           cd: 3,  desc: '15-20 hp, 3t cd' },
+  { id: 'hot',     name: 'Heal-over-Time', cd: 8,  desc: '5hp/t for 6t, 8t cd' },
+  // Damage-over-time and execution
+  { id: 'dot',     name: 'Damage-over-Time', cd: 5, desc: '8 dmg/t × 4t (drops off), 5t cd' },
+  { id: 'execute', name: 'Execute',        cd: 0,  desc: '40-60 dmg, 35% hit, no cd' },
+  // Buffs and stances
+  { id: 'critch',  name: 'Crit Chance Buff', cd: 20, desc: 'crit 10→40% for 3t, 20t cd' },
+  { id: 'critdmg', name: 'Crit Dmg Buff',  cd: 20, desc: 'crit ×1.75→×2.5 for 3t, 20t cd' },
+  { id: 'evade',   name: 'Evasion',        cd: 8,  desc: 'incoming +25% miss for 4t, 8t cd' },
+  { id: 'shield',  name: 'Shield',         cd: 12, desc: 'absorbs 50 dmg over 8t, 12t cd' },
+  { id: 'counter', name: 'Counter Stance', cd: 10, desc: 'reflect 50% for 2t, 10t cd' },
+  { id: 'sustain', name: 'Sustain Stance', cd: 15, desc: '+5hp/t, -50% dmg dealt, 4t, 15t cd' },
+  // Disruption and utility
+  { id: 'debuff',  name: 'Debuff',         cd: 6,  desc: 'opp +35% miss for 5t, 6t cd' },
+  { id: 'blind',   name: 'Blind',          cd: 10, desc: 'opp misses next turn, 10t cd' },
+  { id: 'drain',   name: 'Drain',          cd: 6,  desc: '8-12 dmg, heal half, 6t cd' },
+  { id: 'cleanse', name: 'Cleanse',        cd: 12, desc: 'remove all debuffs+dots, 12t cd' }
+];
+// 16 total — gives more room than 15 and the substrate can prefer some over others.
+
+// ============================================================================
+// GUARDS
+// ============================================================================
+const Guards = {
+  ATTR_VALUE: /^[A-Za-z0-9_.-]{1,64}$/,
+  cssEscapeString(s) {
+    s = String(s == null ? '' : s);
+    if (s.length > 256) s = s.slice(0, 256);
+    let out = '"';
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x20 || c === 0x7F) out += '\\' + c.toString(16) + ' ';
+      else if (c === 0x22 || c === 0x5C) out += '\\' + s.charAt(i);
+      else if (c > 0x7E) out += '\\' + c.toString(16) + ' ';
+      else out += s.charAt(i);
+    }
+    return out + '"';
+  },
+  clamp01(n) { n = +n; if (!isFinite(n)) return 0; return n < 0 ? 0 : (n > 1 ? 1 : n); }
+};
+
+// ============================================================================
+// SUBSTRATE FACTORY (shared infrastructure)
+// Each substrate uses this. The meta-substrate uses it too — it is just
+// a substrate whose input is ratification events from elsewhere instead of
+// game actions. The architecture is uniform across all substrates.
+// ============================================================================
+function makeSubstrate(spec) {
+  const SEED = Object.freeze({
+    id: spec.seedId, kind: 'seed', pattern: null,
+    birth: 0, uses: 0, weight: 1.0, permanent: true
+  });
+  const F = {
+    name: spec.name, step: 0,
+    constraints: [Object.assign({}, SEED, { id: SEED.id })],
+    aged: [], nextId: 1,
+    substrate: { fast: 0, slow: 0 },
+    vectorDelta: { scalar: 1.0, fast: 1.0, slow: 1.0, gap: 0 },
+    recentOps: [], trace: [],
+    subcascades: [], familyFidelity: {}, correlations: {},
+    ctRules: [], ratified: 0, evicted: 0,
+    lastOutput: null, spec: spec
+  };
+
+  function computeDelta(pop) {
+    if (!pop || !pop.length) return 1.0;
+    let unresolved = 0, total = 0;
+    for (const c of pop) {
+      total++;
+      if (c.kind === 'seed') continue;
+      if (c.kind === 'predictive') { unresolved++; continue; }
+      if (c.uses === 0) unresolved++;
+    }
+    return total === 0 ? 1.0 : unresolved / total;
+  }
+  function computeFastDelta() {
+    if (!F.recentOps.length) return F.vectorDelta.fast;
+    let u = 0;
+    for (const op of F.recentOps) if (!op.matched || !op.matched.length) u++;
+    return u / F.recentOps.length;
+  }
+  function refreshDelta() {
+    const s = computeDelta(F.constraints);
+    const f = computeFastDelta();
+    F.vectorDelta.scalar = s; F.vectorDelta.fast = f;
+    F.vectorDelta.slow = Guards.clamp01(F.vectorDelta.slow + (s - F.vectorDelta.slow) * (CFG.SLOW_STEP * 10));
+    F.vectorDelta.gap = Math.abs(f - F.vectorDelta.slow);
+  }
+  function modulate(dC) {
+    const sign = -Math.sign(dC); const mag = Math.min(Math.abs(dC), 0.15);
+    F.substrate.fast = Guards.clamp01(F.substrate.fast + sign * mag);
+    F.substrate.slow = Guards.clamp01(F.substrate.slow + sign * CFG.SLOW_STEP);
+  }
+  function appendTrace(op, detail) {
+    F.trace.push({ step: F.step, op, detail });
+    if (F.trace.length > CFG.TRACE_CAP) F.trace.shift();
+  }
+  function tokenize(text) {
+    if (!text) return [];
+    return text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).slice(0, 16);
+  }
+  function novelty(input) {
+    if (!input.tokens.length) return 0;
+    let n = 0;
+    for (const t of input.tokens) {
+      let known = false;
+      for (const c of F.constraints) {
+        if (!c.pattern) continue;
+        if (c.pattern.kind === 'has-token' && c.pattern.token === t) { known = true; break; }
+        if (c.pattern.kind === 'co-occurs' && (c.pattern.a === t || c.pattern.b === t)) { known = true; break; }
+      }
+      if (!known) n++;
+    }
+    return n / input.tokens.length;
+  }
+  function issueId(kind) { return spec.name + '-' + (F.nextId++) + '-' + kind.slice(0, 4); }
+  function addConstraint(c) {
+    if (F.constraints.length >= CFG.FIELD_LIVE_CAP) {
+      let evIdx = -1, evW = Infinity;
+      for (let i = 1; i < F.constraints.length; i++) {
+        const x = F.constraints[i];
+        if (x.permanent || x.kind === 'predictive') continue;
+        if (x.weight < evW) { evW = x.weight; evIdx = i; }
+      }
+      if (evIdx >= 0) {
+        F.aged.push(F.constraints.splice(evIdx, 1)[0]);
+        if (F.aged.length > CFG.FIELD_AGED_CAP) F.aged.shift();
+      }
+    }
+    F.constraints.push(c);
+  }
+  function genDerived(input) {
+    for (const tok of input.tokens) {
+      if (!Guards.ATTR_VALUE.test(tok)) continue;
+      let exists = false;
+      for (const c of F.constraints) {
+        if (c.pattern && c.pattern.kind === 'has-token' && c.pattern.token === tok) { exists = true; break; }
+      }
+      if (exists) continue;
+      addConstraint({
+        id: issueId('drv'), kind: 'derived',
+        pattern: { kind: 'has-token', token: tok },
+        birth: F.step, uses: 0, weight: 1.0
+      });
+      appendTrace('gen-derived', tok);
+      return;
+    }
+  }
+  function genPredictive(input) {
+    if (F.vectorDelta.gap < CFG.GAP_PREDICT_THRESH) return;
+    let made = 0;
+    const recent = F.constraints.filter(c =>
+      c.kind === 'derived' && c.pattern && c.pattern.kind === 'has-token' && F.step - c.birth < 8
+    );
+    for (const seed of recent) {
+      if (made >= CFG.PRED_MAX_NEW_PER_STEP) break;
+      const tokA = seed.pattern.token;
+      const seen = [];
+      for (const op of F.recentOps) {
+        for (const t of (op.input.tokens || [])) {
+          if (t !== tokA && seen.indexOf(t) === -1) seen.push(t);
+        }
+      }
+      if (!seen.length) continue;
+      const tokB = seen[Math.floor(Math.random() * seen.length)];
+      if (!Guards.ATTR_VALUE.test(tokB)) continue;
+      let dup = false;
+      for (const c of F.constraints) {
+        if (c.kind === 'predictive' && c.pattern && c.pattern.kind === 'co-occurs' &&
+            ((c.pattern.a === tokA && c.pattern.b === tokB) || (c.pattern.a === tokB && c.pattern.b === tokA))) {
+          dup = true; break;
+        }
+      }
+      if (dup) continue;
+      addConstraint({
+        id: issueId('prd'), kind: 'predictive',
+        pattern: { kind: 'co-occurs', a: tokA, b: tokB },
+        birth: F.step, uses: 0, weight: 1.0,
+        ageLimit: F.step + CFG.PRED_AGE_LIMIT,
+        confirmations: 0, contextSet: new Set()
+      });
+      appendTrace('gen-predict', tokA + '+' + tokB);
+      made++;
+    }
+  }
+  function evalPattern(c, input) {
+    if (!c.pattern) return false;
+    const p = c.pattern;
+    if (p.kind === 'has-token') return input.tokens.indexOf(p.token) !== -1;
+    if (p.kind === 'co-occurs') return input.tokens.indexOf(p.a) !== -1 && input.tokens.indexOf(p.b) !== -1;
+    return false;
+  }
+  function ratify(input) {
+    // Confirmations across distinct contexts. Two confirmations needed.
+    const ctxKey = input.tokens.slice().sort().join(',').slice(0, 80);
+    for (const c of F.constraints) {
+      if (c.kind !== 'predictive') continue;
+      if (evalPattern(c, input)) {
+        if (!c.contextSet) c.contextSet = new Set();
+        c.contextSet.add(ctxKey);
+        c.confirmations = (c.confirmations || 0) + 1;
+        if (c.contextSet.size >= CFG.RATIFY_REQUIRED_CONFIRMATIONS) {
+          c.kind = 'ratified';
+          c.weight = Math.min(c.weight * CFG.PRED_WEIGHT_BOOST, 5.0);
+          c.uses++; c.lastUsed = F.step;
+          F.ratified++;
+          appendTrace('ratify', c.id);
+          if (spec.onRatify) spec.onRatify(c, F);
+        }
+      }
+    }
+  }
+  function ageOut() {
+    for (let i = F.constraints.length - 1; i >= 1; i--) {
+      const c = F.constraints[i];
+      if (c.kind !== 'predictive') continue;
+      if (c.ageLimit && F.step >= c.ageLimit) {
+        F.aged.push(F.constraints.splice(i, 1)[0]);
+        if (F.aged.length > CFG.FIELD_AGED_CAP) F.aged.shift();
+        F.evicted++;
+        appendTrace('evict', c.id);
+      }
+    }
+  }
+  function matchField(input) {
+    const matched = [];
+    for (const c of F.constraints) {
+      if (c.kind === 'seed') { matched.push(c); c.uses++; continue; }
+      if (!c.pattern) continue;
+      if (evalPattern(c, input)) {
+        matched.push(c); c.uses++; c.lastUsed = F.step;
+        c.weight = Math.min(c.weight + 0.05, 5.0);
+      }
+    }
+    if (matched.length >= 2) {
+      for (let i = 0; i < matched.length; i++) {
+        for (let j = i + 1; j < matched.length; j++) {
+          const a = matched[i].id, b = matched[j].id;
+          const key = a < b ? a + '|' + b : b + '|' + a;
+          if (!F.correlations[key]) F.correlations[key] = { count: 0, last: F.step };
+          F.correlations[key].count++;
+          F.correlations[key].last = F.step;
+        }
+      }
+      const keys = Object.keys(F.correlations);
+      if (keys.length > CFG.CORR_CAP) {
+        keys.sort((a, b) => F.correlations[a].count - F.correlations[b].count);
+        for (let i = 0; i < keys.length - CFG.CORR_CAP; i++) delete F.correlations[keys[i]];
+      }
+    }
+    return matched;
+  }
+  function detectFamilies() {
+    const idMap = {};
+    for (const c of F.constraints) idMap[c.id] = c;
+    const edges = [];
+    for (const key of Object.keys(F.correlations)) {
+      const corr = F.correlations[key];
+      if (corr.count < CFG.CORR_MIN_USES) continue;
+      const parts = key.split('|');
+      const a = idMap[parts[0]], b = idMap[parts[1]];
+      if (!a || !b || !a.uses || !b.uses) continue;
+      if (Math.min(corr.count / a.uses, corr.count / b.uses) >= CFG.CORR_THRESH) {
+        edges.push({ a: parts[0], b: parts[1] });
+      }
+    }
+    const adj = {};
+    for (const e of edges) {
+      (adj[e.a] = adj[e.a] || []).push(e.b);
+      (adj[e.b] = adj[e.b] || []).push(e.a);
+    }
+    const visited = {}, families = [];
+    for (const id of Object.keys(adj)) {
+      if (visited[id]) continue;
+      const stack = [id], comp = [];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (visited[cur]) continue;
+        visited[cur] = true;
+        comp.push(cur);
+        for (const n of (adj[cur] || [])) if (!visited[n]) stack.push(n);
+      }
+      if (comp.length >= CFG.FAMILY_MIN_SIZE) families.push(comp);
+    }
+    for (const comp of families) {
+      const fk = comp.slice().sort().join(',');
+      if (!F.familyFidelity[fk]) {
+        F.familyFidelity[fk] = { fires: 0, totalDrop: 0, deltaBefore: F.vectorDelta.scalar };
+      }
+      const fid = F.familyFidelity[fk];
+      fid.totalDrop += Math.max(0, fid.deltaBefore - F.vectorDelta.scalar);
+      fid.fires++;
+      fid.deltaBefore = F.vectorDelta.scalar;
+      if (fid.fires >= CFG.FIDELITY_MIN_FIRES && fid.fires >= CFG.FIDELITY_WINDOW) {
+        const avg = fid.totalDrop / fid.fires;
+        const already = F.subcascades.some(sc => sc.familyKey === fk);
+        if (!already && avg >= CFG.FIDELITY_PROMOTE) {
+          let dom = null, dw = -1;
+          for (const id of comp) {
+            const c = idMap[id];
+            if (c && c.weight > dw) { dom = c; dw = c.weight; }
+          }
+          if (dom && F.subcascades.length < CFG.SUB_CASCADE_CAP) {
+            const name = dom.pattern && dom.pattern.kind === 'has-token'
+              ? dom.pattern.token : (spec.name + '-sub-' + (F.subcascades.length + 1));
+            const sc = { name, members: comp, familyKey: fk, promotedAt: F.step, fires: fid.fires, avgDrop: avg };
+            F.subcascades.push(sc);
+            appendTrace('promote', name);
+            if (spec.onPromote) spec.onPromote(sc, idMap, F);
+          }
+        }
+      }
+    }
+  }
+  function rebuildCascade() {
+    let css = '@layer base, strategic;\n@layer base {\n';
+    css += '#' + spec.probeId + ' {\n  ' + spec.outputVar + ': ' + Guards.cssEscapeString(spec.defaultOutput) + ';\n}\n';
+    const rules = spec.domainRules ? spec.domainRules() : [];
+    const sorted = rules.slice().sort((a, b) => Object.keys(a.when).length - Object.keys(b.when).length);
+    for (const r of sorted) {
+      const tail = Object.keys(r.when).map(d => '[data-' + d + '="' + r.when[d] + '"]').join('');
+      css += '#' + spec.probeId + tail + ' {\n  ' + spec.outputVar + ': ' + Guards.cssEscapeString(r.then) + ';\n}\n';
+    }
+    css += '}\n';
+    if (F.ctRules.length) {
+      css += '@layer strategic {\n';
+      for (const r of F.ctRules) css += r.selector + ' {\n  ' + r.decls.join(';\n  ') + ';\n}\n';
+      css += '}\n';
+    }
+    document.getElementById(spec.styleId).textContent = css;
+  }
+  function evaluate() {
+    const probe = document.getElementById(spec.probeId);
+    const coord = spec.dimsFn();
+    for (const k of Object.keys(coord)) probe.setAttribute('data-' + k, coord[k]);
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    let ratHit = null, subHit = null;
+    for (const c of F.constraints) {
+      if (c.kind !== 'ratified') continue;
+      if (evalPattern(c, { tokens })) { ratHit = c.id; break; }
+    }
+    for (const sc of F.subcascades) {
+      if (tokens.indexOf(sc.name) !== -1) { subHit = sc.name; break; }
+    }
+    if (ratHit) probe.setAttribute('data-rat', ratHit); else probe.removeAttribute('data-rat');
+    if (subHit) probe.setAttribute('data-sub', subHit); else probe.removeAttribute('data-sub');
+    const cs = getComputedStyle(probe);
+    const out = cs.getPropertyValue(spec.outputVar).trim().replace(/^"|"$/g, '');
+    F.lastOutput = out;
+    return out;
+  }
+  function step(explicitTokens) {
+    const before = F.vectorDelta.scalar;
+    F.step++;
+    const tokens = explicitTokens != null ? explicitTokens : (spec.tokensFn ? spec.tokensFn() : []);
+    const input = { text: tokens.join(' '), tokens };
+    if (input.tokens.length) appendTrace('input', input.text.slice(0, 40));
+    const matched = matchField(input);
+    if (input.tokens.length) ratify(input);
+    if (input.tokens.length && novelty(input) >= CFG.GEN_NOVELTY_THRESH) genDerived(input);
+    genPredictive(input);
+    ageOut();
+    F.recentOps.push({ step: F.step, input, matched: matched.map(c => c.id) });
+    if (F.recentOps.length > CFG.FAST_WINDOW) F.recentOps.shift();
+    refreshDelta();
+    modulate(F.vectorDelta.scalar - before);
+    F.substrate.fast = F.substrate.slow + (F.substrate.fast - F.substrate.slow) * CFG.FAST_DECAY;
+    if (F.step % 2 === 0) detectFamilies();
+    rebuildCascade();
+  }
+  rebuildCascade();
+  return { field: F, step, evaluate, rebuildCascade };
+}
+
+// ============================================================================
+// META-SUBSTRATE
+// Observes ratification events from both lattices. Its input is constructed
+// from the structural changes in either lattice: when A's exploit ratifies
+// X+Y, a token "a-rat-X-Y" enters the meta-substrate's input. Same for B.
+// The meta-substrate accumulates structure about which kinds of ratifications
+// happen on which side and how they correlate. Its output is a small enum
+// that both lattices read.
+// ============================================================================
+let meta;  // forward declaration - assigned after both lattices exist
+let game;
+
+const metaSpec = {
+  name: 'meta',
+  seedId: 'seed::meta::what-do-they-each-know',
+  probeId: 'probe-meta',
+  styleId: 'cascade-meta',
+  outputVar: '--meta',
+  defaultOutput: 'meta-quiet',
+  dimsFn: () => {
+    // The meta-substrate's coord encodes recent ratification activity from
+    // each side. dimsFn returns a state representation built from the buffer
+    // of recent ratification events.
+    if (!game) return { aActive: 'quiet', bActive: 'quiet', balance: 'even' };
+    const aRecent = meta.recentARats || 0;
+    const bRecent = meta.recentBRats || 0;
+    return {
+      aActive: aRecent === 0 ? 'quiet' : aRecent < 2 ? 'low' : 'active',
+      bActive: bRecent === 0 ? 'quiet' : bRecent < 2 ? 'low' : 'active',
+      balance: aRecent === bRecent ? 'even' :
+               aRecent > bRecent ? 'a-leads' : 'b-leads'
+    };
+  },
+  tokensFn: () => {
+    // Tokens are produced from the buffer of recent ratification events
+    // tagged with which side they came from.
+    if (!meta || !meta.eventBuffer) return [];
+    const t = [];
+    for (const ev of meta.eventBuffer.slice(-8)) {
+      t.push(ev.side + '-rat');
+      t.push(ev.side + '-' + ev.subName);
+      if (ev.tokens) for (const tok of ev.tokens) t.push(ev.side + '-' + tok);
+    }
+    return t.slice(0, 16);
+  },
+  domainRules: () => [
+    { when: {}, then: 'meta-quiet' },
+    { when: { aActive: 'low', bActive: 'quiet' }, then: 'meta-a-developing' },
+    { when: { aActive: 'quiet', bActive: 'low' }, then: 'meta-b-developing' },
+    { when: { aActive: 'active', bActive: 'quiet' }, then: 'meta-a-pulling-ahead' },
+    { when: { aActive: 'quiet', bActive: 'active' }, then: 'meta-b-pulling-ahead' },
+    { when: { aActive: 'active', bActive: 'active' }, then: 'meta-mutual-arms-race' },
+    { when: { aActive: 'low', bActive: 'low' }, then: 'meta-mutual-developing' },
+    { when: { balance: 'a-leads' }, then: 'meta-a-leads' },
+    { when: { balance: 'b-leads' }, then: 'meta-b-leads' }
+  ],
+  onRatify: (c, F) => {
+    // Meta-substrate ratifying its own predictions about cross-lattice patterns
+    if (game) game.log('meta', '[meta] ratified ' + c.pattern.a + '+' + c.pattern.b, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    if (game) game.log('meta', '[meta] sub-cascade promoted: ' + sc.name, 'promote');
+  }
+};
+
+// ============================================================================
+// LATTICE FACTORY
+// Builds a complete lattice for one player. Same structure as the dual-
+// lattice game but with input adapters extended to incorporate (a) the
+// rich ability set, (b) cooldown state, (c) active effects, (d) the
+// meta-substrate's resolved output token.
+// ============================================================================
+function makeLattice(side, gameRef) {
+  const oppSide = side === 'a' ? 'b' : 'a';
+  const lat = { side: side };
+
+  // Each substrate sees: own/opp HP bands, cooldown summary, meta token,
+  // and its own concern-specific tokens. The meta token provides cross-
+  // lattice awareness without violating the substrate's wire boundary.
+  const ownHpBand = () => game.hpBand(game[side].hp);
+  const oppHpBand = () => game.hpBand(game[oppSide].hp);
+
+  // PRESERVATION
+  const presSpec = {
+    name: side + '-pres',
+    seedId: 'seed::' + side + '::pres',
+    probeId: 'probe-' + side + '-pres',
+    styleId: 'cascade-' + side + '-pres',
+    outputVar: '--pres',
+    defaultOutput: 'pres-none',
+    dimsFn: () => ({
+      shp: ownHpBand(),
+      php: oppHpBand(),
+      hit: game[side].justTookDamage ? 'yes' : 'no',
+      shielded: game[side].shieldHp > 0 ? 'yes' : 'no'
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      if (game[side].justTookDamage) t.push('took-damage');
+      if (game[side].shieldHp > 0) t.push('have-shield');
+      if (meta && meta.field.lastOutput) t.push(meta.field.lastOutput);  // meta-coupling
+      return t;
+    },
+    domainRules: () => [
+      { when: { shp: 'full' }, then: 'pres-none' },
+      { when: { shp: 'ok' }, then: 'pres-watch' },
+      { when: { shp: 'ok', hit: 'yes' }, then: 'pres-pull' },
+      { when: { shp: 'low' }, then: 'pres-pull' },
+      { when: { shp: 'low', hit: 'yes' }, then: 'pres-urgent' },
+      { when: { shp: 'crit' }, then: 'pres-urgent' },
+      { when: { shp: 'low', shielded: 'yes' }, then: 'pres-watch' },
+      { when: { shp: 'crit', shielded: 'yes' }, then: 'pres-pull' }
+    ],
+    onRatify: (c, F) => {
+      F.ctRules.push({ selector: '#probe-' + side + '-pres[data-rat="' + c.id + '"]', decls: ['--pres: "pres-pull"'] });
+      pushMetaEvent(side, 'rat', 'pres', c);
+    },
+    onPromote: (sc, idMap, F) => {
+      F.ctRules.push({ selector: '#probe-' + side + '-pres[data-sub="' + sc.name + '"]', decls: ['--pres: "pres-urgent"'] });
+      pushMetaEvent(side, 'promote', 'pres', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+    }
+  };
+
+  // THREAT
+  const threatSpec = {
+    name: side + '-threat',
+    seedId: 'seed::' + side + '::threat',
+    probeId: 'probe-' + side + '-threat',
+    styleId: 'cascade-' + side + '-threat',
+    outputVar: '--threat',
+    defaultOutput: 'threat-even',
+    dimsFn: () => ({
+      shp: ownHpBand(), php: oppHpBand(),
+      buffs: game[side].activeEffects.length > 0 ? 'yes' : 'no',
+      oppBuffs: game[oppSide].activeEffects.length > 0 ? 'yes' : 'no'
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      for (const e of game[side].activeEffects) t.push('own-' + e.id);
+      for (const e of game[oppSide].activeEffects) t.push('opp-' + e.id);
+      if (meta && meta.field.lastOutput) t.push(meta.field.lastOutput);
+      return t.slice(0, 12);
+    },
+    domainRules: () => [
+      { when: {}, then: 'threat-even' },
+      { when: { shp: 'full', php: 'low' }, then: 'threat-winning' },
+      { when: { shp: 'full', php: 'crit' }, then: 'threat-winning-bad' },
+      { when: { shp: 'ok', php: 'crit' }, then: 'threat-winning' },
+      { when: { shp: 'low', php: 'full' }, then: 'threat-losing' },
+      { when: { shp: 'crit', php: 'full' }, then: 'threat-losing-bad' },
+      { when: { shp: 'crit', php: 'ok' }, then: 'threat-losing-bad' },
+      { when: { shp: 'low', php: 'ok' }, then: 'threat-losing' },
+      { when: { shp: 'ok', php: 'low' }, then: 'threat-winning' },
+      // Buff differential
+      { when: { buffs: 'yes', oppBuffs: 'no' }, then: 'threat-winning' },
+      { when: { buffs: 'no', oppBuffs: 'yes' }, then: 'threat-losing' }
+    ],
+    onRatify: (c, F) => { pushMetaEvent(side, 'rat', 'threat', c); },
+    onPromote: (sc, idMap, F) => { pushMetaEvent(side, 'promote', 'threat', { id: sc.name, pattern: { a: sc.name, b: 'sub' } }); }
+  };
+
+  // ABILITY ECONOMY (replaces dbecon — broader concern over all abilities)
+  const abeconSpec = {
+    name: side + '-abecon',
+    seedId: 'seed::' + side + '::abecon',
+    probeId: 'probe-' + side + '-dbecon',
+    styleId: 'cascade-' + side + '-dbecon',
+    outputVar: '--abecon',
+    defaultOutput: 'ab-default',
+    dimsFn: () => {
+      const cdReady = (id) => game[side].cooldowns[id] > 0 ? 'cd' : 'ready';
+      return {
+        shp: ownHpBand(), php: oppHpBand(),
+        execReady: cdReady('execute'),
+        critReady: (game[side].cooldowns.critch === 0 || game[side].cooldowns.critdmg === 0) ? 'ready' : 'cd',
+        healReady: cdReady('heal'),
+        bigReady: cdReady('heavy'),
+        shieldReady: cdReady('shield'),
+        blindReady: cdReady('blind')
+      };
+    },
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      // Tokenize what's ready and what isn't
+      for (const ab of ABILITIES) {
+        const ready = game[side].cooldowns[ab.id] === 0;
+        if (ready && Math.random() < 0.3) t.push(ab.id + '-ready');
+      }
+      if (meta && meta.field.lastOutput) t.push(meta.field.lastOutput);
+      return t.slice(0, 12);
+    },
+    domainRules: () => [
+      { when: {}, then: 'ab-default' },
+      // Burst windows: when crit buffs are ready and opp has decent HP
+      { when: { critReady: 'ready', php: 'full' }, then: 'ab-burst-window' },
+      { when: { critReady: 'ready', php: 'ok' }, then: 'ab-burst-window' },
+      // Execute opportunities: opp at low HP
+      { when: { php: 'low', execReady: 'ready' }, then: 'ab-execute-opp' },
+      { when: { php: 'crit', execReady: 'ready' }, then: 'ab-execute-opp' },
+      { when: { php: 'crit' }, then: 'ab-finish-window' },
+      // Defensive windows: own HP low, big tools available
+      { when: { shp: 'low', healReady: 'ready' }, then: 'ab-defensive-tools' },
+      { when: { shp: 'crit', shieldReady: 'ready' }, then: 'ab-defensive-tools' },
+      { when: { shp: 'crit', healReady: 'ready' }, then: 'ab-defensive-tools' },
+      // Setup windows: full HP both sides, all tools available
+      { when: { shp: 'full', php: 'full', bigReady: 'ready' }, then: 'ab-setup-window' },
+      { when: { shp: 'full', php: 'full', blindReady: 'ready' }, then: 'ab-setup-window' }
+    ],
+    onRatify: (c, F) => { pushMetaEvent(side, 'rat', 'abecon', c); },
+    onPromote: (sc, idMap, F) => { pushMetaEvent(side, 'promote', 'abecon', { id: sc.name, pattern: { a: sc.name, b: 'sub' } }); }
+  };
+
+  // EXPLOITATION PATTERN
+  const exploitSpec = {
+    name: side + '-exploit',
+    seedId: 'seed::' + side + '::exploit',
+    probeId: 'probe-' + side + '-exploit',
+    styleId: 'cascade-' + side + '-exploit',
+    outputVar: '--exploit',
+    defaultOutput: 'exploit-none',
+    dimsFn: () => {
+      const recent = game[side].oppRecentActions.slice(-6);
+      let counts = {};
+      for (const a of recent) counts[a] = (counts[a] || 0) + 1;
+      let dom = 'mixed';
+      if (recent.length < 3) dom = 'unknown';
+      else {
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (top && top[1] >= 3) {
+          if (top[0] === 'atk' || top[0] === 'heavy') dom = 'damage-heavy';
+          else if (top[0] === 'heal' || top[0] === 'hot') dom = 'heal-heavy';
+          else if (top[0] === 'evade' || top[0] === 'shield' || top[0] === 'sustain') dom = 'defensive';
+          else if (top[0] === 'debuff' || top[0] === 'blind') dom = 'control-heavy';
+          else if (top[0] === 'critch' || top[0] === 'critdmg') dom = 'buff-heavy';
+          else dom = 'mixed';
+        }
+      }
+      return { dom };
+    },
+    tokensFn: () => {
+      const last = game[side].oppRecentActions[game[side].oppRecentActions.length - 1];
+      if (!last) return [];
+      const t = [last, 'php-' + oppHpBand(), 'shp-' + ownHpBand()];
+      // Active opp effects matter for exploitation reasoning
+      for (const e of game[oppSide].activeEffects) t.push('opp-' + e.id);
+      if (meta && meta.field.lastOutput) t.push(meta.field.lastOutput);
+      return t;
+    },
+    domainRules: () => [
+      { when: {}, then: 'exploit-none' },
+      { when: { dom: 'unknown' }, then: 'exploit-none' },
+      { when: { dom: 'mixed' }, then: 'exploit-mixed-no-signal' },
+      { when: { dom: 'damage-heavy' }, then: 'exploit-preempt-attack' },
+      { when: { dom: 'heal-heavy' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'defensive' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'control-heavy' }, then: 'exploit-capitalize-debuff' },
+      { when: { dom: 'buff-heavy' }, then: 'exploit-disrupt-setup' }
+    ],
+    onRatify: (c, F) => {
+      let counter = 'exploit-preempt-attack';
+      const has = t => c.pattern.a === t || c.pattern.b === t;
+      if (has('heal') || has('hot') || has('sustain')) counter = 'exploit-pressure-defense';
+      else if (has('shield') || has('evade')) counter = 'exploit-pressure-defense';
+      else if (has('debuff') || has('blind')) counter = 'exploit-capitalize-debuff';
+      else if (has('critch') || has('critdmg')) counter = 'exploit-disrupt-setup';
+      F.ctRules.push({ selector: '#probe-' + side + '-exploit[data-rat="' + c.id + '"]', decls: ['--exploit: ' + Guards.cssEscapeString(counter)] });
+      pushMetaEvent(side, 'rat', 'exploit', c);
+    },
+    onPromote: (sc, idMap, F) => {
+      const toks = new Set();
+      for (const id of sc.members) {
+        const c = idMap[id];
+        if (!c || !c.pattern) continue;
+        if (c.pattern.kind === 'has-token') toks.add(c.pattern.token);
+        else if (c.pattern.kind === 'co-occurs') { toks.add(c.pattern.a); toks.add(c.pattern.b); }
+      }
+      let counter = 'exploit-preempt-attack';
+      if (toks.has('heal') || toks.has('hot')) counter = 'exploit-pressure-defense';
+      else if (toks.has('shield')) counter = 'exploit-pressure-defense';
+      else if (toks.has('debuff') || toks.has('blind')) counter = 'exploit-capitalize-debuff';
+      else if (toks.has('critch') || toks.has('critdmg')) counter = 'exploit-disrupt-setup';
+      F.ctRules.push({ selector: '#probe-' + side + '-exploit[data-sub="' + sc.name + '"]', decls: ['--exploit: ' + Guards.cssEscapeString(counter)] });
+      pushMetaEvent(side, 'promote', 'exploit', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+    }
+  };
+
+  lat.pres = makeSubstrate(presSpec);
+  lat.threat = makeSubstrate(threatSpec);
+  lat.dbecon = makeSubstrate(abeconSpec);
+  lat.exploit = makeSubstrate(exploitSpec);
+
+  // Router with rich ability-aware tier ordering
+  lat.router = {
+    side: side,
+    decide() {
+      const probe = document.getElementById('probe-' + side + '-router');
+      probe.setAttribute('data-pres', lat.pres.field.lastOutput || 'pres-none');
+      probe.setAttribute('data-threat', lat.threat.field.lastOutput || 'threat-even');
+      probe.setAttribute('data-abecon', lat.dbecon.field.lastOutput || 'ab-default');
+      probe.setAttribute('data-exploit', lat.exploit.field.lastOutput || 'exploit-none');
+      const cs = getComputedStyle(probe);
+      const action = cs.getPropertyValue('--action').trim().replace(/^"|"$/g, '');
+      const tier = cs.getPropertyValue('--tier').trim().replace(/^"|"$/g, '');
+      // Validate the action: if it's not currently available, fall back
+      const final = chooseValidAbility(side, action, tier);
+      return { action: final.action, tier: final.tier };
+    },
+    build() {
+      // Default
+      let css = '#probe-' + side + '-router {\n  --action: "atk";\n  --tier: "default";\n}\n';
+      // Tier 5: exploitation routing
+      css += '#probe-' + side + '-router[data-exploit="exploit-preempt-attack"] {\n  --action: "debuff";\n  --tier: "exploit-preempt";\n}\n';
+      css += '#probe-' + side + '-router[data-exploit="exploit-pressure-defense"] {\n  --action: "heavy";\n  --tier: "exploit-pressure";\n}\n';
+      css += '#probe-' + side + '-router[data-exploit="exploit-capitalize-debuff"] {\n  --action: "atk";\n  --tier: "exploit-capitalize";\n}\n';
+      css += '#probe-' + side + '-router[data-exploit="exploit-disrupt-setup"] {\n  --action: "blind";\n  --tier: "exploit-disrupt";\n}\n';
+      // Tier 4: ability economy windows
+      css += '#probe-' + side + '-router[data-abecon="ab-burst-window"] {\n  --action: "critch";\n  --tier: "ab-burst";\n}\n';
+      css += '#probe-' + side + '-router[data-abecon="ab-execute-opp"] {\n  --action: "execute";\n  --tier: "ab-execute";\n}\n';
+      css += '#probe-' + side + '-router[data-abecon="ab-finish-window"] {\n  --action: "heavy";\n  --tier: "ab-finish";\n}\n';
+      css += '#probe-' + side + '-router[data-abecon="ab-setup-window"] {\n  --action: "blind";\n  --tier: "ab-setup";\n}\n';
+      // Tier 3: threat-driven counters
+      css += '#probe-' + side + '-router[data-threat="threat-winning-bad"] {\n  --action: "heavy";\n  --tier: "winning-press";\n}\n';
+      css += '#probe-' + side + '-router[data-threat="threat-winning"][data-exploit="exploit-pressure-defense"] {\n  --action: "heavy";\n  --tier: "press-defense";\n}\n';
+      // Tier 2: defensive when wounded
+      css += '#probe-' + side + '-router[data-pres="pres-pull"][data-abecon="ab-defensive-tools"] {\n  --action: "shield";\n  --tier: "pres-shield";\n}\n';
+      css += '#probe-' + side + '-router[data-pres="pres-pull"] {\n  --action: "heal";\n  --tier: "pres-pull";\n}\n';
+      // Tier 1: emergency preservation veto
+      css += '#probe-' + side + '-router[data-pres="pres-urgent"] {\n  --action: "heal";\n  --tier: "pres-urgent-veto";\n}\n';
+      css += '#probe-' + side + '-router[data-pres="pres-urgent"][data-abecon="ab-defensive-tools"] {\n  --action: "shield";\n  --tier: "pres-urgent-shield";\n}\n';
+      document.getElementById('cascade-' + side + '-router').textContent = css;
+    }
+  };
+  lat.router.build();
+
+  return lat;
+}
+
+// ============================================================================
+// META EVENT BUFFERING
+// When any substrate ratifies or promotes, an event is pushed to the meta-
+// substrate's buffer. The meta-substrate's input adapter reads from this
+// buffer when constructing tokens for its step. This is the wire-level
+// coupling: ratifications on either side become input for a third party
+// that observes both sides without commanding either.
+// ============================================================================
+function pushMetaEvent(side, type, subName, c) {
+  if (!meta) return;
+  if (!meta.eventBuffer) meta.eventBuffer = [];
+  const tokens = [];
+  if (c && c.pattern) {
+    if (c.pattern.kind === 'co-occurs') { tokens.push(c.pattern.a); tokens.push(c.pattern.b); }
+    else if (c.pattern.kind === 'has-token') tokens.push(c.pattern.token);
+  }
+  meta.eventBuffer.push({
+    side, type, subName, tokens, step: game ? game.totalSteps : 0
+  });
+  if (meta.eventBuffer.length > 16) meta.eventBuffer.shift();
+  meta.recentARats = (meta.recentARats || 0) * 0.9 + (side === 'a' ? 1 : 0);
+  meta.recentBRats = (meta.recentBRats || 0) * 0.9 + (side === 'b' ? 1 : 0);
+}
+
+// ============================================================================
+// ABILITY EXECUTION
+// Each ability has a handler that mutates game state. The handler takes
+// (actor, target) where actor and target are the player state objects.
+// Returns an info object for logging.
+// ============================================================================
+function chooseValidAbility(side, requested, tier) {
+  // If the requested ability is on cooldown or otherwise invalid, fall back
+  // through a sensible alternative chain. The fallback respects both the
+  // request's intent (defensive, offensive, control) and current state.
+  const cd = game[side].cooldowns;
+  const isReady = (id) => cd[id] === 0;
+
+  // Cleanse if we have heavy debuffs and cleanse is ready
+  let activeDots = (game[side].dots || []).length;
+  let activeDebuffs = (game[side].activeEffects || []).filter(e => e.kind === 'debuff').length;
+  if ((activeDots + activeDebuffs >= 2) && isReady('cleanse')) {
+    return { action: 'cleanse', tier: tier + '-cleanse' };
+  }
+
+  if (isReady(requested)) return { action: requested, tier };
+
+  // Defensive intent fallbacks
+  if (requested === 'heal') {
+    if (isReady('hot')) return { action: 'hot', tier: tier + '-hot' };
+    if (isReady('shield')) return { action: 'shield', tier: tier + '-shield' };
+    if (isReady('drain')) return { action: 'drain', tier: tier + '-drain' };
+    if (isReady('sustain')) return { action: 'sustain', tier: tier + '-sustain' };
+    if (isReady('evade')) return { action: 'evade', tier: tier + '-evade' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'shield') {
+    if (isReady('evade')) return { action: 'evade', tier: tier + '-evade' };
+    if (isReady('counter')) return { action: 'counter', tier: tier + '-counter' };
+    if (isReady('heal')) return { action: 'heal', tier: tier + '-heal' };
+    if (isReady('hot')) return { action: 'hot', tier: tier + '-hot' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+
+  // Offensive intent fallbacks
+  if (requested === 'heavy') {
+    if (isReady('execute') && game[side === 'a' ? 'b' : 'a'].hp <= 80) return { action: 'execute', tier: tier + '-execute' };
+    if (isReady('drain')) return { action: 'drain', tier: tier + '-drain' };
+    if (isReady('dot')) return { action: 'dot', tier: tier + '-dot' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'execute') {
+    if (isReady('heavy')) return { action: 'heavy', tier: tier + '-heavy' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'critch') {
+    if (isReady('critdmg')) return { action: 'critdmg', tier: tier + '-critdmg' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'critdmg') {
+    if (isReady('critch')) return { action: 'critch', tier: tier + '-critch' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'blind') {
+    if (isReady('debuff')) return { action: 'debuff', tier: tier + '-debuff' };
+    if (isReady('counter')) return { action: 'counter', tier: tier + '-counter' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+  if (requested === 'debuff') {
+    if (isReady('blind')) return { action: 'blind', tier: tier + '-blind' };
+    return { action: 'atk', tier: tier + '-fallback' };
+  }
+
+  return { action: 'atk', tier: tier + '-fallback' };
+}
+
+const Abilities = {
+  atk(actor, target) {
+    if (target.willMissNext) { target.willMissNext = false; return null; }
+    const missChance = 0.10 + actor.evadeMiss + target.incomingMiss;
+    if (Math.random() < missChance) return { miss: true };
+    const critChance = 0.10 + actor.critChanceBuff;
+    const critMul = 1.75 + actor.critDmgBuff;
+    const crit = Math.random() < critChance;
+    let dmg = 10 + Math.floor(Math.random() * 7) - 3;
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    if (crit) dmg = Math.round(dmg * critMul);
+    return applyDamage(actor, target, dmg, crit);
+  },
+  heavy(actor, target) {
+    actor.cooldowns.heavy = 4;
+    if (target.willMissNext) return null;
+    const missChance = 0.10 + actor.evadeMiss + target.incomingMiss;
+    if (Math.random() < missChance) return { miss: true };
+    const critChance = 0.10 + actor.critChanceBuff;
+    const critMul = 1.75 + actor.critDmgBuff;
+    const crit = Math.random() < critChance;
+    let dmg = 18 + Math.floor(Math.random() * 7);
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    if (crit) dmg = Math.round(dmg * critMul);
+    return applyDamage(actor, target, dmg, crit, 'HEAVY');
+  },
+  heal(actor, target) {
+    actor.cooldowns.heal = 3;
+    const h = 15 + Math.floor(Math.random() * 6);
+    actor.hp = Math.min(200, actor.hp + h);
+    return { kind: 'heal', heal: h };
+  },
+  hot(actor, target) {
+    actor.cooldowns.hot = 8;
+    actor.hots.push({ remaining: 6, perTick: 5 });
+    return { kind: 'hot' };
+  },
+  dot(actor, target) {
+    actor.cooldowns.dot = 5;
+    target.dots.push({ remaining: 4, perTick: 8, decay: true });
+    return { kind: 'dot-applied' };
+  },
+  execute(actor, target) {
+    if (target.willMissNext) return null;
+    if (Math.random() > 0.35) return { miss: true, kind: 'execute-miss' };
+    let dmg = 40 + Math.floor(Math.random() * 21);
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    return applyDamage(actor, target, dmg, false, 'EXECUTE');
+  },
+  critch(actor, target) {
+    actor.cooldowns.critch = 20;
+    actor.critChanceBuff = 0.30;
+    actor.activeEffects.push({ id: 'critch', kind: 'buff', remaining: 3 });
+    return { kind: 'critch-applied' };
+  },
+  critdmg(actor, target) {
+    actor.cooldowns.critdmg = 20;
+    actor.critDmgBuff = 0.75;
+    actor.activeEffects.push({ id: 'critdmg', kind: 'buff', remaining: 3 });
+    return { kind: 'critdmg-applied' };
+  },
+  evade(actor, target) {
+    actor.cooldowns.evade = 8;
+    actor.incomingMiss = 0.25;
+    actor.activeEffects.push({ id: 'evade', kind: 'buff', remaining: 4 });
+    return { kind: 'evade-applied' };
+  },
+  shield(actor, target) {
+    actor.cooldowns.shield = 12;
+    actor.shieldHp = 50;
+    actor.activeEffects.push({ id: 'shield', kind: 'buff', remaining: 8 });
+    return { kind: 'shield-applied' };
+  },
+  counter(actor, target) {
+    actor.cooldowns.counter = 10;
+    actor.counterActive = 2;
+    actor.activeEffects.push({ id: 'counter', kind: 'buff', remaining: 2 });
+    return { kind: 'counter-stance' };
+  },
+  sustain(actor, target) {
+    actor.cooldowns.sustain = 15;
+    actor.sustainActive = true;
+    actor.hots.push({ remaining: 4, perTick: 5 });
+    actor.activeEffects.push({ id: 'sustain', kind: 'buff', remaining: 4 });
+    return { kind: 'sustain-stance' };
+  },
+  debuff(actor, target) {
+    actor.cooldowns.debuff = 6;
+    target.incomingMiss = Math.min(target.incomingMiss + 0.35, 0.7);
+    target.activeEffects.push({ id: 'debuff', kind: 'debuff', remaining: 5 });
+    return { kind: 'debuff-applied' };
+  },
+  blind(actor, target) {
+    actor.cooldowns.blind = 10;
+    target.willMissNext = true;
+    target.activeEffects.push({ id: 'blind', kind: 'debuff', remaining: 1 });
+    return { kind: 'blind-applied' };
+  },
+  drain(actor, target) {
+    actor.cooldowns.drain = 6;
+    if (target.willMissNext) return null;
+    const missChance = 0.10 + actor.evadeMiss + target.incomingMiss;
+    if (Math.random() < missChance) return { miss: true };
+    let dmg = 8 + Math.floor(Math.random() * 5);
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    const dealt = applyDamage(actor, target, dmg, false, 'DRAIN');
+    if (dealt && !dealt.miss) {
+      const heal = Math.floor(dmg / 2);
+      actor.hp = Math.min(200, actor.hp + heal);
+      dealt.heal = heal;
+    }
+    return dealt;
+  },
+  cleanse(actor, target) {
+    actor.cooldowns.cleanse = 12;
+    actor.dots = [];
+    actor.activeEffects = actor.activeEffects.filter(e => e.kind !== 'debuff');
+    actor.incomingMiss = 0;
+    actor.willMissNext = false;
+    return { kind: 'cleansed' };
+  }
+};
+
+function applyDamage(actor, target, rawDmg, crit, label) {
+  // Counter stance: half damage reflects back
+  if (target.counterActive > 0 && rawDmg > 0) {
+    const reflect = Math.floor(rawDmg / 2);
+    const remaining = rawDmg - reflect;
+    actor.hp = Math.max(0, actor.hp - reflect);
+    target.justTookDamage = true;
+    rawDmg = remaining;
+  }
+  // Shield absorbs first
+  let absorbed = 0;
+  if (target.shieldHp > 0) {
+    absorbed = Math.min(target.shieldHp, rawDmg);
+    target.shieldHp -= absorbed;
+    rawDmg -= absorbed;
+  }
+  if (rawDmg > 0) {
+    target.hp = Math.max(0, target.hp - rawDmg);
+    target.justTookDamage = true;
+  }
+  return { kind: 'damage', dmg: rawDmg, absorbed, crit, label };
+}
+
+// ============================================================================
+// GAME LOOP
+// ============================================================================
+function makePlayerState() {
+  return {
+    hp: 200,
+    cooldowns: ABILITIES.reduce((o, a) => { o[a.id] = 0; return o; }, {}),
+    dots: [], hots: [],
+    activeEffects: [],
+    incomingMiss: 0, evadeMiss: 0,
+    critChanceBuff: 0, critDmgBuff: 0,
+    shieldHp: 0, counterActive: 0, sustainActive: false,
+    willMissNext: false,
+    justTookDamage: false,
+    oppRecentActions: []
+  };
+}
+
+game = {
+  round: 1, maxRounds: 10,
+  scoreA: 0, scoreB: 0,
+  a: makePlayerState(), b: makePlayerState(),
+  totalSteps: 0,
+  active: 'a',
+  running: false, paused: false, gameOver: false,
+  speed: 20,
+  reports: [],
+  latticeA: null, latticeB: null,
+
+  hpBand(hp) {
+    if (hp <= 50) return 'crit';
+    if (hp <= 100) return 'low';
+    if (hp <= 150) return 'ok';
+    return 'full';
+  },
+
+  log(who, text, cls) {
+    const l = document.getElementById('log');
+    const div = document.createElement('div');
+    div.className = cls || (who === 'a' ? 'a' : (who === 'b' ? 'b' : (who === 'meta' ? 'meta' : 'sys')));
+    const p = who === 'a' ? '▸ A · ' : (who === 'b' ? '◂ B · ' : (who === 'meta' ? '◆ ' : '· '));
+    div.textContent = p + text;
+    l.appendChild(div);
+    l.scrollTop = l.scrollHeight;
+  },
+
+  tickEffects(p) {
+    // DoTs
+    for (let i = p.dots.length - 1; i >= 0; i--) {
+      const d = p.dots[i];
+      let amt = d.perTick;
+      if (d.decay) amt = Math.max(2, d.perTick - (4 - d.remaining));
+      p.hp = Math.max(0, p.hp - amt);
+      p.justTookDamage = true;
+      d.remaining--;
+      if (d.remaining <= 0) p.dots.splice(i, 1);
+    }
+    // HoTs
+    for (let i = p.hots.length - 1; i >= 0; i--) {
+      const h = p.hots[i];
+      p.hp = Math.min(200, p.hp + h.perTick);
+      h.remaining--;
+      if (h.remaining <= 0) p.hots.splice(i, 1);
+    }
+    // Effect timers
+    for (let i = p.activeEffects.length - 1; i >= 0; i--) {
+      const e = p.activeEffects[i];
+      e.remaining--;
+      if (e.remaining <= 0) {
+        // Effect expires - undo its modifier
+        if (e.id === 'critch') p.critChanceBuff = 0;
+        if (e.id === 'critdmg') p.critDmgBuff = 0;
+        if (e.id === 'evade') p.incomingMiss = Math.max(0, p.incomingMiss - 0.25);
+        if (e.id === 'shield') p.shieldHp = 0;
+        if (e.id === 'counter') p.counterActive = 0;
+        if (e.id === 'sustain') p.sustainActive = false;
+        if (e.id === 'debuff') p.incomingMiss = Math.max(0, p.incomingMiss - 0.35);
+        p.activeEffects.splice(i, 1);
+      }
+    }
+    if (p.counterActive > 0) p.counterActive--;
+    // Cooldowns
+    for (const id of Object.keys(p.cooldowns)) {
+      if (p.cooldowns[id] > 0) p.cooldowns[id]--;
+    }
+  },
+
+  doTurn() {
+    if (this.gameOver) return false;
+    const side = this.active;
+    const oppSide = side === 'a' ? 'b' : 'a';
+    const actor = this[side];
+    const target = this[oppSide];
+    const lat = side === 'a' ? this.latticeA : this.latticeB;
+
+    actor.justTookDamage = false; target.justTookDamage = false;
+
+    // Step substrates so they observe pre-action state
+    lat.pres.step(); lat.pres.evaluate();
+    lat.threat.step(); lat.threat.evaluate();
+    lat.dbecon.step(); lat.dbecon.evaluate();
+    lat.exploit.step(); lat.exploit.evaluate();
+    // Meta-substrate steps observing buffered ratification events
+    meta.step(); meta.evaluate();
+
+    // Router decides
+    const decision = lat.router.decide();
+    const action = decision.action;
+    const ability = ABILITIES.find(a => a.id === action) || ABILITIES[0];
+
+    // Execute the ability
+    const result = Abilities[ability.id](actor, target);
+    let logMsg = ability.name.toLowerCase() + ' [' + decision.tier + ']';
+    if (result) {
+      if (result.miss) logMsg = ability.name + ' missed [' + decision.tier + ']';
+      else if (result.kind === 'damage') {
+        const c = result.crit ? 'crit' : 'a';
+        const lbl = result.label ? result.label + ' for ' : '';
+        logMsg = ability.name + ' — ' + lbl + result.dmg + ' dmg' +
+                 (result.absorbed ? ' (' + result.absorbed + ' absorbed)' : '') +
+                 (result.crit ? ' CRIT' : '') +
+                 (result.heal ? ' (drained ' + result.heal + ')' : '') +
+                 ' [' + decision.tier + ']';
+        if (result.crit) this.log(side, logMsg, 'crit');
+        else this.log(side, logMsg);
+      } else if (result.kind === 'heal') {
+        logMsg = 'heal +' + result.heal + ' hp [' + decision.tier + ']';
+        this.log(side, logMsg);
+      } else {
+        logMsg = ability.name + ' [' + decision.tier + ']';
+        this.log(side, logMsg);
+      }
+    } else if (result === null) {
+      // Blinded - missed entirely
+      logMsg = ability.name + ' BLINDED [' + decision.tier + ']';
+      this.log(side, logMsg, 'miss');
+    }
+    if (result && result.miss) this.log(side, logMsg, 'miss');
+
+    // Track opp's action from target's perspective
+    target.oppRecentActions.push(action);
+    if (target.oppRecentActions.length > 10) target.oppRecentActions.shift();
+
+    // Tick effects on the actor's turn-end (DoTs, cooldowns, etc.)
+    this.tickEffects(actor);
+    // Tick target's effects too (so DoTs progress on every game step)
+    this.tickEffects(target);
+
+    this.totalSteps++;
+
+    // Check round end
+    if (this.a.hp <= 0) {
+      this.scoreB++;
+      this.endRound('b', this.totalSteps);
+      return true;
+    }
+    if (this.b.hp <= 0) {
+      this.scoreA++;
+      this.endRound('a', this.totalSteps);
+      return true;
+    }
+
+    this.active = oppSide;
+    return false;
+  },
+
+  endRound(winner, totalSteps) {
+    const lat = this.latticeA, lab = this.latticeB;
+    this.reports.push({
+      round: this.reports.length,
+      winner: winner,
+      turns: totalSteps - (this.reports.reduce((s, r) => s + r.turns, 0)),
+      a: lat.pres.field.constraints.length + lat.threat.field.constraints.length + lat.dbecon.field.constraints.length + lat.exploit.field.constraints.length +
+         ' / ' + (lat.pres.field.ratified + lat.threat.field.ratified + lat.dbecon.field.ratified + lat.exploit.field.ratified) +
+         ' / ' + (lat.pres.field.subcascades.length + lat.threat.field.subcascades.length + lat.dbecon.field.subcascades.length + lat.exploit.field.subcascades.length),
+      b: lab.pres.field.constraints.length + lab.threat.field.constraints.length + lab.dbecon.field.constraints.length + lab.exploit.field.constraints.length +
+         ' / ' + (lab.pres.field.ratified + lab.threat.field.ratified + lab.dbecon.field.ratified + lab.exploit.field.ratified) +
+         ' / ' + (lab.pres.field.subcascades.length + lab.threat.field.subcascades.length + lab.dbecon.field.subcascades.length + lab.exploit.field.subcascades.length),
+      meta: meta.field.constraints.length + ' / ' + meta.field.ratified + ' / ' + meta.field.subcascades.length
+    });
+    this.log('sys', '═ Round ' + this.round + ' ended · ' + (winner === 'a' ? 'A' : 'B') + ' wins ═');
+    this.renderReport();
+    if (this.round >= this.maxRounds) {
+      this.gameOver = true;
+      const result = this.scoreA > this.scoreB ? 'A WINS' : this.scoreA < this.scoreB ? 'B WINS' : 'TIE';
+      this.log('sys', '═══ SIMULATION COMPLETE · A=' + this.scoreA + ' B=' + this.scoreB + ' · ' + result + ' ═══');
+      document.getElementById('btn-run').disabled = false;
+      document.getElementById('btn-step').disabled = false;
+      return;
+    }
+    this.round++;
+    this.a = makePlayerState(); this.b = makePlayerState();
+    this.active = Math.random() < 0.5 ? 'a' : 'b';
+    this.log('sys', '─── Round ' + this.round + ' begins · ' + (this.active === 'a' ? 'A' : 'B') + ' acts first ───');
+    this.render();
+  },
+
+  render() {
+    document.getElementById('round').textContent = this.round;
+    document.getElementById('score-a').textContent = this.scoreA;
+    document.getElementById('score-b').textContent = this.scoreB;
+    document.getElementById('a-hp').textContent = this.a.hp;
+    document.getElementById('b-hp').textContent = this.b.hp;
+    document.getElementById('a-bar').style.width = (this.a.hp / 200 * 100) + '%';
+    document.getElementById('b-bar').style.width = (this.b.hp / 200 * 100) + '%';
+
+    const renderEffects = (p, id) => {
+      const el = document.getElementById(id);
+      if (p.activeEffects.length === 0 && p.dots.length === 0 && p.hots.length === 0 && p.shieldHp === 0) {
+        el.innerHTML = '&nbsp;';
+        return;
+      }
+      let h = '';
+      for (const e of p.activeEffects) h += '<span class="effect-active">' + e.id + ' ' + e.remaining + 't</span>';
+      for (let i = 0; i < p.dots.length; i++) h += '<span class="effect-active">DoT ' + p.dots[i].remaining + 't</span>';
+      for (let i = 0; i < p.hots.length; i++) h += '<span class="effect-active">HoT ' + p.hots[i].remaining + 't</span>';
+      if (p.shieldHp > 0) h += '<span class="effect-active">Shield ' + p.shieldHp + '</span>';
+      el.innerHTML = h;
+    };
+    renderEffects(this.a, 'a-effects'); renderEffects(this.b, 'b-effects');
+
+    const renderAbilities = (p, id) => {
+      const el = document.getElementById(id);
+      let h = '';
+      for (const a of ABILITIES) {
+        const cd = p.cooldowns[a.id];
+        const cls = cd > 0 ? 'cd' : 'ready';
+        h += '<div class="ability-cell ' + cls + '">' +
+             '<div class="ability-name">' + a.name + '</div>' +
+             '<div class="ability-state">' + (cd > 0 ? cd + 't' : 'ready') + '</div></div>';
+      }
+      el.innerHTML = h;
+    };
+    renderAbilities(this.a, 'a-abilities'); renderAbilities(this.b, 'b-abilities');
+
+    const renderSubs = (lat, id) => {
+      const el = document.getElementById(id);
+      const subs = ['pres', 'threat', 'dbecon', 'exploit'];
+      let h = '';
+      for (const s of subs) {
+        const sub = lat[s];
+        const F = sub.field;
+        h += '<div class="substrate-box"><h2>' + s + '</h2>' +
+             '<span class="out">' + (F.lastOutput || F.spec.defaultOutput) + '</span> ' +
+             '<span class="stats">cons ' + F.constraints.length + ' · rat ' + F.ratified + ' · sub ' + F.subcascades.length + '</span></div>';
+      }
+      el.innerHTML = h;
+    };
+    renderSubs(this.latticeA, 'a-subs');
+    renderSubs(this.latticeB, 'b-subs');
+
+    // Meta panel
+    const metaEl = document.getElementById('meta-sub');
+    metaEl.innerHTML = '<div class="substrate-box meta"><h2>meta</h2>' +
+      '<span class="out">' + (meta.field.lastOutput || meta.field.spec.defaultOutput) + '</span> ' +
+      '<span class="stats">cons ' + meta.field.constraints.length + ' · rat ' + meta.field.ratified + ' · sub ' + meta.field.subcascades.length + '</span>' +
+      '<div class="stats" style="margin-top:4px">A rats recent: ' + (meta.recentARats || 0).toFixed(1) +
+      ' · B rats recent: ' + (meta.recentBRats || 0).toFixed(1) + '</div></div>';
+
+    // Router displays
+    const decA = this.latticeA.router.decide();
+    const decB = this.latticeB.router.decide();
+    document.getElementById('a-router-out').textContent = decA.action;
+    document.getElementById('a-router-tier').textContent = decA.tier;
+    document.getElementById('b-router-out').textContent = decB.action;
+    document.getElementById('b-router-tier').textContent = decB.tier;
+  },
+
+  renderReport() {
+    const tbody = document.getElementById('report-body');
+    tbody.innerHTML = '';
+    for (const r of this.reports) {
+      const tr = document.createElement('tr');
+      tr.className = r.winner === 'a' ? 'winner-a' : 'winner-b';
+      tr.innerHTML = '<td>' + r.round + '</td>' +
+                     '<td>' + (r.winner === 'a' ? 'A' : 'B') + '</td>' +
+                     '<td>' + r.turns + '</td>' +
+                     '<td>' + r.a + '</td>' +
+                     '<td>' + r.b + '</td>' +
+                     '<td>' + r.meta + '</td>';
+      tbody.appendChild(tr);
+    }
+  },
+
+  async runFull() {
+    if (this.running) return;
+    this.running = true;
+    document.getElementById('btn-run').disabled = true;
+    document.getElementById('btn-step').disabled = true;
+    document.getElementById('status').textContent = 'simulating...';
+    while (!this.gameOver) {
+      this.doTurn();
+      if (this.totalSteps % 10 === 0) {
+        this.render();
+        if (this.speed > 0) await new Promise(r => setTimeout(r, this.speed));
+        else await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    this.render();
+    this.running = false;
+    document.getElementById('status').textContent = 'complete';
+  },
+
+  doStep() {
+    if (this.running || this.gameOver) return;
+    this.doTurn();
+    this.render();
+  },
+
+  reset() {
+    this.round = 1; this.scoreA = 0; this.scoreB = 0; this.totalSteps = 0;
+    this.a = makePlayerState(); this.b = makePlayerState();
+    this.active = Math.random() < 0.5 ? 'a' : 'b';
+    this.gameOver = false; this.running = false;
+    this.reports = [];
+    this.latticeA = makeLattice('a', this);
+    this.latticeB = makeLattice('b', this);
+    meta = makeSubstrate(metaSpec);
+    meta.eventBuffer = []; meta.recentARats = 0; meta.recentBRats = 0;
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-step').disabled = false;
+    document.getElementById('status').textContent = 'ready';
+    this.log('sys', 'reset · ' + ABILITIES.length + ' abilities · meta-substrate coupled');
+    this.renderReport();
+    this.render();
+  },
+
+  copyRunData() {
+    const lines = [];
+    lines.push('# RICH SUBSTRATE DUEL · RUN DATA');
+    lines.push('');
+    lines.push('Generated: ' + new Date().toISOString());
+    lines.push('Abilities: ' + ABILITIES.length);
+    lines.push('Meta-substrate: enabled · cross-lattice ratification coupling');
+    lines.push('Score: A=' + this.scoreA + ' · B=' + this.scoreB);
+    lines.push('Total turns: ' + this.totalSteps);
+    lines.push('');
+    lines.push('## Round metrics');
+    lines.push('Round\tWinner\tTurns\tA cons/rat/sub\tB cons/rat/sub\tMeta cons/rat/sub');
+    for (const r of this.reports) {
+      lines.push(r.round + '\t' + (r.winner === 'a' ? 'A' : 'B') + '\t' + r.turns + '\t' + r.a + '\t' + r.b + '\t' + r.meta);
+    }
+    lines.push('');
+    lines.push('## Substrate end-state');
+    const latRender = (label, lat) => {
+      lines.push('### ' + label);
+      for (const s of ['pres', 'threat', 'dbecon', 'exploit']) {
+        const F = lat[s].field;
+        lines.push(s + ': cons=' + F.constraints.length + ' rat=' + F.ratified +
+          ' sub=' + F.subcascades.length + ' delta=' + F.vectorDelta.scalar.toFixed(3) +
+          ' lastOut=' + (F.lastOutput || F.spec.defaultOutput));
+      }
+    };
+    latRender('Player A', this.latticeA);
+    lines.push('');
+    latRender('Player B', this.latticeB);
+    lines.push('');
+    lines.push('### Meta-substrate');
+    lines.push('cons=' + meta.field.constraints.length + ' rat=' + meta.field.ratified +
+      ' sub=' + meta.field.subcascades.length + ' delta=' + meta.field.vectorDelta.scalar.toFixed(3) +
+      ' lastOut=' + (meta.field.lastOutput || meta.field.spec.defaultOutput));
+    lines.push('A rats recent=' + (meta.recentARats || 0).toFixed(2) +
+      ' · B rats recent=' + (meta.recentBRats || 0).toFixed(2));
+    lines.push('');
+    lines.push('## Combat log');
+    lines.push('');
+    const logEl = document.getElementById('log');
+    for (const child of logEl.children) lines.push(child.textContent || '');
+    const payload = lines.join('\n');
+
+    const showConfirm = (msg, ok) => {
+      const el = document.getElementById('copy-confirm');
+      el.textContent = msg;
+      el.style.color = ok ? '#2c8a4a' : '#b13030';
+      setTimeout(() => { el.textContent = ''; }, 2400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload).then(
+        () => showConfirm('copied · ' + payload.length + ' chars', true),
+        () => {
+          const ta = document.createElement('textarea');
+          ta.value = payload; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+          document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); showConfirm('copied (fallback)', true); }
+          catch (e) { showConfirm('copy failed', false); console.log(payload); }
+          document.body.removeChild(ta);
+        });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = payload; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showConfirm('copied (legacy)', true); }
+      catch (e) { showConfirm('copy failed', false); console.log(payload); }
+      document.body.removeChild(ta);
+    }
+  },
+
+  init() {
+    this.latticeA = makeLattice('a', this);
+    this.latticeB = makeLattice('b', this);
+    meta = makeSubstrate(metaSpec);
+    meta.eventBuffer = []; meta.recentARats = 0; meta.recentBRats = 0;
+    document.getElementById('btn-run').addEventListener('click', () => this.runFull());
+    document.getElementById('btn-step').addEventListener('click', () => this.doStep());
+    document.getElementById('btn-reset').addEventListener('click', () => this.reset());
+    document.getElementById('btn-copy').addEventListener('click', () => this.copyRunData());
+    const slider = document.getElementById('speed-slider');
+    slider.addEventListener('input', () => {
+      this.speed = parseInt(slider.value, 10);
+      document.getElementById('speed-val').textContent = this.speed + 'ms';
+    });
+    this.log('sys', 'rich substrate duel ready · ' + ABILITIES.length + ' abilities · meta-substrate coupled');
+    this.log('sys', 'press RUN SIMULATION to play 10 rounds');
+    this.render();
+  }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => game.init());
+else game.init();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EXODUS · VLAN IPC + @media Sync Observer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box }
+body {
+  background:#08080a; color:#999;
+  font-family:'SF Mono','Fira Code',monospace;
+  font-size:11px; padding:20px; display:flex; flex-direction:column; gap:12px;
+}
+
+/* ── PROBE ELEMENTS ──────────────────────────────────────────────────
+   #probe      — navigation / constraint resolution (existing)
+   #vlan-probe — IPC message classifier (new)
+   #sync-probe — @media sync observer (new — the thing you asked for)
+   ──────────────────────────────────────────────────────────────────── */
+#probe, #vlan-probe, #sync-probe {
+  position:absolute; left:-9999px; top:-9999px;
+  width:0; height:0; overflow:hidden; pointer-events:none;
+}
+
+/* ── LAYOUT ──────────────────────────────────────────────────────── */
+.row { display:flex; gap:12px }
+.panel { flex:1; border:1px solid #151518; border-radius:3px; padding:10px; display:flex; flex-direction:column; gap:8px }
+.panel-label { font-size:7px; letter-spacing:3px; color:#555; padding-bottom:6px; border-bottom:1px solid #111 }
+.box { border:1px solid #111; border-radius:2px; padding:8px }
+.box-label { font-size:7px; letter-spacing:2px; color:#555; margin-bottom:5px }
+
+/* ── SYNC STATE DISPLAY ──────────────────────────────────────────── */
+.sync-ring {
+  width:56px; height:56px; border-radius:50%;
+  border:2px solid #1a1a1e;
+  display:flex; align-items:center; justify-content:center;
+  font-size:7px; font-weight:700; letter-spacing:1px;
+  transition:all .3s; flex-shrink:0;
+  color:#333;
+}
+.sync-ring.pending  { border-color:hsl(40,40%,25%);   color:hsl(40,50%,45%) }
+.sync-ring.polling  { border-color:hsl(210,50%,28%);  color:hsl(210,60%,55%); animation:pulse 1s ease-in-out infinite }
+.sync-ring.confirmed{ border-color:hsl(160,50%,28%);  color:hsl(160,60%,50%); animation:none }
+.sync-ring.stale    { border-color:hsl(0,40%,25%);    color:hsl(0,50%,45%); animation:none }
+@keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+
+/* ── VLAN TAGS ───────────────────────────────────────────────────── */
+.vlan-tag {
+  display:inline-block; padding:2px 7px; border-radius:2px;
+  font-size:7px; font-weight:700; letter-spacing:1px; margin:1px;
+}
+.vlan-payment  { background:hsla(160,30%,10%,.5); border:1px solid hsla(160,35%,22%,.5); color:hsl(160,55%,48%) }
+.vlan-identity { background:hsla(210,30%,10%,.5); border:1px solid hsla(210,35%,22%,.5); color:hsl(210,55%,55%) }
+.vlan-audit    { background:hsla(270,30%,10%,.5); border:1px solid hsla(270,35%,22%,.5); color:hsl(270,50%,55%) }
+.vlan-control  { background:hsla(40,30%,10%,.5);  border:1px solid hsla(40,35%,22%,.5);  color:hsl(40,55%,50%) }
+.vlan-display  { background:hsla(0,25%,10%,.5);   border:1px solid hsla(0,30%,20%,.5);   color:hsl(0,45%,48%) }
+
+/* ── IPC LOG ─────────────────────────────────────────────────────── */
+.log { font-size:7px; line-height:1.7; max-height:180px; overflow-y:auto; background:#090909; border:1px solid #111; border-radius:2px; padding:6px }
+.log-in      { color:hsl(210,50%,52%) }
+.log-out     { color:hsl(160,50%,44%) }
+.log-tag     { color:hsl(270,48%,54%) }
+.log-sync    { color:hsl(40,55%,50%) }
+.log-confirm { color:hsl(160,60%,50%); font-weight:700 }
+.log-stale   { color:hsl(0,50%,48%) }
+
+/* ── MASTER METRIC ───────────────────────────────────────────────── */
+.master-coord {
+  font-size:9px; font-weight:700; letter-spacing:1px;
+  color:hsl(270,50%,58%); line-height:1.8;
+}
+.coord-component { font-size:7px; color:#555; margin-left:8px }
+
+/* ── MEDIA INSPECTOR ─────────────────────────────────────────────── */
+.media-rule { font-size:7px; line-height:1.6; color:#555; white-space:pre }
+.media-rule .active { color:hsl(160,55%,48%) }
+
+/* ── CONTROLS ────────────────────────────────────────────────────── */
+.btn { padding:7px 12px; border-radius:2px; font:700 8px/1 inherit; letter-spacing:1px; cursor:pointer; transition:all .1s }
+.btn.commit { border:1px solid hsl(160,45%,25%); background:hsl(160,45%,11%); color:hsl(160,55%,48%) }
+.btn.commit:hover { background:hsl(160,45%,14%) }
+.btn.nav    { border:1px solid #1e1e22; background:#0e0e11; color:#666 }
+.btn.nav:hover { border-color:#333; color:#999 }
+.btn.nav.on { border-color:hsl(210,45%,30%); color:hsl(210,60%,60%); background:hsla(210,40%,14%,.4) }
+
+.stats { display:flex; gap:6px }
+.stat  { flex:1; padding:6px; border-radius:2px; text-align:center }
+.stat.a { background:hsla(160,25%,8%,.5); border:1px solid hsla(160,30%,15%,.4) }
+.stat.b { background:hsla(210,25%,8%,.5); border:1px solid hsla(210,30%,15%,.4) }
+.stat.c { background:hsla(270,25%,8%,.5); border:1px solid hsla(270,30%,15%,.4) }
+.stat.d { background:hsla(40,25%,8%,.5);  border:1px solid hsla(40,30%,15%,.4) }
+.sn { font-size:14px; font-weight:700; line-height:1 }
+.sn.a{color:hsl(160,55%,46%)} .sn.b{color:hsl(210,55%,54%)} .sn.c{color:hsl(270,50%,55%)} .sn.d{color:hsl(40,55%,50%)}
+.sd { font-size:6px; letter-spacing:1px; margin-top:2px; color:#444 }
+
+h2 { font-size:10px; letter-spacing:2px; color:#ccc; margin-bottom:4px }
+</style>
+</head>
+<body>
+
+<!-- ══ PROBE LAYER ════════════════════════════════════════════════════
+     Three probes. Three distinct jobs.
+     All off-screen. All in layout. All resolved by the same cascade.
+     ════════════════════════════════════════════════════════════════ -->
+<div id="probe"></div>      <!-- constraint navigation -->
+<div id="vlan-probe"></div> <!-- IPC message classification -->
+<div id="sync-probe"></div> <!-- @media sync observer -->
+
+<div>
+  <h2>EXODUS · VLAN IPC + @media SYNC OBSERVER</h2>
+  <div style="font-size:7px;color:#555;letter-spacing:1px">
+    IPC tags every message with a VLAN coordinate via cascade · Server groups metrics · @media rules gate sync confirmation · Timer observes getComputedStyle
+  </div>
+</div>
+
+<div class="row">
+
+  <!-- ══ SERVER + MASTER METRIC ══════════════════════════════════ -->
+  <div class="panel" style="flex:0 0 30%">
+    <div class="panel-label">SERVER — METRIC GROUPS + MASTER</div>
+
+    <div class="box">
+      <div class="box-label">MASTER METRIC — COORDINATE OF COORDINATES</div>
+      <div class="master-coord" id="master-display">—</div>
+    </div>
+
+    <div class="box">
+      <div class="box-label">GROUPED METRICS</div>
+      <div id="groups-display" style="font-size:7px;color:#555;line-height:1.8">no commits yet</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat a"><div class="sn a" id="st-commits">0</div><div class="sd">COMMITS</div></div>
+      <div class="stat b"><div class="sn b" id="st-tags">0</div><div class="sd">TAGGED</div></div>
+      <div class="stat c"><div class="sn c" id="st-groups">0</div><div class="sd">GROUPS</div></div>
+      <div class="stat d"><div class="sn d" id="st-syncs">0</div><div class="sd">SYNCED</div></div>
+    </div>
+  </div>
+
+  <!-- ══ IPC VLAN TAGGER ════════════════════════════════════════ -->
+  <div class="panel" style="flex:0 0 28%">
+    <div class="panel-label">IPC — VLAN TAGGER</div>
+
+    <div class="box">
+      <div class="box-label">CLASSIFICATION CASCADE</div>
+      <div style="font-size:7px;color:#666;line-height:1.7;margin-bottom:6px">
+        Every message in flight gets a probe element seeded with
+        <span style="color:hsl(210,55%,55%)">data-msgtype</span>,
+        <span style="color:hsl(160,55%,48%)">data-direction</span>,
+        <span style="color:hsl(270,50%,55%)">data-domain</span>.
+        The cascade resolves <span style="color:hsl(40,55%,50%)">--vlan</span>,
+        <span style="color:hsl(40,55%,50%)">--group</span>,
+        <span style="color:hsl(40,55%,50%)">--affinity</span>.
+        JS reads. Server receives pre-tagged message.
+      </div>
+      <div id="active-tags" style="min-height:20px"></div>
+    </div>
+
+    <div class="box-label">IPC TRAFFIC</div>
+    <div class="log" id="ipc-log"></div>
+  </div>
+
+  <!-- ══ @media SYNC OBSERVER ══════════════════════════════════ -->
+  <div class="panel" style="flex:1">
+    <div class="panel-label">@MEDIA SYNC OBSERVER — CLIENT CONFIRMS MASTER</div>
+
+    <div class="row" style="gap:10px; align-items:flex-start">
+
+      <div class="sync-ring pending" id="sync-ring">PENDING</div>
+
+      <div style="flex:1">
+        <div class="box">
+          <div class="box-label">HOW IT WORKS</div>
+          <div style="font-size:7px;color:#666;line-height:1.7">
+            On COMMIT → server builds master metric → ships coordinates to client.<br>
+            Client injects <span style="color:hsl(160,55%,48%)">@media</span> rules gated on those coordinates.<br>
+            JS timer starts polling <span style="color:hsl(210,55%,55%)">getComputedStyle(#sync-probe)</span>.<br>
+            When <span style="color:hsl(40,55%,50%)">--sync-state</span> resolves to <span style="color:hsl(160,55%,48%)">confirmed</span>,<br>
+            the master coordinate is live in the cascade. Timer stops. ACK sent.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="box-label">INJECTED @MEDIA RULES</div>
+      <div class="media-rule" id="media-rules-display">awaiting commit...</div>
+    </div>
+
+    <div class="box">
+      <div class="box-label">SYNC POLL LOG</div>
+      <div class="log" id="sync-log"></div>
+    </div>
+
+    <div style="display:flex; gap:6px; align-items:center">
+      <div style="font-size:8px;font-weight:700;color:#666" id="sync-status">SYNC STATE: PENDING</div>
+      <div style="font-size:7px;color:#444" id="poll-count"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ NAVIGATION + COMMIT ══════════════════════════════════════════ -->
+<div class="row" style="gap:12px">
+  <div class="panel" style="flex:1">
+    <div class="panel-label">NAVIGATE + COMMIT — GENERATES METRIC + TRIGGERS @MEDIA SYNC</div>
+    <div id="nav-controls" style="display:flex;flex-wrap:wrap;gap:12px"></div>
+    <button class="btn commit" id="btn-commit">COMMIT → BUILD MASTER → START @MEDIA OBSERVER</button>
+  </div>
+</div>
+
+
+<script>
+(function () {
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  SERVER                                                            ║
+// ║  Owns geometry, metric groups, master metric.                      ║
+// ║  Receives VLAN-tagged messages from IPC.                           ║
+// ║  On COMMIT: builds master metric from current group coordinates.   ║
+// ║  Emits master to client for @media sync observation.               ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+var Server = {
+
+  dims: [
+    { name: 'plan',    values: ['free','pro','enterprise'] },
+    { name: 'region',  values: ['us','eu','apac'] },
+    { name: 'channel', values: ['web','mobile','api'] },
+    { name: 'tier',    values: ['standard','silver','gold'] }
+  ],
+
+  navState: [0, 0, 0, 0],
+  commitCount: 0,
+  syncCount: 0,
+
+  // Metric groups — keyed by VLAN, accumulate coords
+  groups: {
+    payment:  { coords: [], affinity: 0 },
+    identity: { coords: [], affinity: 0 },
+    audit:    { coords: [], affinity: 0 },
+    control:  { coords: [], affinity: 0 }
+  },
+
+  // Master metric — each value is a group's coordinate index
+  // It's a coordinate of coordinates.
+  masterMetric: null,
+
+  // ── Build master metric from current group state ──────────────────
+  buildMasterMetric: function () {
+    var self = this;
+    var master = {};
+    Object.keys(this.groups).forEach(function (grp, i) {
+      var g = self.groups[grp];
+      master[grp] = {
+        coord:    g.coords.length - 1,   // latest coordinate in this group
+        affinity: g.affinity,
+        count:    g.coords.length
+      };
+    });
+    this.masterMetric = master;
+    return master;
+  },
+
+  // ── Receive a VLAN-tagged message, route by group ─────────────────
+  routeTagged: function (tagged) {
+    var grp = tagged.vlan;
+    if (this.groups[grp]) {
+      this.groups[grp].coords.push(tagged.coord);
+      this.groups[grp].affinity = Math.min(1, this.groups[grp].affinity + 0.25);
+    }
+  },
+
+  handleMessage: function (msg) {
+    switch (msg.type) {
+
+      case 'CONNECT':
+        return {
+          type: 'CONNECTED',
+          dims: this.dims,
+          navState: this.navState.slice()
+        };
+
+      case 'NAV_SET':
+        this.navState[msg.dim] = msg.val;
+        return { type: 'NAV_ACK', navState: this.navState.slice() };
+
+      case 'COMMIT':
+        this.commitCount++;
+        // Route the tagged commit message into the appropriate group
+        this.routeTagged(msg.tagged);
+        // Build master metric
+        var master = this.buildMasterMetric();
+        return {
+          type: 'COMMIT_ACK',
+          index: this.commitCount,
+          navState: this.navState.slice(),
+          masterMetric: master,
+          groups: JSON.parse(JSON.stringify(this.groups))
+        };
+
+      case 'SYNC_ACK':
+        this.syncCount++;
+        return { type: 'SYNC_CONFIRMED', syncCount: this.syncCount };
+
+      default:
+        return { type: 'ERROR', msg: 'unknown: ' + msg.type };
+    }
+  }
+};
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  IPC — VLAN TAGGER                                                ║
+// ║                                                                    ║
+// ║  Every outbound message is intercepted here.                       ║
+// ║  A probe element is seeded with message metadata as data-attrs.    ║
+// ║  The cascade resolves --vlan, --group, --affinity.                 ║
+// ║  JS reads back the classification.                                 ║
+// ║  Server receives a message that already knows what it is.          ║
+// ║                                                                    ║
+// ║  The server never branches on message type to decide routing.      ║
+// ║  The cascade decided the routing before the message arrived.       ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+var IPC = {
+
+  vlanProbe: null,
+  logEl: null,
+
+  // ── VLAN classification rules ──────────────────────────────────────
+  // Compiled once, used for every message in flight.
+  // data-msgtype + data-direction + data-domain → --vlan, --group, --affinity
+  buildVlanCascade: function () {
+    var css = '';
+    var P = '#vlan-probe';
+
+    // Base: unclassified
+    css += P + ' { --vlan: unclassified; --group: none; --affinity: 0 }\n\n';
+
+    // Payment domain signals
+    css += P + '[data-domain="payment"] { --vlan: payment; --group: payment; --affinity: 1 }\n';
+    css += P + '[data-msgtype="COMMIT"][data-domain="payment"] { --vlan: payment; --affinity: 2 }\n';
+
+    // Identity / customer signals
+    css += P + '[data-domain="customer"] { --vlan: identity; --group: identity; --affinity: 1 }\n';
+    css += P + '[data-msgtype="NAV_SET"][data-domain="customer"] { --vlan: identity; --affinity: 2 }\n';
+
+    // Audit signals
+    css += P + '[data-msgtype="COMMIT"] { --vlan: audit; --group: audit; --affinity: 1 }\n';
+    css += P + '[data-direction="out"][data-msgtype="COMMIT_ACK"] { --vlan: audit; --affinity: 2 }\n';
+
+    // Control/nav signals
+    css += P + '[data-msgtype="NAV_SET"] { --vlan: control; --group: control; --affinity: 1 }\n';
+    css += P + '[data-msgtype="CONNECT"] { --vlan: control; --group: control; --affinity: 1 }\n';
+
+    // 3-attr: highest specificity — commit + outbound + audit = confirmed audit event
+    css += P + '[data-msgtype="COMMIT"][data-direction="in"][data-domain="txn"] {\n';
+    css += '  --vlan: audit; --group: audit; --affinity: 3\n}\n';
+
+    var style = document.createElement('style');
+    style.id = 'vlan-cascade';
+    style.textContent = css;
+    document.head.appendChild(style);
+  },
+
+  // ── Tag a message before it reaches the server ────────────────────
+  // This is the VLAN tagging step.
+  // The cascade runs. The message learns what it is.
+  tag: function (msg) {
+    var el = this.vlanProbe;
+    var domain = msg.domain || this.inferDomain(msg);
+    el.setAttribute('data-msgtype',   msg.type);
+    el.setAttribute('data-direction', 'in');
+    el.setAttribute('data-domain',    domain);
+
+    var cs    = getComputedStyle(el);
+    var vlan  = cs.getPropertyValue('--vlan').trim().replace(/"/g, '');
+    var group = cs.getPropertyValue('--group').trim().replace(/"/g, '');
+    var aff   = parseFloat(cs.getPropertyValue('--affinity').trim()) || 0;
+
+    return Object.assign({}, msg, {
+      vlan: vlan, group: group, affinity: aff,
+      domain: domain,
+      coord: [msg.type, domain, vlan].join(':')
+    });
+  },
+
+  inferDomain: function (msg) {
+    if (msg.type === 'COMMIT') return 'txn';
+    if (msg.type === 'NAV_SET' && msg.dim <= 1) return 'customer';
+    if (msg.type === 'NAV_SET') return 'nav';
+    return 'system';
+  },
+
+  init: function () {
+    this.vlanProbe = document.getElementById('vlan-probe');
+    this.logEl     = document.getElementById('ipc-log');
+    this.buildVlanCascade();
+  },
+
+  send: function (msg) {
+    var tagged = this.tag(msg);
+    this.logMsg('in', tagged);
+    this.showActiveTags(tagged);
+    var response = Server.handleMessage(tagged);
+    this.logMsg('out', response);
+    return response;
+  },
+
+  logMsg: function (dir, msg) {
+    var cls = dir === 'in' ? 'log-in' : 'log-out';
+    var arrow = dir === 'in' ? '→SRV' : '←CLI';
+    var ts = new Date().toISOString().substring(11, 23);
+    var vlan = msg.vlan ? ' <span class="log-tag">[' + msg.vlan + ']</span>' : '';
+    this.logEl.innerHTML += '<div class="' + cls + '">' + ts + ' ' + arrow + ' ' + msg.type + vlan + '</div>';
+    this.logEl.scrollTop = this.logEl.scrollHeight;
+  },
+
+  showActiveTags: function (tagged) {
+    var el = document.getElementById('active-tags');
+    var cls = 'vlan-' + (tagged.vlan || 'display');
+    el.innerHTML = '<span class="vlan-tag ' + cls + '">' + (tagged.vlan || '?').toUpperCase() + '</span>' +
+      '<span class="vlan-tag vlan-display">' + tagged.domain + '</span>' +
+      '<span class="vlan-tag vlan-audit">aff=' + tagged.affinity + '</span>';
+  },
+
+  logSync: function (msg) {
+    this.logEl.innerHTML += '<div class="log-sync">◈ ' + msg + '</div>';
+    this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+};
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  @MEDIA SYNC OBSERVER                                             ║
+// ║                                                                    ║
+// ║  On COMMIT, the server returns the master metric coordinates.      ║
+// ║  The client injects @media rules that gate --sync-state on those   ║
+// ║  coordinates AND the current environment (viewport, color scheme). ║
+// ║  A JS timer polls getComputedStyle(#sync-probe).                   ║
+// ║  When --sync-state === "confirmed" the cascade has resolved the    ║
+// ║  master coordinate in the current environment.                     ║
+// ║  Timer stops. SYNC_ACK fires. Master is live.                      ║
+// ║                                                                    ║
+// ║  This is change detection without a dirty-check.                   ║
+// ║  The cascade IS the observation. @media is the gate.               ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+var SyncObserver = {
+
+  probe:       null,
+  styleEl:     null,
+  timer:       null,
+  pollCount:   0,
+  totalSyncs:  0,
+  currentMaster: null,
+
+  init: function () {
+    this.probe = document.getElementById('sync-probe');
+  },
+
+  // ── Build the @media observation cascade ──────────────────────────
+  // The master metric's coordinates become data-attributes on sync-probe.
+  // @media rules gate whether --sync-state resolves to "confirmed".
+  //
+  // This means: confirmation only fires when BOTH:
+  //   (a) the probe carries the right master coordinate attributes
+  //   (b) the current environment matches (viewport width, color-scheme)
+  //
+  // The environment dimension makes this genuinely @media — not just
+  // another attribute selector. The sync is environment-aware.
+  buildSyncCascade: function (masterMetric) {
+    if (this.styleEl) this.styleEl.remove();
+
+    var css = '';
+    var P   = '#sync-probe';
+
+    // Base: not synced
+    css += P + ' { --sync-state: pending; --env-class: unknown }\n\n';
+
+    // Environment classification (these fire regardless of master coord)
+    css += '@media (max-width: 768px) {\n';
+    css += '  ' + P + ' { --env-class: compact }\n}\n\n';
+
+    css += '@media (min-width: 769px) {\n';
+    css += '  ' + P + ' { --env-class: expanded }\n}\n\n';
+
+    css += '@media (prefers-color-scheme: dark) {\n';
+    css += '  ' + P + ' { --color-context: dark }\n}\n\n';
+
+    css += '@media (prefers-color-scheme: light) {\n';
+    css += '  ' + P + ' { --color-context: light }\n}\n\n';
+
+    // ── Master coordinate confirmation rules ──────────────────────
+    // For each group in the master, we build a @media-gated rule.
+    // The probe must carry data-master-[group]="coord" AND the
+    // viewport must be in the correct class for the coordinate to confirm.
+    //
+    // Narrow viewport → compact confirmations (fewer groups required)
+    // Wide viewport   → full confirmation (all groups must match)
+
+    var groups  = Object.keys(masterMetric);
+    var attrSel = groups.map(function (g) {
+      return '[data-master-' + g + "='" + masterMetric[g].coord + "']";
+    }).join('');
+
+    // Compact env: partial confirmation (any 2 groups match)
+    css += '@media (max-width: 768px) {\n';
+    groups.slice(0, 2).forEach(function (g) {
+      css += '  ' + P + "[data-master-" + g + "='" + masterMetric[g].coord + "'] {\n";
+      css += '    --sync-state: confirmed;\n';
+      css += '    --sync-env: compact;\n  }\n';
+    });
+    css += '}\n\n';
+
+    // Expanded env: full confirmation (all groups match simultaneously)
+    css += '@media (min-width: 769px) {\n';
+    css += '  ' + P + attrSel + ' {\n';
+    css += '    --sync-state: confirmed;\n';
+    css += '    --sync-env: expanded;\n  }\n';
+    css += '}\n\n';
+
+    // Stale detection: if ANY group coord is BEHIND the master
+    // (probe has old coordinate → --sync-state stays pending,
+    // but we can detect the gap)
+    css += P + '[data-sync-version]:not([data-sync-version="' + groups.length + '"]) {\n';
+    css += '  --sync-state: stale;\n}\n';
+
+    this.styleEl = document.createElement('style');
+    this.styleEl.id = 'sync-cascade';
+    this.styleEl.textContent = css;
+    document.head.appendChild(this.styleEl);
+
+    // Show the injected rules
+    document.getElementById('media-rules-display').textContent = css;
+
+    return css;
+  },
+
+  // ── Seed the sync probe with current master coordinates ───────────
+  seedProbe: function (masterMetric) {
+    var el = this.probe;
+    Object.keys(masterMetric).forEach(function (g) {
+      el.setAttribute('data-master-' + g, masterMetric[g].coord);
+    });
+    el.setAttribute('data-sync-version', Object.keys(masterMetric).length.toString());
+    this.currentMaster = masterMetric;
+  },
+
+  // ── Start the polling timer ────────────────────────────────────────
+  // This is the JS timer you asked for.
+  // It fires every 16ms (~60fps). Each tick:
+  //   1. Reads getComputedStyle(#sync-probe)
+  //   2. Checks --sync-state
+  //   3. If "confirmed" → stops, fires SYNC_ACK
+  //   4. If "stale"     → logs, keeps polling
+  //   5. If "pending"   → keeps polling
+  start: function (masterMetric, onConfirm, onStale) {
+    if (this.timer) clearInterval(this.timer);
+    this.pollCount = 0;
+    this.updateRing('polling');
+
+    var self = this;
+    this.timer = setInterval(function () {
+      self.pollCount++;
+
+      var cs        = getComputedStyle(self.probe);
+      var syncState = cs.getPropertyValue('--sync-state').trim().replace(/"/g, '');
+      var envClass  = cs.getPropertyValue('--env-class').trim().replace(/"/g, '');
+      var syncEnv   = cs.getPropertyValue('--sync-env').trim().replace(/"/g, '');
+
+      document.getElementById('poll-count').textContent =
+        'poll #' + self.pollCount + '  state=' + syncState + '  env=' + envClass;
+
+      if (syncState === 'confirmed') {
+        clearInterval(self.timer);
+        self.timer = null;
+        self.totalSyncs++;
+        self.updateRing('confirmed');
+        self.logSync('CONFIRMED  env=' + syncEnv + '  polls=' + self.pollCount);
+        document.getElementById('sync-status').textContent = 'SYNC STATE: CONFIRMED';
+        document.getElementById('sync-status').style.color = 'hsl(160,55%,48%)';
+        if (onConfirm) onConfirm({ syncEnv: syncEnv, polls: self.pollCount });
+
+      } else if (syncState === 'stale') {
+        self.updateRing('stale');
+        self.logSync('STALE COORD DETECTED — master has moved');
+        document.getElementById('sync-status').textContent = 'SYNC STATE: STALE';
+        document.getElementById('sync-status').style.color = 'hsl(0,50%,48%)';
+        if (onStale) onStale();
+        clearInterval(self.timer);
+
+      } else {
+        // pending — still resolving
+        if (self.pollCount % 10 === 0) {
+          self.logSync('polling...  env=' + envClass + '  pending');
+        }
+      }
+
+      // Safety: give up after 5 seconds (300 polls @ 16ms)
+      if (self.pollCount >= 300) {
+        clearInterval(self.timer);
+        self.logSync('TIMEOUT — sync did not confirm in 5s');
+        self.updateRing('stale');
+      }
+
+    }, 16);
+  },
+
+  updateRing: function (state) {
+    var ring = document.getElementById('sync-ring');
+    ring.className = 'sync-ring ' + state;
+    ring.textContent = state.toUpperCase();
+  },
+
+  logSync: function (msg) {
+    var log = document.getElementById('sync-log');
+    var ts  = new Date().toISOString().substring(11, 23);
+    var cls = msg.indexOf('CONFIRMED') > -1 ? 'log-confirm' :
+              msg.indexOf('STALE') > -1     ? 'log-stale' : 'log-sync';
+    log.innerHTML += '<div class="' + cls + '">' + ts + ' ' + msg + '</div>';
+    log.scrollTop = log.scrollHeight;
+  }
+};
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  CLIENT                                                            ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+var Client = {
+  dims: [], navState: [],
+  probeEl: document.getElementById('probe'),
+
+  connect: function () {
+    var res = IPC.send({ type: 'CONNECT' });
+    this.dims     = res.dims;
+    this.navState = res.navState;
+    this.buildNavUI();
+  },
+
+  commit: function () {
+    var ack = IPC.send({ type: 'COMMIT', navState: this.navState.slice() });
+
+    // Server returned master metric — start @media sync observation
+    var master = ack.masterMetric;
+
+    // 1. Build the @media cascade for this master coordinate
+    SyncObserver.buildSyncCascade(master);
+
+    // 2. Seed the sync probe with the master's coordinates
+    SyncObserver.seedProbe(master);
+
+    // 3. Start the polling timer
+    SyncObserver.start(master,
+      function (result) {
+        // On confirmed: fire SYNC_ACK back through IPC
+        IPC.send({ type: 'SYNC_ACK', result: result });
+        updateStatsUI(ack);
+      },
+      function () {
+        // On stale: log and update
+        updateStatsUI(ack);
+      }
+    );
+
+    // Update server display
+    updateServerUI(ack);
+    updateStatsUI(ack);
+  },
+
+  buildNavUI: function () {
+    var nav = document.getElementById('nav-controls');
+    this.dims.forEach(function (dim, di) {
+      var grp = document.createElement('div');
+      var lbl = document.createElement('div');
+      lbl.style.cssText = 'font-size:7px;letter-spacing:2px;color:#555;margin-bottom:4px';
+      lbl.textContent   = dim.name.toUpperCase();
+      grp.appendChild(lbl);
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap';
+      dim.values.forEach(function (val, vi) {
+        var btn = document.createElement('button');
+        btn.className = 'btn nav' + (vi === 0 ? ' on' : '');
+        btn.textContent = val;
+        btn.addEventListener('click', function () {
+          Client.navState[di] = vi;
+          IPC.send({ type: 'NAV_SET', dim: di, val: vi });
+          row.querySelectorAll('.btn').forEach(function (b) { b.classList.remove('on'); });
+          btn.classList.add('on');
+        });
+        row.appendChild(btn);
+      });
+      grp.appendChild(row);
+      nav.appendChild(grp);
+    });
+  }
+};
+
+
+// ── UI updates ─────────────────────────────────────────────────────
+
+function updateServerUI(ack) {
+  var master = ack.masterMetric;
+  var lines  = [];
+  Object.keys(master).forEach(function (g) {
+    var m = master[g];
+    lines.push(
+      '<span style="color:hsl(270,50%,58%)">' + g + '</span>' +
+      ' → coord:<span style="color:hsl(40,55%,50%)">' + m.coord + '</span>' +
+      ' count:<span style="color:hsl(160,50%,44%)">' + m.count + '</span>' +
+      ' aff:<span style="color:hsl(210,50%,52%)">' + m.affinity.toFixed(2) + '</span>'
+    );
+  });
+  document.getElementById('master-display').innerHTML = lines.join('<br>');
+
+  var groups = ack.groups;
+  var gLines = [];
+  Object.keys(groups).forEach(function (g) {
+    var grp = groups[g];
+    if (grp.coords.length === 0) return;
+    gLines.push(
+      '<span class="vlan-tag vlan-' + g + '">' + g.toUpperCase() + '</span> ' +
+      '<span style="color:#666">' + grp.coords.length + ' coords · aff=' + grp.affinity.toFixed(2) + '</span>'
+    );
+  });
+  document.getElementById('groups-display').innerHTML = gLines.join('<br>') || 'no groups yet';
+}
+
+function updateStatsUI(ack) {
+  document.getElementById('st-commits').textContent = Server.commitCount;
+  document.getElementById('st-tags').textContent    = Server.commitCount;
+  document.getElementById('st-groups').textContent  = Object.keys(ack.groups).filter(function (g) { return ack.groups[g].coords.length > 0; }).length;
+  document.getElementById('st-syncs').textContent   = SyncObserver.totalSyncs;
+}
+
+
+// ── Bootstrap ──────────────────────────────────────────────────────
+
+IPC.init();
+SyncObserver.init();
+Client.connect();
+
+document.getElementById('btn-commit').addEventListener('click', function () {
+  Client.commit();
+});
+
+})();
+</script>
+</body>
+</html>

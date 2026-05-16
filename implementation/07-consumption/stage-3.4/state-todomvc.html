@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>todos -- substrate-deposited state object</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- ============================================================
+     This document IS the application. Everything that determines
+     what the application does is in this file as configuration:
+     cascade rules (the runtime), DOM structure (the coordinate
+     space), data-role attributes (typed coordinates).
+
+     Deposited at the CDN. Fetched by the browser. Resolved by
+     the platform's existing infrastructure. No bundle. No build.
+     No framework. Just state.
+     ============================================================ -->
+
+<style id="runtime-cascade">
+
+/* ============================================================
+   COORDINATE SPACE
+   The state element holds the application's coordinates as
+   data-X attributes. The cascade resolves transitions through
+   the coordinate space based on the current attribute values.
+   ============================================================ */
+[data-substrate-state] {
+  --next-op: noop;
+  --filter: all;
+  --visible-count: 0;
+}
+
+/* ============================================================
+   TRANSITION RULES
+   Each rule encodes "from this state, the next coordinate to
+   visit is here." The walker reads --next-op and executes the
+   named operation, which writes back to the state space.
+   ============================================================ */
+
+/* Submit trigger: input emitter pressed Enter -> add the todo */
+[data-substrate-state][data-trigger="submit"] { --next-op: add-todo; }
+
+/* Toggle trigger: a checkbox changed -> toggle the target */
+[data-substrate-state][data-trigger="toggle"] { --next-op: toggle-todo; }
+
+/* Delete trigger: a delete button clicked -> remove the target */
+[data-substrate-state][data-trigger="delete"] { --next-op: delete-todo; }
+
+/* Clear-completed action -> remove all completed todos */
+[data-substrate-state][data-trigger="clear-completed"] { --next-op: clear-completed; }
+
+/* ============================================================
+   FILTER VISIBILITY
+   The cascade resolves which todos are visible given the
+   current filter coordinate. No JavaScript decides visibility.
+   ============================================================ */
+
+[data-substrate-state][data-filter="active"]    ~ * .todo-item[data-completed="1"] { display: none; }
+[data-substrate-state][data-filter="completed"] ~ * .todo-item[data-completed="0"] { display: none; }
+
+/* ============================================================
+   FILTER CONTROL ACTIVE STATE
+   The active filter button gets visual emphasis. Cascade-resolved.
+   ============================================================ */
+
+[data-substrate-state][data-filter="all"]       ~ * [data-filter-control][data-filter="all"],
+[data-substrate-state][data-filter="active"]    ~ * [data-filter-control][data-filter="active"],
+[data-substrate-state][data-filter="completed"] ~ * [data-filter-control][data-filter="completed"] {
+  border-color: #b83f45;
+  color: #b83f45;
+}
+
+/* ============================================================
+   TODO ITEM COMPLETION STYLING
+   Per-item style based on per-item completion coordinate.
+   ============================================================ */
+
+.todo-item[data-completed="1"] .text {
+  text-decoration: line-through;
+  color: #888;
+}
+
+/* ============================================================
+   PAGE CHROME (presentation, not behavior)
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { background: #f5f5f5; padding: 40px 20px; min-height: 100vh; }
+.app { max-width: 550px; margin: 0 auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+h1 { text-align: center; padding: 24px; font-size: 56px; color: #b83f45; font-weight: 200; letter-spacing: -0.02em; }
+.input-bar { padding: 16px; border-bottom: 1px solid #ededed; display: flex; gap: 8px; }
+.input-bar input { flex: 1; padding: 12px 14px; font-size: 18px; border: 1px solid #ddd; min-width: 0; }
+.input-bar input:focus { outline: none; border-color: #b83f45; }
+.input-bar button { padding: 0 20px; font-size: 16px; background: #b83f45; color: white; border: 0; cursor: pointer; font-weight: 500; }
+.input-bar button:hover { background: #a23139; }
+.input-bar button:active { background: #8c2a31; }
+.todo-list { list-style: none; }
+.todo-list:empty { display: none; }
+.todo-item { padding: 14px 16px; border-bottom: 1px solid #ededed; display: flex; align-items: center; gap: 12px; }
+.todo-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+.todo-item .text { flex: 1; word-break: break-word; }
+.todo-item button { background: none; border: 0; color: #cc9a9a; cursor: pointer; padding: 4px 8px; font-size: 16px; }
+.todo-item button:hover { color: #af5b5e; }
+.footer { padding: 14px 16px; display: flex; justify-content: space-between; color: #777; font-size: 13px; align-items: center; flex-wrap: wrap; gap: 8px; }
+.footer .filters { display: flex; gap: 4px; }
+.footer .filters button { background: none; border: 1px solid transparent; padding: 4px 8px; cursor: pointer; color: inherit; font-size: 13px; }
+.footer button { background: none; border: 0; color: inherit; cursor: pointer; font-size: 13px; }
+.footer button:hover { text-decoration: underline; }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <h1>todos</h1>
+
+  <div class="input-bar">
+    <input id="new-todo"
+           type="text"
+           data-role="input-emitter"
+           data-trigger="submit"
+           placeholder="What needs to be done?"
+           autocomplete="off"
+           autofocus>
+    <button id="commit"
+            data-role="action-trigger"
+            data-action="submit"
+            type="button">Add</button>
+  </div>
+
+  <!-- The state element. Holds all application coordinates as
+       data-X attributes. The cascade resolves against it. -->
+  <div data-substrate-state
+       data-filter="all"
+       data-trigger=""
+       data-target=""></div>
+
+  <ul id="todo-list" class="todo-list"></ul>
+
+  <div class="footer">
+    <span id="count">0 items left</span>
+    <div class="filters">
+      <button data-role="filter-control" data-filter="all">All</button>
+      <button data-role="filter-control" data-filter="active">Active</button>
+      <button data-role="filter-control" data-filter="completed">Completed</button>
+    </div>
+    <button data-role="action-trigger" data-action="clear-completed">Clear completed</button>
+  </div>
+
+</div>
+
+<!-- Generic walker. In production this would be a stable URL on the
+     CDN, cached forever, shared across all substrate-deposited apps:
+     <script src="https://substrate.example/walker.js"></script>
+     For this demonstration it's inlined to make the artifact
+     self-contained and runnable from a local file. -->
+<script src="./substrate-walker.js"></script>
+
+<!-- Application-specific operations. These are the small bits of
+     genuinely-imperative work the cascade dispatches against. They
+     are pure functions of the coordinate snapshot - they do not
+     decide WHEN to run, only WHAT to do when called. -->
+<script>
+"use strict";
+
+function nextId() {
+  var n = parseInt(localStorage.getItem("todos-substrate-nextId") || "1", 10);
+  localStorage.setItem("todos-substrate-nextId", String(n + 1));
+  return n;
+}
+
+function persist() {
+  try {
+    var items = [];
+    document.querySelectorAll(".todo-item").forEach(function (li) {
+      items.push({
+        id: li.dataset.id,
+        completed: li.dataset.completed,
+        text: li.querySelector(".text").textContent
+      });
+    });
+    localStorage.setItem("todos-substrate-items", JSON.stringify(items));
+  } catch (e) { /* quota or disabled; non-fatal */ }
+}
+
+function refreshCount() {
+  var active = document.querySelectorAll('.todo-item[data-completed="0"]').length;
+  document.getElementById("count").textContent = active + (active === 1 ? " item left" : " items left");
+}
+
+window.substrate.register("add-todo", function (coords) {
+  var text = (coords["data-input-new-todo"] || "").trim();
+  if (!text) {
+    return { "data-trigger": "" };
+  }
+  var li = document.createElement("li");
+  li.className = "todo-item";
+  li.dataset.id = String(nextId());
+  li.dataset.completed = "0";
+  li.innerHTML =
+    '<input type="checkbox" data-role="toggle">' +
+    '<span class="text"></span>' +
+    '<button data-role="delete">x</button>';
+  li.querySelector(".text").textContent = text;
+  document.getElementById("todo-list").appendChild(li);
+  document.getElementById("new-todo").value = "";
+  persist();
+  refreshCount();
+  return {
+    "data-trigger": "",
+    "data-input-new-todo": "",
+    "data-input-present": "0"
+  };
+});
+
+window.substrate.register("toggle-todo", function (coords) {
+  var id = coords["data-target"];
+  var li = document.querySelector('.todo-item[data-id="' + id + '"]');
+  if (li) {
+    li.dataset.completed = li.dataset.completed === "1" ? "0" : "1";
+    var cb = li.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = li.dataset.completed === "1";
+    persist();
+    refreshCount();
+  }
+  return { "data-trigger": "", "data-target": "" };
+});
+
+window.substrate.register("delete-todo", function (coords) {
+  var id = coords["data-target"];
+  var li = document.querySelector('.todo-item[data-id="' + id + '"]');
+  if (li) li.remove();
+  persist();
+  refreshCount();
+  return { "data-trigger": "", "data-target": "" };
+});
+
+window.substrate.register("clear-completed", function () {
+  document.querySelectorAll('.todo-item[data-completed="1"]').forEach(function (li) {
+    li.remove();
+  });
+  persist();
+  refreshCount();
+  return { "data-trigger": "" };
+});
+
+// Hydration: load any persisted items on first paint
+(function () {
+  try {
+    var raw = localStorage.getItem("todos-substrate-items");
+    if (!raw) return;
+    var items = JSON.parse(raw);
+    if (!Array.isArray(items)) return;
+    var listEl = document.getElementById("todo-list");
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      li.className = "todo-item";
+      li.dataset.id = item.id;
+      li.dataset.completed = item.completed || "0";
+      li.innerHTML =
+        '<input type="checkbox" data-role="toggle"' +
+        (item.completed === "1" ? " checked" : "") + '>' +
+        '<span class="text"></span>' +
+        '<button data-role="delete">x</button>';
+      li.querySelector(".text").textContent = item.text || "";
+      listEl.appendChild(li);
+    });
+    refreshCount();
+  } catch (e) { /* corrupted storage; ignore */ }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,4037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self';">
+<title>TodoMVC (cascade rules loaded)</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #fafafa; }
+.panel { background: white; padding: 16px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; }
+.panel h2 { margin-top: 0; font-size: 14px; color: #555; }
+.kv { display: grid; grid-template-columns: 200px 1fr; gap: 8px; }
+.kv .k { color: #888; }
+.kv .v { font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>Substrate Skeleton</h1>
+<p>Phase 8 Layer K1 acceptance criterion 1: skeleton boots, kernel ticks indefinitely.</p>
+<div id="substrate-state" data-substrate-state="" style="display:none"></div>
+<div id="status" class="panel">
+<h2>Substrate state</h2>
+<div class="kv">
+<span class="k">Tick count</span><span class="v" id="tick-count">-</span>
+<span class="k">Field.step</span><span class="v" id="field-step">-</span>
+<span class="k">Constraints</span><span class="v" id="constraint-count">-</span>
+<span class="k">Seed at [0]?</span><span class="v" id="seed-ok">-</span>
+<span class="k">scalarDelta</span><span class="v" id="scalar-delta">-</span>
+<span class="k">fastDelta</span><span class="v" id="fast-delta">-</span>
+<span class="k">slowDelta</span><span class="v" id="slow-delta">-</span>
+<span class="k">gap</span><span class="v" id="gap">-</span>
+<span class="k">Trace entries</span><span class="v" id="trace-len">-</span>
+</div>
+</div>
+
+<!-- === KERNEL RUNTIME === -->
+<!-- Phase 5.5 substrate kernel + Phase 8 runtime extensions.
+     All files in this section are exempt from sec 3.1 closure
+     verification per KERNEL_RUNTIME_CONTRACT sec 7. -->
+<script>
+/* === field.js === */
+// ============================================================================
+// field.js  -  Shared field state (Phase 3)
+// ============================================================================
+// The field is the shared substrate both engines operate on. Per SE-06,
+// neither the CT engine nor the ER engine owns it. Both contribute through
+// different access patterns: CT engine through sequential operations, ER
+// engine through parallel resolution.
+//
+// This module exports the Field object and the configuration constants.
+// It contains NO frame-loop logic, NO engine-specific orchestration, NO UI
+// concerns. It is pure shared state plus the methods that operate on that
+// state in ways both engines need (generation, evaluation, modulation).
+//
+// Source: extracted verbatim from bootstrap-fresh-v2 / Phase 2 index.html.
+// All Phase 1 mechanisms preserved.
+// ============================================================================
+
+(function (global) {
+"use strict";
+
+const Guards = {
+  clampString: function (s, max) {
+    if (typeof s !== "string") s = String(s == null ? "" : s);
+    return s.length > max ? s.substring(0, max) : s;
+  },
+  clamp01: function (n) {
+    n = +n;
+    if (!isFinite(n)) return 0;
+    return n < 0 ? 0 : (n > 1 ? 1 : n);
+  }
+};
+
+const CFG = Object.freeze({
+  INPUT_MAX: 512,
+  FIELD_LIVE_CAP: 200,
+  FIELD_AGED_CAP: 80,
+  TRACE_CAP: 512,
+  OUT_CAP: 28,
+  FAST_WINDOW: 12,
+  FAST_DECAY: 0.85,
+  SLOW_STEP: 0.002,
+  MOD_SIGMA: 0.15,
+  GEN_NOVELTY_THRESH: 0.35,
+  GAP_PREDICT_THRESH: 0.12,
+  PRED_MAX_NEW_PER_STEP: 2,
+  PRED_AGE_LIMIT: 40,
+  PRED_WEIGHT_BOOST: 1.8,
+  AGE_STEP_WINDOW: 24,
+  CORR_CAP: 200,
+  CORR_MIN_USES: 2,
+  CORR_THRESH: 0.30,
+  FAMILY_MIN_SIZE: 3,
+  FIDELITY_WINDOW: 8,
+  FIDELITY_PROMOTE: 0.03,
+  FIDELITY_MIN_FIRES: 3,
+  SUB_CASCADE_CAP: 24,
+  NAMING_DELTA_DROP: 0.15,
+  NAMING_PREF_RATE: 0.005,
+  AUTO_TICK_COUNT: 20,
+  OPS_LOG_CAP: 48,
+  // Phase 3 additions
+  CT_OP_QUEUE_CAP: 64,           // pending ops in execution scope
+  CT_SNAPSHOT_INTERVAL: 30,      // snapshot every N steps
+  CT_TRACE_FLUSH_INTERVAL: 16,   // flush trace to persistent every N entries
+  EXEC_GAP_PREDICT_THRESH: 0.15, // execution-scope gap threshold for reaching
+  // Phase 4b additions
+  COMPOUND_GEN_HISTORY_CAP: 16,    // ring buffer of compound-generation snapshots
+  COMPOUND_QUEUE_SATURATION_FRAC: 0.75,    // queue full fraction for trigger 2
+  COMPOUND_PERSISTENT_GAP_STEPS: 3,        // consecutive steps for trigger 3
+  COMPOUND_PERSISTENT_GAP_THRESH: 0.20,    // render-gap threshold for trigger 3
+  COMPOUND_FIDELITY_WINDOW: 8,             // observations per compound
+  COMPOUND_FIDELITY_PROMOTE: 0.04,         // avg drop to promote compound
+  COMPOUND_FIDELITY_MIN_FIRES: 3,          // min observations before promotion
+  COMPOUND_KIND_MULT: 1.25,                // selection bias for matched compounds
+  // Phase 4c additions
+  RECALL_WINDOW_SIZE: 50,                  // records pulled per recall event
+  RECALL_EVENT_LOG_CAP: 32,                // bounded recall-event observation buffer
+  RECALL_GAP_THRESH: 0.12,                 // render-gap threshold for recall trigger (matches GAP_PREDICT_THRESH)
+  RECALL_SUCCESS_BOOST: 0.05               // weight bump on successful recall match
+});
+
+const SEED = Object.freeze({
+  id: "seed::what-is-delta",
+  kind: "seed",
+  question: "what is delta?",
+  when: "always",
+  then: "assert(delta = compute(field.state))",
+  birth: 0,
+  uses: 0,
+  permanent: true,
+  weight: 1.0
+});
+
+// ---------------------------------------------------------------------------
+// Field - shared state
+// ---------------------------------------------------------------------------
+
+const Field = {
+  // Render-scope state (read by ER engine, written by CT engine through ops)
+  constraints: [],
+  aged: [],
+  inputCount: 0,
+  step: 0,
+  ratCount: 0,
+
+  // Vector-delta at render scope
+  scalarDelta: 1.0,
+  fastDelta: 1.0,
+  slowDelta: 1.0,
+  gap: 0.0,
+
+  // Substrate modulation (SE-03)
+  fastMod: 0.0,
+  slowMod: 0.5,
+  recentOps: [],
+
+  // Phase 1 state
+  correlations: Object.create(null),
+  familyFidelity: Object.create(null),
+  subcascades: [],
+  namingPref: 0.0,
+  namedCount: 0,
+
+  // ID counter (private to field; both engines respect it)
+  _idCtr: 0,
+
+  // ---------- Phase 3: execution-scope state ----------
+  //
+  // The CT engine reads/writes these. They represent the sequential,
+  // operation-paced view of the field. Render-scope state above is the
+  // parallel, frame-paced view.
+  //
+  // Execution scope tracks:
+  //   - pending ops: queued operations not yet executed
+  //   - in-flight ops: operations started but not yet committed
+  //   - committed but not persisted: operations committed to in-memory
+  //     state but not yet written to persistent storage
+  //
+  // Execution-scope delta = (pending + in-flight + uncommitted) / total
+
+  ctPendingOps: [],          // queue of pending CT operations
+  ctInFlightOp: null,         // currently-executing op (or null)
+  ctCommittedQueue: [],       // committed but not persisted
+  ctTotalOpsSeen: 0,          // running total (denominator for execution scope)
+  ctOpsCompleted: 0,
+  ctLastSnapshotStep: 0,
+
+  // Vector-delta at execution scope
+  execScalarDelta: 1.0,
+  execFastDelta: 1.0,
+  execSlowDelta: 1.0,
+  execGap: 0.0,
+
+  // ---------- Phase 4b: cross-substrate compound state ----------
+  //
+  // A compound constraint is a constraint kind whose pattern is a
+  // tuple (renderPredicate, execPredicate). Both predicates must hold
+  // for the compound to match. Compounds bridge render-scope and
+  // execution-scope: they describe coincidences that span the
+  // substrate split SE-06 introduced.
+  //
+  // Compound state tracks:
+  //   - compoundFidelity: per-compound running observation of delta
+  //     contribution when matched, parallel to familyFidelity
+  //   - compoundGenerationHistory: per-step record of trigger-relevant
+  //     state, used to detect persistence of conditions across steps
+  //     (e.g. "high render-gap for several consecutive steps")
+
+  compoundFidelity: Object.create(null),
+  compoundGenerationHistory: [],
+
+  // ---------- Phase 4c: recall state ----------
+  //
+  // Recall is gap-triggered (parallel to predictive reaching). When
+  // render-scope gap is high, the field reaches in two directions:
+  //   - forward: predictive constraints generated speculatively
+  //   - backward: recall window read from persistent storage
+  //
+  // Recalled records merge into the live constraint set for evaluation
+  // (per-frame, transient) without modifying Field.constraints. They
+  // carry their weight history from when they were persisted.
+  //
+  // Per "let delta decide before imposing precedence" (IMPLEMENTATION_
+  // PATH section 9): no kindMult is applied to recalled records. They
+  // compete on their accumulated weight in selection. As of Phase 5.5
+  // this principle is enforced at all selection sites; selection is
+  // set computation under the current spec.
+  //
+  // recallWindow holds the records read in the most recent recall
+  // event. It is transient: cleared and rebuilt per recall trigger.
+  //
+  // recallEventLog tracks recall events for the reflexive surface to
+  // observe. Bounded buffer.
+
+  recallWindow: [],
+  recallEventLog: [],
+
+  // ---------- Phase 4d: surface Pass B observation state ----------
+  //
+  // The reflexive surface's Pass B detector emits "compound-active"
+  // clauses when a promoted compound's predicates currently both hold.
+  // To detect this, the surface needs to know which compounds matched
+  // the most recent input. The CT engine records that here after
+  // evaluating compounds in _opInput.
+  //
+  // lastMatchedCompoundIds: array of compound IDs that matched on the
+  // most recent input. Transient: rewritten per input. Read by the
+  // surface; not modified by the surface (per O1: observation is
+  // read-only with respect to field state that engines write).
+
+  lastMatchedCompoundIds: [],
+
+  // ---------------------------------------------------------------
+  reset: function () {
+    this.constraints = [Object.assign({}, SEED)];
+    this.aged = [];
+    this.inputCount = 0;
+    this.step = 0;
+    this.ratCount = 0;
+    this.scalarDelta = 1.0;
+    this.fastDelta = 1.0;
+    this.slowDelta = 1.0;
+    this.gap = 0.0;
+    this.fastMod = 0.0;
+    this.slowMod = 0.5;
+    this.recentOps = [];
+    this.correlations = Object.create(null);
+    this.familyFidelity = Object.create(null);
+    this.subcascades = [];
+    this.namingPref = 0.0;
+    this.namedCount = 0;
+    // Phase 3
+    this.ctPendingOps = [];
+    this.ctInFlightOp = null;
+    this.ctCommittedQueue = [];
+    this.ctTotalOpsSeen = 0;
+    this.ctOpsCompleted = 0;
+    this.ctLastSnapshotStep = 0;
+    this.execScalarDelta = 1.0;
+    this.execFastDelta = 1.0;
+    this.execSlowDelta = 1.0;
+    this.execGap = 0.0;
+    // Phase 4b
+    this.compoundFidelity = Object.create(null);
+    this.compoundGenerationHistory = [];
+    // Phase 4c
+    this.recallWindow = [];
+    this.recallEventLog = [];
+    // Phase 4d
+    this.lastMatchedCompoundIds = [];
+  },
+
+  // ============================================================
+  // RENDER-SCOPE delta (existing from Phase 1/2)
+  // ============================================================
+  _deltaOver: function (cs) {
+    if (!cs || cs.length === 0) return 1.0;
+    let unresolved = 0, stale = 0;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      if (c.kind === "seed" || c.kind === "predictive") { unresolved++; continue; }
+      if ((c.uses || 0) === 0) { unresolved++; continue; }
+      const age = this.step - (c.lastUsed || 0);
+      stale += Math.min(1, age / CFG.AGE_STEP_WINDOW);
+    }
+    return Guards.clamp01((unresolved + stale * 0.5) / cs.length);
+  },
+  computeScalarDelta: function () { return this._deltaOver(this.constraints); },
+  computeFastDelta: function () {
+    const recent = Object.create(null);
+    for (let i = 0; i < this.recentOps.length; i++) {
+      const op = this.recentOps[i];
+      if (op.touched) for (let j = 0; j < op.touched.length; j++) recent[op.touched[j]] = true;
+    }
+    recent[SEED.id] = true;
+    const fc = this.constraints.filter(c => recent[c.id]);
+    return fc.length === 0 ? 1.0 : this._deltaOver(fc);
+  },
+  updateSlowDelta: function (cs) {
+    this.slowDelta = this.slowDelta * (1 - CFG.SLOW_STEP) + cs * CFG.SLOW_STEP;
+  },
+  refreshVectorDelta: function () {
+    this.scalarDelta = this.computeScalarDelta();
+    this.fastDelta = this.computeFastDelta();
+    this.gap = Math.abs(this.fastDelta - this.slowDelta);
+  },
+
+  // ============================================================
+  // EXECUTION-SCOPE delta (Phase 3)
+  //
+  // Computed from the CT engine's operation queue state. Same
+  // formula structure as render-scope, applied to a different
+  // population (pending/in-flight/uncommitted ops vs total ops
+  // seen in this run).
+  // ============================================================
+  computeExecScalarDelta: function () {
+    // Execution-scope delta: fraction of ops still unresolved over total
+    // ops seen this run. Unresolved = pending + in-flight. Committed-but-
+    // not-persisted is tracked separately (ctCommittedQueue) because
+    // persistence latency is a different aspect of execution scope and
+    // mixing it into delta would conflate "work pending" with "trace
+    // backlog".
+    if (this.ctTotalOpsSeen === 0) return 1.0;
+    const unresolved = this.ctPendingOps.length + (this.ctInFlightOp ? 1 : 0);
+    return Guards.clamp01(unresolved / Math.max(1, this.ctTotalOpsSeen));
+  },
+  computeExecFastDelta: function () {
+    // Fast: of recent operational pressure, how much remains unresolved?
+    // Approximated by: pending + in-flight, scaled against a recent-window
+    // baseline. When queue is drained, fast-delta drops; when queue
+    // saturates, fast-delta rises.
+    const windowSize = CFG.FAST_WINDOW;
+    const unresolved = this.ctPendingOps.length + (this.ctInFlightOp ? 1 : 0);
+    const denom = Math.max(windowSize, unresolved);
+    return Guards.clamp01(unresolved / denom);
+  },
+  updateExecSlowDelta: function (cs) {
+    this.execSlowDelta = this.execSlowDelta * (1 - CFG.SLOW_STEP) + cs * CFG.SLOW_STEP;
+  },
+  refreshExecVectorDelta: function () {
+    this.execScalarDelta = this.computeExecScalarDelta();
+    this.execFastDelta = this.computeExecFastDelta();
+    this.execGap = Math.abs(this.execFastDelta - this.execSlowDelta);
+  },
+
+  // ============================================================
+  // CONSTRAINT GENERATION (called by CT engine in process op)
+  // ============================================================
+  generate: function (input, evalResult) {
+    if (!input) return [];
+    const lower = input.toLowerCase();
+    const tokens = lower.split(/\s+/).filter(t => t.length > 0);
+    const gen = [];
+    if (evalResult.novelty < CFG.GEN_NOVELTY_THRESH) return gen;
+    for (const t of tokens) {
+      if (gen.length >= 3) break;
+      if (t.length < 2 || t.length > 32) continue;
+      if (this._hasLike("has-token", t)) continue;
+      gen.push(this._mkDerived("has-token", { token: t },
+        "input contains '" + Guards.clampString(t, 24) + "'"));
+    }
+    const L = input.length;
+    if (!this._hasLengthCovering(L)) {
+      const lo = Math.max(1, L - 8), hi = L + 8;
+      gen.push(this._mkDerived("length-range", { min: lo, max: hi },
+        "length in [" + lo + "," + hi + "]"));
+    }
+    if (/\d/.test(input) && !this._hasLike("char-class", "digits"))
+      gen.push(this._mkDerived("char-class", { cls: "digits" }, "contains digits"));
+    if (/[a-zA-Z]/.test(input) && !this._hasLike("char-class", "alpha"))
+      gen.push(this._mkDerived("char-class", { cls: "alpha" }, "contains letters"));
+    if (/[^\w\s]/.test(input) && !this._hasLike("char-class", "symbol"))
+      gen.push(this._mkDerived("char-class", { cls: "symbol" }, "contains symbol"));
+    if (tokens.length >= 2 && gen.length < 5) {
+      const a = tokens[0], b = tokens[tokens.length - 1];
+      if (a !== b && a.length >= 3 && b.length >= 3 && !this._hasCoOccurs(a, b)) {
+        gen.push(this._mkDerived("co-occurs", { a: a, b: b },
+          "'" + Guards.clampString(a, 16) + "' with '" + Guards.clampString(b, 16) + "'"));
+      }
+    }
+    return gen;
+  },
+
+  _hasLike: function (type, arg) {
+    return this.constraints.some(c => c.pattern && c.pattern.type === type
+      && (type === "has-token" ? c.pattern.token === arg : c.pattern.cls === arg));
+  },
+  _hasLengthCovering: function (L) {
+    return this.constraints.some(c => c.pattern && c.pattern.type === "length-range"
+      && L >= c.pattern.min && L <= c.pattern.max);
+  },
+  _hasCoOccurs: function (a, b) {
+    return this.constraints.some(c => c.pattern && c.pattern.type === "co-occurs"
+      && ((c.pattern.a === a && c.pattern.b === b) || (c.pattern.a === b && c.pattern.b === a)));
+  },
+  _mkDerived: function (type, pattern, desc) {
+    return {
+      id: "c::" + (++this._idCtr),
+      kind: "derived",
+      pattern: Object.assign({ type: type }, pattern),
+      desc: Guards.clampString(desc, 120),
+      birth: this.step,
+      lastUsed: this.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+
+  // ============================================================
+  // PREDICTIVE GENERATION at RENDER scope
+  // (Phase 3 introduces execution-scope predictions in ct-engine.js)
+  // ============================================================
+  generatePredictions: function () {
+    if (this.gap < CFG.GAP_PREDICT_THRESH) return [];
+    const gen = [];
+    const hasD = this._hasLike("char-class", "digits");
+    const hasA = this._hasLike("char-class", "alpha");
+    const hasS = this._hasLike("char-class", "symbol");
+    if (hasA && !hasD && gen.length < CFG.PRED_MAX_NEW_PER_STEP)
+      gen.push(this._mkPredictive("char-class", { cls: "digits" },
+        "prediction: input containing digits would close the gap"));
+    if (hasD && !hasA && gen.length < CFG.PRED_MAX_NEW_PER_STEP)
+      gen.push(this._mkPredictive("char-class", { cls: "alpha" },
+        "prediction: input containing letters would close the gap"));
+    if ((hasA || hasD) && !hasS && gen.length < CFG.PRED_MAX_NEW_PER_STEP)
+      gen.push(this._mkPredictive("char-class", { cls: "symbol" },
+        "prediction: input containing symbols would close the gap"));
+    return gen;
+  },
+  _mkPredictive: function (type, pattern, desc) {
+    return {
+      id: "p::" + (++this._idCtr),
+      kind: "predictive",
+      pattern: Object.assign({ type: type }, pattern),
+      desc: Guards.clampString(desc, 160),
+      birth: this.step,
+      lastUsed: this.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+
+  ratify: function (idx) {
+    const c = this.constraints[idx];
+    if (!c || c.kind !== "predictive") return false;
+    c.kind = "ratified";
+    c.weight = Math.min(3.0, c.weight * CFG.PRED_WEIGHT_BOOST);
+    c.lastUsed = this.step;
+    this.ratCount++;
+    return true;
+  },
+
+  evictStalePredictions: function () {
+    const evicted = [], kept = [];
+    for (let i = 0; i < this.constraints.length; i++) {
+      const c = this.constraints[i];
+      if (c.kind === "predictive" && (this.step - c.birth) > CFG.PRED_AGE_LIMIT) {
+        evicted.push(c);
+        this.aged.push(c);
+      } else {
+        kept.push(c);
+      }
+    }
+    this.constraints = kept;
+    while (this.aged.length > CFG.FIELD_AGED_CAP) this.aged.shift();
+    return evicted;
+  },
+
+  integrate: function (newCs) {
+    for (let i = 0; i < newCs.length; i++) this.constraints.push(newCs[i]);
+    this._enforceCaps();
+  },
+
+  _enforceCaps: function () {
+    if (this.constraints.length <= CFG.FIELD_LIVE_CAP) return;
+    const scored = [];
+    for (let i = 0; i < this.constraints.length; i++) {
+      const c = this.constraints[i];
+      if (c.kind === "seed") continue;
+      const recency = this.step - (c.lastUsed || 0);
+      // Phase 5.5: eviction is uniform across kinds. The prior version
+      // had a kindBonus = 15 for ratified that imposed precedence;
+      // removed per IMPLEMENTATION_PATH section 9 principle 4.
+      scored.push({ idx: i, score: (c.uses||0)*10 + (c.weight||1)*5 - recency });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    const toEvict = this.constraints.length - CFG.FIELD_LIVE_CAP;
+    const evictIdx = Object.create(null);
+    for (let j = 0; j < toEvict; j++) evictIdx[scored[j].idx] = true;
+    const kept = [];
+    for (let k = 0; k < this.constraints.length; k++) {
+      if (evictIdx[k]) this.aged.push(this.constraints[k]);
+      else kept.push(this.constraints[k]);
+    }
+    this.constraints = kept;
+    while (this.aged.length > CFG.FIELD_AGED_CAP) this.aged.shift();
+  },
+
+  // Phase 5.5: selection is set computation under the current spec.
+  // Per IMPLEMENTATION_PATH section 9 principle 4 ("let delta decide
+  // before imposing precedence"), the prior version's effectiveWeight
+  // ranking with kindMult / namedBias / recencyExp / fastBias was inert
+  // (no consumer read the ranking) and was removed. K2 part (a) and K3
+  // are structurally specified but currently unrealized; see INVARIANTS
+  // v1.2 implementation notes. Rank-sensitive selection is a future
+  // extension (Phase 5.6 or later) that the spec stack does not yet
+  // specify.
+  selectFromMatches: function (matched, named) {
+    if (matched.length === 0) return [];
+    const namedIds = Object.create(null);
+    if (named) for (const sc of named) for (const id of sc.memberIds) namedIds[id] = true;
+    const chosen = [];
+    for (let i = 0; i < matched.length; i++) {
+      const idx = matched[i];
+      const c = this.constraints[idx];
+      if (!c) continue;
+      chosen.push({ idx: idx, kind: c.kind, named: !!namedIds[c.id] });
+    }
+    return chosen;
+  },
+
+  markUsed: function (matched) {
+    for (let i = 0; i < matched.length; i++) {
+      const c = this.constraints[matched[i]];
+      if (!c || c.kind === "seed") continue;
+      c.uses = (c.uses || 0) + 1;
+      c.lastUsed = this.step;
+      c.weight = Math.min(3.0, (c.weight || 1.0) + 0.02);
+    }
+    if (this.constraints[0] && this.constraints[0].kind === "seed") {
+      this.constraints[0].uses = (this.constraints[0].uses || 0) + 1;
+    }
+  },
+
+  modulate: function () {
+    const dev = this.fastDelta - this.slowDelta;
+    this.fastMod = this.fastMod * CFG.FAST_DECAY + dev * CFG.MOD_SIGMA;
+    this.slowMod = this.slowMod * (1 - CFG.SLOW_STEP) + this.slowDelta * CFG.SLOW_STEP;
+  },
+
+  recordOp: function (kind, touched) {
+    this.recentOps.push({ step: this.step, kind: kind, touched: touched || [] });
+    while (this.recentOps.length > CFG.FAST_WINDOW) this.recentOps.shift();
+  },
+  _findById: function (id) {
+    for (let i = 0; i < this.constraints.length; i++) {
+      if (this.constraints[i].id === id) return this.constraints[i];
+    }
+    return null;
+  },
+
+  // Phase 1: correlations, develop patterns, reason, fidelity, sub-cascades
+  updateCorrelations: function (matched) {
+    for (let i = 0; i < matched.length; i++) {
+      for (let j = i + 1; j < matched.length; j++) {
+        const ca = this.constraints[matched[i]];
+        const cb = this.constraints[matched[j]];
+        if (!ca || !cb || ca.kind === "seed" || cb.kind === "seed") continue;
+        const key = (ca.id < cb.id) ? (ca.id + "::" + cb.id) : (cb.id + "::" + ca.id);
+        if (!this.correlations[key]) {
+          this.correlations[key] = { a: ca.id, b: cb.id, coFire: 0, lastSeen: 0 };
+        }
+        this.correlations[key].coFire++;
+        this.correlations[key].lastSeen = this.step;
+      }
+    }
+    const keys = Object.keys(this.correlations);
+    if (keys.length > CFG.CORR_CAP) {
+      const entries = keys.map(k => ({
+        key: k,
+        score: this.correlations[k].coFire + this.correlations[k].lastSeen / 100
+      }));
+      entries.sort((a, b) => a.score - b.score);
+      const toEvict = keys.length - CFG.CORR_CAP;
+      for (let i = 0; i < toEvict; i++) delete this.correlations[entries[i].key];
+    }
+  },
+  topCorrelations: function (limit) {
+    limit = limit || 20;
+    const out = [];
+    for (const k in this.correlations) {
+      if (Object.prototype.hasOwnProperty.call(this.correlations, k)) out.push(this.correlations[k]);
+    }
+    out.sort((a, b) => b.coFire - a.coFire);
+    return out.slice(0, limit);
+  },
+
+  developPatterns: function () {
+    const produced = [];
+    const corrs = this.topCorrelations(30);
+    for (const corr of corrs) {
+      const ca = this._findById(corr.a), cb = this._findById(corr.b);
+      if (!ca || !cb || (ca.uses||0) < CFG.CORR_MIN_USES || (cb.uses||0) < CFG.CORR_MIN_USES) continue;
+      if (this._hasMetaWithRefs([corr.a, corr.b])) continue;
+      const ratio = corr.coFire / Math.max(ca.uses, cb.uses);
+      if (ratio < CFG.CORR_THRESH) continue;
+      produced.push(this._mkMeta([corr.a, corr.b],
+        "pair: " + (ca.desc||ca.id) + " + " + (cb.desc||cb.id) + " (coFire=" + corr.coFire + ")",
+        "pair"));
+    }
+    const families = Object.create(null);
+    for (const c of this.constraints) {
+      if ((c.kind !== "derived" && c.kind !== "ratified") || !c.pattern) continue;
+      if (!families[c.pattern.type]) families[c.pattern.type] = [];
+      families[c.pattern.type].push(c.id);
+    }
+    for (const famName in families) {
+      if (families[famName].length < CFG.FAMILY_MIN_SIZE) continue;
+      if (this._hasFamilyMetaFor(famName)) continue;
+      const fm = this._mkMeta(families[famName],
+        "family: " + families[famName].length + " of type '" + famName + "'", "family");
+      fm.familyType = famName;
+      produced.push(fm);
+    }
+    if (produced.length > 0) this.integrate(produced);
+    return produced;
+  },
+  _mkMeta: function (refs, desc, metaKind) {
+    return {
+      id: "m::" + (++this._idCtr),
+      kind: "meta",
+      metaKind: metaKind || "pair",
+      refs: refs.slice(),
+      desc: Guards.clampString(desc, 160),
+      birth: this.step,
+      lastUsed: this.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+  _hasMetaWithRefs: function (refs) {
+    const sorted = refs.slice().sort().join("|");
+    return this.constraints.some(c => c.kind === "meta" && c.refs
+      && c.refs.slice().sort().join("|") === sorted);
+  },
+  _hasFamilyMetaFor: function (famType) {
+    return this.constraints.some(c => c.kind === "meta" && c.metaKind === "family"
+      && c.familyType === famType);
+  },
+
+  reason: function () {
+    const findings = [];
+    const derived = this.constraints.filter(c =>
+      (c.kind === "derived" || c.kind === "ratified") && (c.uses || 0) >= 1);
+    const byType = Object.create(null);
+    for (const c of derived) {
+      if (!c.pattern) continue;
+      if (!byType[c.pattern.type]) byType[c.pattern.type] = [];
+      byType[c.pattern.type].push(c);
+    }
+    for (const t in byType) {
+      const arr = byType[t];
+      if (arr.length === 1) findings.push({
+        kind: "isolated", text: "'" + arr[0].desc + "' is the only '" + t + "' constraint"
+      });
+      else findings.push({
+        kind: "differentiation",
+        text: "'" + arr[0].desc + "' vs '" + arr[1].desc + "': " + this._diffPair(arr[0], arr[1])
+      });
+    }
+    const unused = this.constraints.filter(c =>
+      (c.kind === "derived" || c.kind === "predictive") && (c.uses || 0) === 0);
+    if (unused.length > 0) findings.push({
+      kind: "observation", text: unused.length + " constraint(s) never matched input since creation"
+    });
+    const pred = this.constraints.filter(c => c.kind === "predictive").length;
+    const rat = this.constraints.filter(c => c.kind === "ratified").length;
+    if (pred + rat > 0) findings.push({
+      kind: "reaching",
+      text: "field has " + pred + " active prediction(s), " + rat + " ratified; ratification rate = "
+            + (this.ratCount / Math.max(1, this.inputCount)).toFixed(2)
+    });
+    if (this.subcascades.length > 0) findings.push({
+      kind: "observation",
+      text: this.subcascades.length + " sub-cascade(s); naming preference = "
+            + this.namingPref.toFixed(3)
+    });
+    if (this.gap > CFG.GAP_PREDICT_THRESH) findings.push({
+      kind: "vector-delta",
+      text: "render-scope gap " + this.gap.toFixed(3) + " above threshold; field is reaching"
+    });
+    else findings.push({
+      kind: "vector-delta",
+      text: "render-scope gap " + this.gap.toFixed(3) + " within threshold; field is settled"
+    });
+    if (this.execGap > CFG.EXEC_GAP_PREDICT_THRESH) findings.push({
+      kind: "vector-delta",
+      text: "execution-scope gap " + this.execGap.toFixed(3) + " above threshold; CT engine is reaching"
+    });
+    return findings;
+  },
+  _diffPair: function (a, b) {
+    if (!a.pattern || !b.pattern) return "patterns missing";
+    const t = a.pattern.type;
+    if (t === "has-token") return "tokens '" + a.pattern.token + "' vs '" + b.pattern.token + "'";
+    if (t === "length-range") return "ranges [" + a.pattern.min + "," + a.pattern.max + "] vs ["
+                                    + b.pattern.min + "," + b.pattern.max + "]";
+    if (t === "char-class") return "classes " + a.pattern.cls + " vs " + b.pattern.cls;
+    if (t === "co-occurs") return "pairs '" + a.pattern.a + "+" + a.pattern.b + "' vs '"
+                                  + b.pattern.a + "+" + b.pattern.b + "'";
+    return "same type";
+  },
+
+  recordFidelity: function (matched, deltaDrop) {
+    const byFam = Object.create(null);
+    for (const idx of matched) {
+      const c = this.constraints[idx];
+      if (!c || !c.pattern || (c.kind !== "derived" && c.kind !== "ratified")) continue;
+      byFam[c.pattern.type] = (byFam[c.pattern.type] || 0) + 1;
+    }
+    for (const fam in byFam) {
+      if (byFam[fam] < 2) continue;
+      if (!this.familyFidelity[fam]) this.familyFidelity[fam] = { observations: [], totalFires: 0 };
+      const fid = this.familyFidelity[fam];
+      fid.observations.push(deltaDrop);
+      fid.totalFires++;
+      while (fid.observations.length > CFG.FIDELITY_WINDOW) fid.observations.shift();
+    }
+  },
+  fidelityOf: function (famType) {
+    const fid = this.familyFidelity[famType];
+    if (!fid || fid.observations.length === 0) return 0;
+    return fid.observations.reduce((s, x) => s + x, 0) / fid.observations.length;
+  },
+  checkPromotions: function () {
+    const promoted = [];
+    if (this.subcascades.length >= CFG.SUB_CASCADE_CAP) return promoted;
+    for (const fam in this.familyFidelity) {
+      const fid = this.familyFidelity[fam];
+      if (fid.totalFires < CFG.FIDELITY_MIN_FIRES) continue;
+      const avg = this.fidelityOf(fam);
+      if (avg < CFG.FIDELITY_PROMOTE) continue;
+      if (this._subForFamily(fam)) continue;
+      const members = this.constraints
+        .filter(c => (c.kind === "derived" || c.kind === "ratified")
+                 && c.pattern && c.pattern.type === fam)
+        .map(c => c.id);
+      if (members.length < 2) continue;
+      const sc = this._mkSubcascade(fam, members, avg);
+      this.subcascades.push(sc);
+      promoted.push(sc);
+      if (this.subcascades.length >= CFG.SUB_CASCADE_CAP) break;
+    }
+    return promoted;
+  },
+  _subForFamily: function (famType) {
+    return this.subcascades.find(sc => sc.familyType === famType) || null;
+  },
+  _mkSubcascade: function (famType, memberIds, fidAtBirth) {
+    let dom = null, maxU = -1;
+    for (const id of memberIds) {
+      const c = this._findById(id);
+      if (c && (c.uses || 0) > maxU) { maxU = c.uses || 0; dom = c; }
+    }
+    let raw = famType;
+    if (dom && dom.pattern) {
+      const p = dom.pattern;
+      if (p.type === "has-token") raw = p.token;
+      else if (p.type === "char-class") raw = p.cls;
+      else if (p.type === "length-range") raw = "len-" + p.min + "-" + p.max;
+      else if (p.type === "co-occurs") raw = p.a + "-" + p.b;
+    }
+    let name = String(raw).toLowerCase().replace(/[^a-z0-9-]/g, "").substring(0, 20);
+    if (!name) name = "sc";
+    let fin = name, suffix = 2;
+    while (this._nameInUse(fin)) {
+      fin = name + "-" + suffix;
+      suffix++;
+      if (suffix > 99) { fin = name + "-x"; break; }
+    }
+    return {
+      id: "sc::" + (++this._idCtr),
+      name: fin,
+      familyType: famType,
+      memberIds: memberIds.slice(),
+      birth: this.step,
+      lastNamed: -1,
+      namedCount: 0,
+      fidAtBirth: fidAtBirth
+    };
+  },
+  _nameInUse: function (name) {
+    return this.subcascades.some(sc => sc.name === name);
+  },
+  detectNames: function (input) {
+    if (!input || this.subcascades.length === 0) return [];
+    const tokens = input.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    return this.subcascades.filter(sc => sc.name && tokens.indexOf(sc.name) >= 0);
+  },
+  computeSubcascadeDelta: function (sc) {
+    if (!sc || !sc.memberIds.length) return 1.0;
+    const members = sc.memberIds.map(id => this._findById(id)).filter(c => c);
+    return this._deltaOver(members);
+  },
+  reinforceNaming: function (wasNamed) {
+    if (wasNamed) this.namingPref = Math.min(1.0, this.namingPref + CFG.NAMING_PREF_RATE * 2);
+    else this.namingPref = Math.max(0.0, this.namingPref - CFG.NAMING_PREF_RATE * 0.5);
+  },
+
+  // ============================================================
+  // PHASE 4b: CROSS-SUBSTRATE COMPOUND CONSTRAINTS
+  //
+  // Compound constraints have a tuple pattern: (renderPredicate,
+  // execPredicate). Both must hold for the compound to match.
+  // Render predicate is one of the existing pattern types
+  // (has-token, length-range, char-class, co-occurs). Exec predicate
+  // is one of: queue-depth, recent-op, exec-gap-state.
+  //
+  // Compounds are matched CPU-side, by the CT engine after the ER
+  // engine returns its render-side match results. The exec-side
+  // predicate reads current Field state directly.
+  // ============================================================
+
+  // Construct a compound constraint
+  _mkCompound: function (renderPred, execPred, desc, refs) {
+    return {
+      id: "x::" + (++this._idCtr),
+      kind: "compound",
+      pattern: {
+        type: "compound",
+        render: renderPred,    // one of: has-token, length-range, char-class, co-occurs
+        exec: execPred         // one of: queue-depth, recent-op, exec-gap-state
+      },
+      refs: refs ? refs.slice() : [],
+      desc: Guards.clampString(desc, 160),
+      birth: this.step,
+      lastUsed: this.step,
+      uses: 0,
+      weight: 1.0,
+      permanent: false
+    };
+  },
+
+  // Test a render-scope predicate against an input record. Mirrors
+  // the matching logic in cpu-oracle.js but applied to a single
+  // predicate, not a full constraint instruction stream.
+  _evalRenderPredicate: function (pred, inputRec) {
+    if (!pred || !inputRec) return false;
+    if (pred.type === "has-token") {
+      // inputRec.tokenPresence is a bitfield indexed by tokenTable
+      // For host-side eval we need a different access pattern. We
+      // store inputRec.tokens as a set when computed for compound use.
+      if (inputRec.tokenSet) return !!inputRec.tokenSet[pred.token];
+      return false;
+    }
+    if (pred.type === "length-range") {
+      return inputRec.length >= pred.min && inputRec.length <= pred.max;
+    }
+    if (pred.type === "char-class") {
+      if (pred.cls === "digits") return !!inputRec.hasDigits;
+      if (pred.cls === "alpha") return !!inputRec.hasAlpha;
+      if (pred.cls === "symbol") return !!inputRec.hasSymbol;
+      return false;
+    }
+    if (pred.type === "co-occurs") {
+      if (!inputRec.tokenSet) return false;
+      return !!(inputRec.tokenSet[pred.a] && inputRec.tokenSet[pred.b]);
+    }
+    return false;
+  },
+
+  // Test an execution-scope predicate against current Field state.
+  // Pure read of Field; no writes.
+  _evalExecPredicate: function (pred) {
+    if (!pred) return false;
+    if (pred.type === "queue-depth") {
+      const d = this.ctPendingOps.length;
+      const min = pred.min == null ? 0 : pred.min;
+      const max = pred.max == null ? Infinity : pred.max;
+      return d >= min && d <= max;
+    }
+    if (pred.type === "recent-op") {
+      // Last completed op kind matches
+      if (this.ctCommittedQueue.length === 0) return false;
+      const last = this.ctCommittedQueue[this.ctCommittedQueue.length - 1];
+      return last.kind === pred.kind;
+    }
+    if (pred.type === "exec-gap-state") {
+      const eg = this.execGap;
+      if (pred.state === "high") return eg > CFG.EXEC_GAP_PREDICT_THRESH;
+      if (pred.state === "low") return eg <= CFG.EXEC_GAP_PREDICT_THRESH * 0.5;
+      if (pred.state === "reaching") return eg > CFG.EXEC_GAP_PREDICT_THRESH * 1.5;
+      return false;
+    }
+    return false;
+  },
+
+  // Build a tokenSet from input string (used for compound render
+  // predicate evaluation; mirrors what the compiler builds for the
+  // ER engine but as a simple object lookup)
+  _buildInputRec: function (input) {
+    const lower = (input || "").toLowerCase();
+    const tokens = lower.split(/\s+/).filter(t => t.length > 0);
+    const tokenSet = Object.create(null);
+    for (const t of tokens) tokenSet[t] = true;
+    return {
+      length: input ? input.length : 0,
+      hasDigits: /\d/.test(input || ""),
+      hasAlpha: /[a-zA-Z]/.test(input || ""),
+      hasSymbol: /[^\w\s]/.test(input || ""),
+      tokenSet: tokenSet
+    };
+  },
+
+  // Evaluate all compound constraints against current input + state.
+  // Returns array of matched constraint indices (in this.constraints).
+  evaluateCompounds: function (input) {
+    if (!this.constraints || !this.constraints.length) return [];
+    const matched = [];
+    const inputRec = this._buildInputRec(input);
+    for (let i = 0; i < this.constraints.length; i++) {
+      const c = this.constraints[i];
+      if (c.kind !== "compound") continue;
+      if (!c.pattern || !c.pattern.render || !c.pattern.exec) continue;
+      const renderHits = this._evalRenderPredicate(c.pattern.render, inputRec);
+      if (!renderHits) continue;
+      const execHits = this._evalExecPredicate(c.pattern.exec);
+      if (!execHits) continue;
+      matched.push(i);
+    }
+    return matched;
+  },
+
+  // Record a snapshot of trigger-relevant state. Called per step by
+  // the CT engine. The compound generator uses this history to detect
+  // multi-step persistence triggers.
+  recordCompoundGenerationSnapshot: function () {
+    this.compoundGenerationHistory.push({
+      step: this.step,
+      gap: this.gap,
+      execGap: this.execGap,
+      pendingOps: this.ctPendingOps.length,
+      ratCount: this.ratCount,
+      namedCount: this.namedCount,
+      lastInputCount: this.inputCount
+    });
+    while (this.compoundGenerationHistory.length > CFG.COMPOUND_GEN_HISTORY_CAP) {
+      this.compoundGenerationHistory.shift();
+    }
+  },
+
+  // Generate compound constraints from coincidence triggers.
+  // Returns array of newly-created compounds (not yet integrated;
+  // caller should call integrate()).
+  //
+  // Three triggers:
+  //   T1: ratification co-occurs with non-input op pending
+  //       => "render-side ratification while exec-side reaching"
+  //   T2: naming event co-occurs with queue saturation
+  //       => "naming under load"
+  //   T3: persistent high render-gap across consecutive steps
+  //       => "render reaching while exec also unresolved"
+  generateCompounds: function (input) {
+    const produced = [];
+    const hist = this.compoundGenerationHistory;
+    if (hist.length < 2) return produced;
+    const prev = hist[hist.length - 2];
+    const cur = hist[hist.length - 1];
+
+    // T1: ratification just incremented and there's a non-input op queued
+    const ratIncrement = cur.ratCount - prev.ratCount;
+    if (ratIncrement > 0) {
+      const hasNonInputPending = this.ctPendingOps.some(op => op.kind !== "input");
+      if (hasNonInputPending) {
+        // Find the most-recently-ratified constraint as the render anchor
+        const recentRatified = this.constraints
+          .filter(c => c.kind === "ratified" && c.lastUsed === this.step);
+        if (recentRatified.length > 0) {
+          const rc = recentRatified[0];
+          if (rc.pattern && !this._hasCompoundWithRefs([rc.id])) {
+            const compound = this._mkCompound(
+              rc.pattern,
+              { type: "queue-depth", min: 1, max: CFG.CT_OP_QUEUE_CAP },
+              "render ratified (" + this._predDesc(rc.pattern) +
+              ") while exec queue had non-input pending",
+              [rc.id]
+            );
+            produced.push(compound);
+          }
+        }
+      }
+    }
+
+    // T2: naming just incremented and queue is saturated
+    const namedIncrement = cur.namedCount - prev.namedCount;
+    if (namedIncrement > 0) {
+      const saturationFloor = Math.floor(
+        CFG.CT_OP_QUEUE_CAP * CFG.COMPOUND_QUEUE_SATURATION_FRAC
+      );
+      if (cur.pendingOps >= saturationFloor) {
+        // Find the named sub-cascade
+        const recentlyNamed = this.subcascades
+          .filter(sc => sc.lastNamed === this.step);
+        if (recentlyNamed.length > 0) {
+          const sc = recentlyNamed[0];
+          // Render predicate: a has-token for the sub-cascade's name
+          if (!this._hasCompoundForSubcascade(sc.id)) {
+            const compound = this._mkCompound(
+              { type: "has-token", token: sc.name },
+              { type: "queue-depth", min: saturationFloor,
+                max: CFG.CT_OP_QUEUE_CAP },
+              "naming '" + Guards.clampString(sc.name, 24) +
+              "' under exec load (queue >= " + saturationFloor + ")",
+              [sc.id]
+            );
+            produced.push(compound);
+          }
+        }
+      }
+    }
+
+    // T3: persistent high render-gap across COMPOUND_PERSISTENT_GAP_STEPS
+    if (hist.length >= CFG.COMPOUND_PERSISTENT_GAP_STEPS) {
+      const window = hist.slice(-CFG.COMPOUND_PERSISTENT_GAP_STEPS);
+      const allHighGap = window.every(s =>
+        s.gap > CFG.COMPOUND_PERSISTENT_GAP_THRESH &&
+        s.execGap > CFG.EXEC_GAP_PREDICT_THRESH
+      );
+      if (allHighGap && !this._hasCompoundOfKind("persistent-dual-gap")) {
+        // Render predicate: a char-class predicate that doesn't yet
+        // exist (so render-side reaching has something to land on)
+        const hasD = this._hasLike("char-class", "digits");
+        const hasA = this._hasLike("char-class", "alpha");
+        const hasS = this._hasLike("char-class", "symbol");
+        let target = null;
+        if (!hasD) target = "digits";
+        else if (!hasS) target = "symbol";
+        else if (!hasA) target = "alpha";
+        if (target) {
+          const compound = this._mkCompound(
+            { type: "char-class", cls: target },
+            { type: "exec-gap-state", state: "high" },
+            "persistent dual-gap: render reaching for " + target +
+            " while exec-gap remains high",
+            []
+          );
+          compound.compoundKind = "persistent-dual-gap";
+          produced.push(compound);
+        }
+      }
+    }
+
+    return produced;
+  },
+
+  // Helper to describe a render predicate compactly
+  _predDesc: function (pred) {
+    if (!pred) return "?";
+    if (pred.type === "has-token") return "'" + pred.token + "'";
+    if (pred.type === "char-class") return pred.cls;
+    if (pred.type === "length-range") return "[" + pred.min + "," + pred.max + "]";
+    if (pred.type === "co-occurs") return "'" + pred.a + "+" + pred.b + "'";
+    return pred.type;
+  },
+
+  // Compound deduplication helpers
+  _hasCompoundWithRefs: function (refs) {
+    const sorted = refs.slice().sort().join("|");
+    return this.constraints.some(c =>
+      c.kind === "compound" && c.refs &&
+      c.refs.slice().sort().join("|") === sorted
+    );
+  },
+  _hasCompoundForSubcascade: function (scId) {
+    return this.constraints.some(c =>
+      c.kind === "compound" && c.refs && c.refs.indexOf(scId) >= 0
+    );
+  },
+  _hasCompoundOfKind: function (compoundKind) {
+    return this.constraints.some(c =>
+      c.kind === "compound" && c.compoundKind === compoundKind
+    );
+  },
+
+  // Compound fidelity: parallel to family fidelity. Track delta drop
+  // observations per compound; promote (mark with weight bonus) when
+  // sustained drops accumulate.
+  recordCompoundFidelity: function (matchedCompoundIndices, deltaDrop) {
+    for (const idx of matchedCompoundIndices) {
+      const c = this.constraints[idx];
+      if (!c || c.kind !== "compound") continue;
+      if (!this.compoundFidelity[c.id]) {
+        this.compoundFidelity[c.id] = { observations: [], totalFires: 0 };
+      }
+      const fid = this.compoundFidelity[c.id];
+      fid.observations.push(deltaDrop);
+      fid.totalFires++;
+      while (fid.observations.length > CFG.COMPOUND_FIDELITY_WINDOW) {
+        fid.observations.shift();
+      }
+    }
+  },
+
+  compoundFidelityOf: function (compoundId) {
+    const fid = this.compoundFidelity[compoundId];
+    if (!fid || fid.observations.length === 0) return 0;
+    return fid.observations.reduce((s, x) => s + x, 0) / fid.observations.length;
+  },
+
+  // Check compound fidelity and promote eligible compounds. Promotion
+  // here means: weight bonus + mark as promoted. (Sub-cascade-style
+  // promotion to a named structure may follow in a later phase, but
+  // weight-bonus promotion is sufficient for compounds to be
+  // selectively biased the way ratified constraints are.)
+  checkCompoundPromotions: function () {
+    const promoted = [];
+    for (const c of this.constraints) {
+      if (c.kind !== "compound" || c.promoted) continue;
+      const fid = this.compoundFidelity[c.id];
+      if (!fid || fid.totalFires < CFG.COMPOUND_FIDELITY_MIN_FIRES) continue;
+      const avg = this.compoundFidelityOf(c.id);
+      if (avg < CFG.COMPOUND_FIDELITY_PROMOTE) continue;
+      c.promoted = true;
+      c.weight = Math.min(3.0, c.weight * 1.5);
+      c.fidAtPromotion = avg;
+      promoted.push(c);
+    }
+    return promoted;
+  },
+
+  // ============================================================
+  // PHASE 4c: RECALL
+  //
+  // Recall extends the field across time. Persisted records become
+  // available as candidates for evaluation when render-scope gap is
+  // high enough to trigger recall (parallel to predictive reaching).
+  //
+  // Recalled records:
+  //   - Carry their original kind (ratified, meta, compound, seed)
+  //     so the compiler dispatches correctly
+  //   - Carry a `recalled: true` flag for downstream identification
+  //   - Carry weight history from when they were persisted
+  //
+  // Per "let delta decide before imposing precedence": no kindMult.
+  // Recalled records compete on their existing weight in selection,
+  // same as live records. (As of Phase 5.5 this is the rule for all
+  // kinds; selection is set computation, not weighted ranking.)
+  // ============================================================
+
+  // Decide whether to recall this step. Mirrors predictive-reaching
+  // trigger logic: gap above threshold motivates reaching.
+  shouldTriggerRecall: function () {
+    return this.gap >= CFG.RECALL_GAP_THRESH;
+  },
+
+  // Set the recall window. Called by CT engine after fetching from
+  // storage. Replaces the previous window (windows are per-event,
+  // not accumulated).
+  setRecallWindow: function (records) {
+    this.recallWindow = Array.isArray(records) ? records : [];
+  },
+
+  // Build the population for the next ER evaluation. Returns a flat
+  // array of constraints to compile: live constraints followed by
+  // recall window. The returned array's indices are used by the
+  // ER engine and CT engine; indices >= Field.constraints.length
+  // are recall-window records.
+  buildEvaluationPopulation: function () {
+    if (!this.recallWindow.length) return this.constraints;
+    return this.constraints.concat(this.recallWindow);
+  },
+
+  // Identify recalled-record matches from a matched-index array
+  // produced by ER evaluation over the combined population.
+  // Returns indices that point INTO the recall window (offset
+  // already subtracted), separate from live-constraint matches.
+  partitionMatches: function (combinedMatched) {
+    const liveCount = this.constraints.length;
+    const live = [];
+    const recalled = [];
+    for (const idx of combinedMatched) {
+      if (idx < liveCount) {
+        live.push(idx);
+      } else {
+        recalled.push({
+          combinedIdx: idx,
+          windowIdx: idx - liveCount,
+          record: this.recallWindow[idx - liveCount]
+        });
+      }
+    }
+    return { live: live, recalled: recalled };
+  },
+
+  // Record a recall event for surface observation. Bounded buffer.
+  recordRecallEvent: function (eventKind, payload) {
+    this.recallEventLog.push({
+      step: this.step,
+      kind: eventKind,         // "recalled" or "re-encountered"
+      payload: payload || {}
+    });
+    while (this.recallEventLog.length > CFG.RECALL_EVENT_LOG_CAP) {
+      this.recallEventLog.shift();
+    }
+  },
+
+  // When a recalled record matched current input and contributed to
+  // closure, increment its recallSuccessCount and bump its weight.
+  // The record is in the recall window; the CT engine is responsible
+  // for asking storage to persist the updated record back.
+  reinforceRecallMatch: function (windowIdx) {
+    if (windowIdx < 0 || windowIdx >= this.recallWindow.length) return null;
+    const r = this.recallWindow[windowIdx];
+    r.recallSuccessCount = (r.recallSuccessCount || 0) + 1;
+    r.weight = Math.min(3.0, (r.weight || 1.0) + CFG.RECALL_SUCCESS_BOOST);
+    r.lastUsed = this.step;
+    return r;
+  },
+
+  // ============================================================
+  // PERSISTENCE: serialize / deserialize for snapshots
+  // ============================================================
+  serialize: function () {
+    return JSON.stringify({
+      version: 4,
+      constraints: this.constraints,
+      aged: this.aged,
+      inputCount: this.inputCount,
+      step: this.step,
+      ratCount: this.ratCount,
+      scalarDelta: this.scalarDelta,
+      fastDelta: this.fastDelta,
+      slowDelta: this.slowDelta,
+      gap: this.gap,
+      fastMod: this.fastMod,
+      slowMod: this.slowMod,
+      recentOps: this.recentOps,
+      correlations: this.correlations,
+      familyFidelity: this.familyFidelity,
+      subcascades: this.subcascades,
+      namingPref: this.namingPref,
+      namedCount: this.namedCount,
+      _idCtr: this._idCtr,
+      // Phase 3
+      ctTotalOpsSeen: this.ctTotalOpsSeen,
+      ctOpsCompleted: this.ctOpsCompleted,
+      ctLastSnapshotStep: this.ctLastSnapshotStep,
+      execScalarDelta: this.execScalarDelta,
+      execFastDelta: this.execFastDelta,
+      execSlowDelta: this.execSlowDelta,
+      execGap: this.execGap,
+      // Phase 4b
+      compoundFidelity: this.compoundFidelity,
+      compoundGenerationHistory: this.compoundGenerationHistory
+    });
+  },
+  deserialize: function (json) {
+    let data;
+    try { data = JSON.parse(json); }
+    catch (e) { return false; }
+    if (!data || (data.version !== 3 && data.version !== 4)) return false;
+    // Restore fields with type-checking
+    this.constraints = Array.isArray(data.constraints) ? data.constraints : [Object.assign({}, SEED)];
+    this.aged = Array.isArray(data.aged) ? data.aged : [];
+    this.inputCount = +data.inputCount || 0;
+    this.step = +data.step || 0;
+    this.ratCount = +data.ratCount || 0;
+    this.scalarDelta = Guards.clamp01(+data.scalarDelta);
+    this.fastDelta = Guards.clamp01(+data.fastDelta);
+    this.slowDelta = Guards.clamp01(+data.slowDelta);
+    this.gap = Guards.clamp01(+data.gap);
+    this.fastMod = +data.fastMod || 0;
+    this.slowMod = Guards.clamp01(+data.slowMod);
+    this.recentOps = Array.isArray(data.recentOps) ? data.recentOps : [];
+    this.correlations = data.correlations && typeof data.correlations === "object"
+      ? data.correlations : Object.create(null);
+    this.familyFidelity = data.familyFidelity && typeof data.familyFidelity === "object"
+      ? data.familyFidelity : Object.create(null);
+    this.subcascades = Array.isArray(data.subcascades) ? data.subcascades : [];
+    this.namingPref = Guards.clamp01(+data.namingPref);
+    this.namedCount = +data.namedCount || 0;
+    this._idCtr = +data._idCtr || 0;
+    // Phase 3
+    this.ctTotalOpsSeen = +data.ctTotalOpsSeen || 0;
+    this.ctOpsCompleted = +data.ctOpsCompleted || 0;
+    this.ctLastSnapshotStep = +data.ctLastSnapshotStep || 0;
+    this.execScalarDelta = Guards.clamp01(+data.execScalarDelta);
+    this.execFastDelta = Guards.clamp01(+data.execFastDelta);
+    this.execSlowDelta = Guards.clamp01(+data.execSlowDelta);
+    this.execGap = Guards.clamp01(+data.execGap);
+    // Phase 4b (only in v4 snapshots)
+    if (data.version === 4) {
+      this.compoundFidelity = data.compoundFidelity && typeof data.compoundFidelity === "object"
+        ? data.compoundFidelity : Object.create(null);
+      this.compoundGenerationHistory = Array.isArray(data.compoundGenerationHistory)
+        ? data.compoundGenerationHistory : [];
+    } else {
+      // v3 snapshot: initialize compound state empty (forward-compat read)
+      this.compoundFidelity = Object.create(null);
+      this.compoundGenerationHistory = [];
+    }
+    return true;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Trace: shared trace log, written by both engines, read by host UI
+// ---------------------------------------------------------------------------
+const Trace = {
+  entries: [],
+  flushedToStorage: 0,    // index up to which entries have been persisted
+  append: function (scope, op, vd, detail, tag) {
+    this.entries.push({
+      step: Field.step,
+      scope: String(scope || "field"),
+      op: String(op || ""),
+      scalar: vd && typeof vd.scalar === "number" ? vd.scalar : Field.scalarDelta,
+      fast: vd && typeof vd.fast === "number" ? vd.fast : Field.fastDelta,
+      slow: vd && typeof vd.slow === "number" ? vd.slow : Field.slowDelta,
+      gap: vd && typeof vd.gap === "number" ? vd.gap : Field.gap,
+      detail: Guards.clampString(detail || "", 100),
+      tag: tag || null
+    });
+    while (this.entries.length > CFG.TRACE_CAP) {
+      this.entries.shift();
+      if (this.flushedToStorage > 0) this.flushedToStorage -= 1;
+    }
+  },
+  clear: function () { this.entries = []; this.flushedToStorage = 0; },
+  unflushed: function () { return this.entries.slice(this.flushedToStorage); },
+  markFlushed: function () { this.flushedToStorage = this.entries.length; }
+};
+
+// ---------------------------------------------------------------------------
+// OpsLog: human-readable log of high-level operations (for UI)
+// ---------------------------------------------------------------------------
+const OpsLog = {
+  entries: [],
+  append: function (opLabel, detail) {
+    this.entries.unshift({
+      step: Field.step,
+      op: String(opLabel),
+      detail: Guards.clampString(detail || "", 140)
+    });
+    while (this.entries.length > CFG.OPS_LOG_CAP) this.entries.pop();
+  },
+  clear: function () { this.entries = []; }
+};
+
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
+const FieldModule = Object.freeze({
+  Guards: Guards,
+  CFG: CFG,
+  SEED: SEED,
+  Field: Field,
+  Trace: Trace,
+  OpsLog: OpsLog
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = FieldModule;
+} else {
+  global.FieldModule = FieldModule;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === constraint-compiler.js === */
+// ============================================================================
+// constraint-compiler.js  -  Compile field constraints to shader instructions
+// ============================================================================
+// Phase 2 of IMPLEMENTATION_PATH. Bridges the constraint substrate (defined in
+// field.js, same shape as fresh-v2) and the ER (Experiential Reality) engine
+// running in WebGPU compute shaders.
+//
+// Each constraint record in field.constraints becomes a small program of
+// instructions the shader walks per-invocation. The shader reads the
+// pre-computed input record (one element of input-feature buffer) and
+// evaluates whether the constraint's pattern matches.
+//
+// Instruction encoding (32 bits per instruction):
+//   bits  0..7   opcode
+//   bits  8..15  param a
+//   bits 16..23  param b
+//   bits 24..31  param c
+//
+// Opcodes (extend over algorithm 16's set; opcodes 0x80+ are Phase 2 additions):
+//   0x80 MATCH_HAS_TOKEN     a=token_id (index into compiled token table)
+//   0x81 MATCH_LENGTH_RANGE  a=min_lo  b=min_hi  c=range_id (lo/hi packed in input rec)
+//   0x82 MATCH_CHAR_CLASS    a=class_id (0=digits, 1=alpha, 2=symbol)
+//   0x83 MATCH_CO_OCCURS     a=token_id_a  b=token_id_b
+//   0x84 MATCH_META          a=ref_count  b=ref_offset (refs follow as raw ids)
+//   0xFE CONSTRAINT_END      - end of one constraint program
+//
+// SE-06 commitment: this compiler runs on the host JS side. The host writes
+// the compiled instruction buffer into shared field-state. The ER engine
+// reads it. Neither side commands the other.
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+const OP = Object.freeze({
+  MATCH_HAS_TOKEN:    0x80,
+  MATCH_LENGTH_RANGE: 0x81,
+  MATCH_CHAR_CLASS:   0x82,
+  MATCH_CO_OCCURS:    0x83,
+  MATCH_META:         0x84,
+  CONSTRAINT_END:     0xFE
+});
+
+const CHAR_CLASS = Object.freeze({
+  digits: 0,
+  alpha:  1,
+  symbol: 2
+});
+
+// Pack 4 bytes into one u32. Param values must be 0..255.
+function pack(op, a, b, c) {
+  return (op & 0xFF)
+       | ((a & 0xFF) << 8)
+       | ((b & 0xFF) << 16)
+       | ((c & 0xFF) << 24);
+}
+
+// Build a token table from the live field. Each unique token referenced by
+// any constraint is assigned a small integer id. The id is what the shader
+// instructions reference; the table itself is shipped to the shader as a
+// separate buffer (lengths + offsets + chars).
+function buildTokenTable(constraints) {
+  const seen = Object.create(null);
+  const tokens = [];
+
+  function intern(tok) {
+    if (typeof tok !== "string" || tok.length === 0) return -1;
+    if (Object.prototype.hasOwnProperty.call(seen, tok)) return seen[tok];
+    const id = tokens.length;
+    seen[tok] = id;
+    tokens.push(tok);
+    return id;
+  }
+
+  for (const c of constraints) {
+    if (!c.pattern) continue;
+    if (c.pattern.type === "has-token") intern(c.pattern.token);
+    else if (c.pattern.type === "co-occurs") {
+      intern(c.pattern.a);
+      intern(c.pattern.b);
+    }
+  }
+
+  // Pack tokens into a flat byte buffer + offsets/lengths.
+  // chars layout: [t0_byte0, t0_byte1, ..., t1_byte0, ...]
+  // offsets[i] = starting index of token i; lengths[i] = byte count.
+  const offsets = new Uint32Array(Math.max(1, tokens.length));
+  const lengths = new Uint32Array(Math.max(1, tokens.length));
+  let totalBytes = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    offsets[i] = totalBytes;
+    lengths[i] = tokens[i].length;
+    totalBytes += tokens[i].length;
+  }
+  const chars = new Uint8Array(Math.max(1, totalBytes));
+  let cursor = 0;
+  for (const t of tokens) {
+    for (let i = 0; i < t.length; i++) chars[cursor++] = t.charCodeAt(i) & 0xFF;
+  }
+
+  return { tokens, intern: (s) => seen[s] !== undefined ? seen[s] : -1,
+           offsets, lengths, chars, count: tokens.length };
+}
+
+// Build a length-range table. Each unique [min,max] pair gets an id. The
+// shader compares input length against the (lo,hi) values stored in this
+// table indexed by id. We use a separate table because length values can
+// exceed 255 and won't fit in instruction parameter bytes.
+function buildLengthTable(constraints) {
+  const seen = Object.create(null);
+  const ranges = [];
+  function intern(min, max) {
+    const key = min + ":" + max;
+    if (Object.prototype.hasOwnProperty.call(seen, key)) return seen[key];
+    const id = ranges.length;
+    seen[key] = id;
+    ranges.push({ min, max });
+    return id;
+  }
+  for (const c of constraints) {
+    if (c.pattern && c.pattern.type === "length-range") {
+      intern(c.pattern.min, c.pattern.max);
+    }
+  }
+  // Pack as flat Uint32: [min0, max0, min1, max1, ...]
+  const buf = new Uint32Array(Math.max(2, ranges.length * 2));
+  for (let i = 0; i < ranges.length; i++) {
+    buf[i * 2]     = ranges[i].min;
+    buf[i * 2 + 1] = ranges[i].max;
+  }
+  return { ranges, buf, count: ranges.length, internOf: (min, max) => seen[min + ":" + max] };
+}
+
+// Build a constraint-id-to-program-offset map so meta refs can be resolved.
+// Constraint programs are emitted in field-array order. The map records
+// where each program starts in the instruction buffer.
+function buildIdMap(constraints) {
+  const map = Object.create(null);
+  for (let i = 0; i < constraints.length; i++) {
+    map[constraints[i].id] = i;       // id -> field index
+  }
+  return map;
+}
+
+// Compile one base constraint to instructions.
+// Returns [u32, u32, ...] instructions for this single constraint, ending
+// with a CONSTRAINT_END.
+function compileBaseConstraint(c, tokenTable, lengthTable) {
+  const out = [];
+  if (!c.pattern) {
+    out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+    return out;
+  }
+  const p = c.pattern;
+  if (p.type === "has-token") {
+    const id = tokenTable.intern(p.token);
+    if (id < 0 || id > 255) {
+      // unencodable -> emit an always-false constraint (just END)
+      out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+      return out;
+    }
+    out.push(pack(OP.MATCH_HAS_TOKEN, id, 0, 0));
+  } else if (p.type === "length-range") {
+    const id = lengthTable.internOf(p.min, p.max);
+    if (id < 0 || id > 255) {
+      out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+      return out;
+    }
+    out.push(pack(OP.MATCH_LENGTH_RANGE, id, 0, 0));
+  } else if (p.type === "char-class") {
+    const cls = CHAR_CLASS[p.cls];
+    if (cls === undefined) {
+      out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+      return out;
+    }
+    out.push(pack(OP.MATCH_CHAR_CLASS, cls, 0, 0));
+  } else if (p.type === "co-occurs") {
+    const idA = tokenTable.intern(p.a);
+    const idB = tokenTable.intern(p.b);
+    if (idA < 0 || idA > 255 || idB < 0 || idB > 255) {
+      out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+      return out;
+    }
+    out.push(pack(OP.MATCH_CO_OCCURS, idA, idB, 0));
+  } else {
+    out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+    return out;
+  }
+  out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+  return out;
+}
+
+// Compile a meta-constraint (refs other constraints by field-index).
+// META takes ref_count and a list of field-indices that follow as
+// "naked" u32 entries (not packed instructions).
+function compileMetaConstraint(c, idMap) {
+  const out = [];
+  if (!c.refs || c.refs.length === 0) {
+    out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+    return out;
+  }
+  // Resolve refs to field indices. Drop refs that don't resolve.
+  const indices = [];
+  for (const refId of c.refs) {
+    const idx = idMap[refId];
+    if (idx === undefined) continue;
+    indices.push(idx);
+  }
+  if (indices.length === 0) {
+    out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+    return out;
+  }
+  if (indices.length > 255) indices.length = 255; // safety
+  out.push(pack(OP.MATCH_META, indices.length, 0, 0));
+  for (const idx of indices) out.push(idx >>> 0);  // raw u32, not packed
+  out.push(pack(OP.CONSTRAINT_END, 0, 0, 0));
+  return out;
+}
+
+// Top-level: compile the full live field into:
+//   programOffsets[i] = instruction buffer offset where constraint i begins
+//   instructions      = the flat u32 instruction buffer
+//   tokenTable        = { offsets, lengths, chars, count }
+//   lengthTable       = { buf, count }
+//   meta              = { count: total constraints compiled }
+function compileField(constraints) {
+  const tokenTable  = buildTokenTable(constraints);
+  const lengthTable = buildLengthTable(constraints);
+  const idMap       = buildIdMap(constraints);
+
+  const offsets = new Uint32Array(constraints.length);
+  const allInsts = [];
+
+  for (let i = 0; i < constraints.length; i++) {
+    offsets[i] = allInsts.length;
+    const c = constraints[i];
+    if (c.kind === "seed") {
+      // Seed always-matches by definition. Encode as zero-instruction
+      // program (just an END, which the shader treats as match=true).
+      allInsts.push(pack(OP.CONSTRAINT_END, 1, 0, 0));   // a=1 marks always-match
+      continue;
+    }
+    if (c.kind === "meta") {
+      const block = compileMetaConstraint(c, idMap);
+      for (const u of block) allInsts.push(u);
+      continue;
+    }
+    // derived, predictive, ratified all use pattern matching
+    const block = compileBaseConstraint(c, tokenTable, lengthTable);
+    for (const u of block) allInsts.push(u);
+  }
+
+  return {
+    constraintCount:  constraints.length,
+    programOffsets:   offsets,
+    instructions:     new Uint32Array(allInsts),
+    tokenTable,
+    lengthTable
+  };
+}
+
+// ============================================================================
+// Pre-compute input record (host side)
+// ============================================================================
+// The shader doesn't tokenize. The host pre-computes a fixed-size input
+// record: token-presence bitfield (relative to the field's token table),
+// length, and char-class flags. This is uploaded each frame an input
+// arrives.
+
+function computeInputRecord(input, tokenTable) {
+  const lower = (input || "").toLowerCase();
+  const tokens = lower.split(/\s+/).filter(t => t.length > 0);
+
+  // Token presence: bit i set if tokenTable.tokens[i] is present
+  const tokenBits = new Uint32Array(Math.ceil(Math.max(1, tokenTable.count) / 32));
+  for (const tok of tokens) {
+    const id = tokenTable.intern(tok);
+    if (id >= 0 && id < tokenTable.count) {
+      tokenBits[Math.floor(id / 32)] |= (1 << (id % 32));
+    }
+  }
+
+  // Char class flags
+  let flags = 0;
+  if (/\d/.test(input))        flags |= 0x1;   // digits
+  if (/[a-zA-Z]/.test(input))  flags |= 0x2;   // alpha
+  if (/[^\w\s]/.test(input))   flags |= 0x4;   // symbol
+
+  return {
+    length:    input ? input.length : 0,
+    flags:     flags,
+    tokenBits: tokenBits,
+    tokenBitsLen: tokenBits.length
+  };
+}
+
+// Bit-test helper used by the CPU oracle (must match shader semantics)
+function tokenIdPresent(record, tokenId) {
+  if (tokenId < 0) return false;
+  const word = tokenId >>> 5;        // /32
+  const bit  = tokenId & 31;
+  if (word >= record.tokenBitsLen) return false;
+  return (record.tokenBits[word] & (1 << bit)) !== 0;
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+const ConstraintCompiler = Object.freeze({
+  OP,
+  CHAR_CLASS,
+  pack,
+  compileField,
+  computeInputRecord,
+  tokenIdPresent
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = ConstraintCompiler;
+} else {
+  global.ConstraintCompiler = ConstraintCompiler;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === cpu-oracle.js === */
+// ============================================================================
+// cpu-oracle.js  -  CPU equivalent of resolve-fresh.wgsl
+// ============================================================================
+// Walks the same instruction buffer the shader walks. Produces the same
+// match_results array. The Phase 2 test harness diffs this against the
+// shader's output to enforce INVARIANTS S2 (substrate-resolution
+// determinism across substrates).
+//
+// Any change to opcodes here MUST be mirrored in resolve-fresh.wgsl.
+// Any deviation between the two is a Phase 2 regression and breaks SE-06.
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+const OP = {
+  MATCH_HAS_TOKEN:    0x80,
+  MATCH_LENGTH_RANGE: 0x81,
+  MATCH_CHAR_CLASS:   0x82,
+  MATCH_CO_OCCURS:    0x83,
+  MATCH_META:         0x84,
+  CONSTRAINT_END:     0xFE
+};
+
+// Test whether a token id is present in the input. Mirrors token_present()
+// in the WGSL shader exactly.
+function tokenPresent(record, tokenId) {
+  if (tokenId < 0) return false;
+  const wordIdx = tokenId >>> 5;
+  const bitIdx  = tokenId & 31;
+  if (wordIdx >= record.tokenBitsLen) return false;
+  return (record.tokenBits[wordIdx] & (1 << bitIdx)) !== 0;
+}
+
+// Walk instructions starting at startPc. Returns 1 if matched, 0 if not.
+// Mirrors evaluate_constraint() in the shader exactly.
+//
+// matchResults is the partially-populated array from prior constraints
+// in this same dispatch. Meta lookups read it. The host ensures meta
+// constraints come after their refs in field-array order so this is safe.
+function evaluateConstraint(
+  startPc, instructions, instructionCount,
+  programOffsets, constraintCount,
+  inputRecord, lengthRanges, matchResults
+) {
+  let pc = startPc;
+  while (true) {
+    if (pc >= instructionCount) return 0;
+    const inst = instructions[pc];
+    const op = inst & 0xFF;
+    const a  = (inst >>> 8)  & 0xFF;
+    const b  = (inst >>> 16) & 0xFF;
+
+    switch (op) {
+      case OP.CONSTRAINT_END:
+        // a=1 marks always-match (seed). Otherwise empty/unencodable.
+        return (a === 1) ? 1 : 0;
+
+      case OP.MATCH_HAS_TOKEN:
+        return tokenPresent(inputRecord, a) ? 1 : 0;
+
+      case OP.MATCH_LENGTH_RANGE: {
+        const base = a * 2;
+        if (base + 1 >= lengthRanges.length) return 0;
+        const lo = lengthRanges[base];
+        const hi = lengthRanges[base + 1];
+        return (inputRecord.length >= lo && inputRecord.length <= hi) ? 1 : 0;
+      }
+
+      case OP.MATCH_CHAR_CLASS: {
+        const mask = 1 << a;
+        return (inputRecord.flags & mask) !== 0 ? 1 : 0;
+      }
+
+      case OP.MATCH_CO_OCCURS:
+        return (tokenPresent(inputRecord, a) && tokenPresent(inputRecord, b)) ? 1 : 0;
+
+      case OP.MATCH_META: {
+        const refCount = a;
+        for (let i = 0; i < refCount; i++) {
+          const refPc = pc + 1 + i;
+          if (refPc >= instructionCount) return 0;
+          const refIdx = instructions[refPc] >>> 0;
+          if (refIdx >= constraintCount) return 0;
+          if (matchResults[refIdx] !== 1) return 0;
+        }
+        return 1;
+      }
+
+      default:
+        return 0;
+    }
+    // Each case returns; this is unreachable but we keep loop legal
+    // pc++;
+  }
+}
+
+// Top-level: evaluate the full field. Returns Uint32Array of match results,
+// indexed by constraint field-index. Identical to what the shader writes.
+function evaluateField(compiled, inputRecord) {
+  const constraintCount = compiled.constraintCount;
+  const matchResults = new Uint32Array(constraintCount);
+  const lengthRanges = compiled.lengthTable.buf;
+
+  for (let i = 0; i < constraintCount; i++) {
+    const startPc = compiled.programOffsets[i];
+    matchResults[i] = evaluateConstraint(
+      startPc,
+      compiled.instructions, compiled.instructions.length,
+      compiled.programOffsets, constraintCount,
+      inputRecord, lengthRanges, matchResults
+    );
+  }
+
+  return matchResults;
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+const CpuOracle = Object.freeze({
+  OP,
+  tokenPresent,
+  evaluateConstraint,
+  evaluateField
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = CpuOracle;
+} else {
+  global.CpuOracle = CpuOracle;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === er-engine.js === */
+// ============================================================================
+// er-engine.js  -  Experiential Reality engine (Phase 2)
+// ============================================================================
+// Owns the WebGPU compute pipeline. Per frame, evaluates the live field
+// against the current input record using resolve-fresh.wgsl. Falls back
+// to cpu-oracle.js when WebGPU is unavailable (graceful degradation; the
+// architecture is substrate-independent so the fallback produces identical
+// results, just without the parallel speedup).
+//
+// SE-06 commitment: this module reads constraints + input from shared
+// field state. It writes match results to shared field state. It does not
+// command the host. The host writes new constraints into the field; the
+// engine evaluates them on the next frame. Coupling is via shared state,
+// not protocol.
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+const ER_STATE = Object.freeze({
+  IDLE:            "idle",
+  INITIALIZING:    "initializing",
+  GPU_READY:       "gpu-ready",
+  CPU_FALLBACK:    "cpu-fallback",
+  ERROR:           "error"
+});
+
+class ERengine {
+  constructor() {
+    this.state         = ER_STATE.IDLE;
+    this.gpuDevice     = null;
+    this.shaderModule  = null;
+    this.pipeline      = null;
+    this.lastError     = null;
+    this.framesRun     = 0;
+    this.lastDispatchMS= 0;
+    // last-emitted match results (for the host to read)
+    this.lastMatch     = null;
+    this.lastInput     = "";
+    this.lastCompiled  = null;
+  }
+
+  // ----------------------------------------------------------------
+  // Initialization. Try to acquire a WebGPU device; on failure, set
+  // CPU_FALLBACK and continue. Either path is a valid implementation
+  // of SE-06's substrate-independence commitment.
+  // ----------------------------------------------------------------
+  async init(shaderSourceFetcher) {
+    this.state = ER_STATE.INITIALIZING;
+    try {
+      if (typeof navigator === "undefined" || !navigator.gpu) {
+        this.state = ER_STATE.CPU_FALLBACK;
+        this.lastError = "navigator.gpu unavailable";
+        return this.state;
+      }
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        this.state = ER_STATE.CPU_FALLBACK;
+        this.lastError = "no GPU adapter";
+        return this.state;
+      }
+      this.gpuDevice = await adapter.requestDevice();
+      const shaderSource = await shaderSourceFetcher();
+      this.shaderModule = this.gpuDevice.createShaderModule({ code: shaderSource });
+      this.pipeline = this.gpuDevice.createComputePipeline({
+        layout: "auto",
+        compute: { module: this.shaderModule, entryPoint: "main" }
+      });
+      this.state = ER_STATE.GPU_READY;
+      return this.state;
+    } catch (e) {
+      this.state = ER_STATE.CPU_FALLBACK;
+      this.lastError = e && e.message ? e.message : String(e);
+      return this.state;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Evaluate the current field against the current input. Returns
+  // a Uint32Array of match results (one entry per constraint).
+  //
+  // This is the per-frame operation. The host calls this each frame
+  // it wants resolution. A frame without input still runs (the
+  // architecture operates indefinitely; idle frames refresh the
+  // vector-delta).
+  // ----------------------------------------------------------------
+  evaluate(compiled, inputRecord) {
+    this.lastCompiled = compiled;
+    if (this.state === ER_STATE.GPU_READY) {
+      const t0 = (typeof performance !== "undefined") ? performance.now() : 0;
+      try {
+        const result = this._evaluateGPU(compiled, inputRecord);
+        const t1 = (typeof performance !== "undefined") ? performance.now() : 0;
+        this.lastDispatchMS = t1 - t0;
+        this.framesRun++;
+        this.lastMatch = result;
+        return result;
+      } catch (e) {
+        // GPU eval failed mid-flight; switch to CPU fallback for this and
+        // future frames. Algorithm 16's substrate-equivalence guarantees
+        // the fallback produces identical results.
+        this.state = ER_STATE.CPU_FALLBACK;
+        this.lastError = "GPU eval error: " + (e && e.message ? e.message : String(e));
+      }
+    }
+    // CPU fallback path
+    const t0 = (typeof performance !== "undefined") ? performance.now() : 0;
+    const result = this._evaluateCPU(compiled, inputRecord);
+    const t1 = (typeof performance !== "undefined") ? performance.now() : 0;
+    this.lastDispatchMS = t1 - t0;
+    this.framesRun++;
+    this.lastMatch = result;
+    return result;
+  }
+
+  _evaluateCPU(compiled, inputRecord) {
+    const CpuOracle = (typeof require !== "undefined")
+      ? require("./cpu-oracle.js")
+      : global.CpuOracle;
+    return CpuOracle.evaluateField(compiled, inputRecord);
+  }
+
+  _evaluateGPU(compiled, inputRecord) {
+    const device = this.gpuDevice;
+    const N = compiled.constraintCount;
+    if (N === 0) return new Uint32Array(0);
+
+    // ---- Build buffers from compiled state ----
+
+    // Constants uniform buffer (8 u32 = 32 bytes)
+    const constants = new Uint32Array(8);
+    constants[0] = N;
+    constants[1] = compiled.instructions.length;
+    constants[2] = compiled.tokenTable.count;
+    constants[3] = compiled.lengthTable.count;
+    constants[4] = inputRecord.length >>> 0;
+    constants[5] = inputRecord.flags >>> 0;
+    constants[6] = inputRecord.tokenBitsLen >>> 0;
+    constants[7] = 0;
+
+    const constantsBuf = device.createBuffer({
+      size: constants.byteLength,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    device.queue.writeBuffer(constantsBuf, 0, constants);
+
+    // Storage buffers
+    const programOffsetsBuf = this._mkStorageBuf(device, compiled.programOffsets);
+    const instructionsBuf   = this._mkStorageBuf(device, compiled.instructions);
+    const tokenPresenceBuf  = this._mkStorageBuf(device, inputRecord.tokenBits);
+    const lengthRangesBuf   = this._mkStorageBuf(device, compiled.lengthTable.buf);
+
+    // Output: match_results, one u32 per constraint
+    const matchByteLen = N * 4;
+    const matchResultsBuf = device.createBuffer({
+      size: matchByteLen,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+    });
+    const readbackBuf = device.createBuffer({
+      size: matchByteLen,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    });
+
+    const bindGroup = device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: constantsBuf       } },
+        { binding: 1, resource: { buffer: programOffsetsBuf } },
+        { binding: 2, resource: { buffer: instructionsBuf   } },
+        { binding: 3, resource: { buffer: tokenPresenceBuf  } },
+        { binding: 4, resource: { buffer: lengthRangesBuf   } },
+        { binding: 5, resource: { buffer: matchResultsBuf   } }
+      ]
+    });
+
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.dispatchWorkgroups(Math.ceil(N / 64));
+    pass.end();
+    encoder.copyBufferToBuffer(matchResultsBuf, 0, readbackBuf, 0, matchByteLen);
+    device.queue.submit([encoder.finish()]);
+
+    // Synchronous readback. In a real frame loop this would be
+    // pipelined; for Phase 2 minimum-viable, we map and read.
+    // The Promise is awaited by the caller via evaluateAsync if needed.
+    // For evaluate() we return a sentinel and let the host
+    // poll lastMatch on the next frame, OR await readbackBuf.mapAsync.
+    //
+    // Implementation choice: the host calls evaluateAsync() per frame
+    // if it wants to await the readback; evaluate() does the synchronous
+    // CPU fallback when called in non-async context. This file exposes
+    // both paths.
+
+    // For Phase 2 we expose evaluateAsync(); this synchronous evaluate()
+    // path on GPU is not actually supported (mapAsync is async-only).
+    // Throw so the caller migrates to evaluateAsync.
+    throw new Error("GPU path requires evaluateAsync(); use that method.");
+  }
+
+  // Async variant for frame-loop callers. Returns Promise<Uint32Array>.
+  async evaluateAsync(compiled, inputRecord) {
+    this.lastCompiled = compiled;
+    if (this.state !== ER_STATE.GPU_READY) {
+      // CPU path is synchronous; wrap in resolved promise for uniformity
+      const result = this._evaluateCPU(compiled, inputRecord);
+      this.framesRun++;
+      this.lastMatch = result;
+      return result;
+    }
+
+    const t0 = performance.now();
+    try {
+      const device = this.gpuDevice;
+      const N = compiled.constraintCount;
+      if (N === 0) {
+        this.framesRun++;
+        this.lastMatch = new Uint32Array(0);
+        return this.lastMatch;
+      }
+
+      const constants = new Uint32Array(8);
+      constants[0] = N;
+      constants[1] = compiled.instructions.length;
+      constants[2] = compiled.tokenTable.count;
+      constants[3] = compiled.lengthTable.count;
+      constants[4] = inputRecord.length >>> 0;
+      constants[5] = inputRecord.flags >>> 0;
+      constants[6] = inputRecord.tokenBitsLen >>> 0;
+      constants[7] = 0;
+
+      const constantsBuf = device.createBuffer({
+        size: constants.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(constantsBuf, 0, constants);
+
+      const programOffsetsBuf = this._mkStorageBuf(device, compiled.programOffsets);
+      const instructionsBuf   = this._mkStorageBuf(device, compiled.instructions);
+      const tokenPresenceBuf  = this._mkStorageBuf(device, inputRecord.tokenBits);
+      const lengthRangesBuf   = this._mkStorageBuf(device, compiled.lengthTable.buf);
+
+      const matchByteLen = N * 4;
+      const matchResultsBuf = device.createBuffer({
+        size: matchByteLen,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+      });
+      const readbackBuf = device.createBuffer({
+        size: matchByteLen,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: this.pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: constantsBuf       } },
+          { binding: 1, resource: { buffer: programOffsetsBuf } },
+          { binding: 2, resource: { buffer: instructionsBuf   } },
+          { binding: 3, resource: { buffer: tokenPresenceBuf  } },
+          { binding: 4, resource: { buffer: lengthRangesBuf   } },
+          { binding: 5, resource: { buffer: matchResultsBuf   } }
+        ]
+      });
+
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(this.pipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(Math.ceil(N / 64));
+      pass.end();
+      encoder.copyBufferToBuffer(matchResultsBuf, 0, readbackBuf, 0, matchByteLen);
+      device.queue.submit([encoder.finish()]);
+
+      await readbackBuf.mapAsync(GPUMapMode.READ);
+      const view = new Uint32Array(readbackBuf.getMappedRange().slice(0));
+      readbackBuf.unmap();
+
+      // Free transient buffers
+      constantsBuf.destroy();
+      programOffsetsBuf.destroy();
+      instructionsBuf.destroy();
+      tokenPresenceBuf.destroy();
+      lengthRangesBuf.destroy();
+      matchResultsBuf.destroy();
+      readbackBuf.destroy();
+
+      this.lastDispatchMS = performance.now() - t0;
+      this.framesRun++;
+      this.lastMatch = view;
+      return view;
+    } catch (e) {
+      // Fall back permanently for this engine. Algorithm 16 guarantees
+      // the CPU path produces equivalent results.
+      this.state = ER_STATE.CPU_FALLBACK;
+      this.lastError = "GPU eval error: " + (e && e.message ? e.message : String(e));
+      const result = this._evaluateCPU(compiled, inputRecord);
+      this.framesRun++;
+      this.lastMatch = result;
+      return result;
+    }
+  }
+
+  _mkStorageBuf(device, typedArray) {
+    const buf = device.createBuffer({
+      size: Math.max(typedArray.byteLength, 4),
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    });
+    device.queue.writeBuffer(buf, 0, typedArray);
+    return buf;
+  }
+}
+
+const ERengineModule = Object.freeze({ ERengine, ER_STATE });
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = ERengineModule;
+} else {
+  global.ERengineModule = ERengineModule;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === ct-engine.js === */
+// ============================================================================
+// ct-engine.js  -  Critical Thought engine (Phase 3)
+// ============================================================================
+// The CT engine is the execution substrate. Per SE-06 / PROJECT_SPLIT:
+//
+//   - It owns sequential operation processing
+//   - It owns execution-scope vector-delta computation
+//   - It owns execution-scope predictive constraint generation
+//   - It owns persistent state (snapshots + trace flush)
+//   - It owns transaction semantics (op-level commit)
+//
+// What it does NOT do:
+//   - Command the ER engine
+//   - Receive commands from the ER engine
+//   - Hold authoritative copies of field state (the field is shared)
+//   - Read render-scope delta to make decisions (each substrate reads
+//     delta at its own position; the gap between scopes is observable
+//     only from outside both)
+//
+// Coupling with ER engine:
+//   - CT writes constraints into the field
+//   - ER reads constraints from the field, writes match results
+//   - CT reads match results from the field, runs op processing
+//   - Neither blocks waiting on the other; both run on the host's
+//     event loop, ordered by frame boundaries (snapshot consistency)
+//
+// SE-06 invariants this module honors:
+//   - S1: shares field with ER engine; does not own it
+//   - S2: when it generates constraints, they are substrate-equivalent
+//         (they use the same compiler the ER engine consumes)
+//   - S3: couples to ER only through delta - exec-delta is computed
+//         independently from render-delta; CT does not consult render-
+//         delta to make decisions
+// ============================================================================
+
+(function (global) {
+"use strict";
+
+// Acquire dependencies. In browser context, FieldModule is on global.
+// In Node test context, require it.
+let FieldModule;
+if (typeof require !== "undefined") {
+  FieldModule = require("./field.js");
+} else {
+  FieldModule = global.FieldModule;
+}
+const Field = FieldModule.Field;
+const Trace = FieldModule.Trace;
+const OpsLog = FieldModule.OpsLog;
+const CFG = FieldModule.CFG;
+const Guards = FieldModule.Guards;
+
+// ---------------------------------------------------------------------------
+// Operation types
+// ---------------------------------------------------------------------------
+// Each operation is a record describing a sequential transaction. The CT
+// engine processes them one at a time, with explicit commit semantics. An
+// operation can be created from input (CTengine.enqueueInput), from a
+// scheduled internal event (CTengine.enqueueInternal), or from a periodic
+// scan that detects something needs to happen.
+
+const OP_KIND = Object.freeze({
+  INPUT:          "input",
+  TICK:           "tick",
+  DEVELOP:        "develop",
+  CORRELATE:      "correlate",
+  REASON:         "reason",
+  PROMOTE:        "promote",
+  EXEC_PREDICT:   "exec-predict",
+  SNAPSHOT:       "snapshot",
+  TRACE_FLUSH:    "trace-flush"
+});
+
+// ---------------------------------------------------------------------------
+// Persistent storage adapter
+// ---------------------------------------------------------------------------
+// Phase 3 first iteration uses localStorage. Synchronous, small, and
+// sufficient to exercise the persistence invariants. IndexedDB would be a
+// later upgrade for larger field states or multi-tab coherence.
+
+const PersistKeys = Object.freeze({
+  FIELD:    "ct::field-snapshot::v3",
+  TRACE:    "ct::trace::v3",
+  STAMP:    "ct::stamp::v3"
+});
+
+const PersistAdapter = {
+  available: function () {
+    try {
+      return typeof localStorage !== "undefined" && localStorage !== null;
+    } catch (e) { return false; }
+  },
+  saveFieldSnapshot: function (json) {
+    if (!this.available()) return false;
+    try {
+      localStorage.setItem(PersistKeys.FIELD, json);
+      localStorage.setItem(PersistKeys.STAMP, String(Date.now()));
+      return true;
+    } catch (e) { return false; }
+  },
+  loadFieldSnapshot: function () {
+    if (!this.available()) return null;
+    try { return localStorage.getItem(PersistKeys.FIELD); }
+    catch (e) { return null; }
+  },
+  appendTrace: function (entries) {
+    if (!this.available() || !entries.length) return false;
+    try {
+      const existing = localStorage.getItem(PersistKeys.TRACE);
+      let arr = [];
+      if (existing) {
+        try { arr = JSON.parse(existing); if (!Array.isArray(arr)) arr = []; }
+        catch (e) { arr = []; }
+      }
+      for (const e of entries) arr.push(e);
+      // Cap at TRACE_CAP * 4 in storage to prevent unbounded growth
+      const cap = CFG.TRACE_CAP * 4;
+      if (arr.length > cap) arr = arr.slice(arr.length - cap);
+      localStorage.setItem(PersistKeys.TRACE, JSON.stringify(arr));
+      return true;
+    } catch (e) { return false; }
+  },
+  clearAll: function () {
+    if (!this.available()) return;
+    try {
+      localStorage.removeItem(PersistKeys.FIELD);
+      localStorage.removeItem(PersistKeys.TRACE);
+      localStorage.removeItem(PersistKeys.STAMP);
+    } catch (e) {}
+  }
+};
+
+// ---------------------------------------------------------------------------
+// CT engine
+// ---------------------------------------------------------------------------
+
+class CTengine {
+  constructor() {
+    this.running = false;
+    this.opsExecuted = 0;
+    this.predictionsGeneratedExec = 0;
+    this.snapshotCount = 0;
+    this.traceFlushCount = 0;
+    // Phase 4c stats
+    this.recallEventsTriggered = 0;
+    this.recallMatchesProduced = 0;
+    this.persistedConstraintCount = 0;
+    // Reference to ER engine for compiling the field and reading match
+    // results. NOT a command channel: the CT engine asks the ER engine
+    // to evaluate the current field+input pair, which is the same as
+    // saying "trigger a frame on this state and read the result". This
+    // is one shared substrate (the field) being read by two substrates;
+    // it is not a request/response protocol between engines.
+    this.erBinding = null;
+    // Compiler reference (host-injected, for compiling the field for ER)
+    this.compilerBinding = null;
+    // Phase 4c: storage adapter binding. Optional - if not bound, recall
+    // is disabled and no persistence happens (Phase 3/4a/4b behavior).
+    this.storageBinding = null;
+    // Eligibility helper (set when storageBinding is set)
+    this.persistenceEligibility = null;
+    // Last computed exec-scope vector-delta record
+    this.lastExecVD = null;
+    // Track ops-completed-window for fast exec-delta tracking
+    this.recentExecOps = [];
+  }
+
+  // Bind the ER engine and constraint compiler. The host calls this
+  // during initialization. The CT engine uses these to make the
+  // field+input pair available to ER; it does not use them to send
+  // commands.
+  bind(erEngine, compilerModule) {
+    this.erBinding = erEngine;
+    this.compilerBinding = compilerModule;
+  }
+
+  // Phase 4c: bind a storage adapter. Optional. When bound, the CT
+  // engine will:
+  //   - Trigger recall on gap pressure (Field.shouldTriggerRecall)
+  //   - Persist eligible records (ratified, promoted compounds, etc.)
+  //   - Reinforce recalled records that match
+  //
+  // The storage adapter is a separate substrate, not a command channel.
+  // The CT engine reads from it (recall) and writes to it (persistence).
+  // Neither operation involves another engine.
+  bindStorage(storageAdapter, persistenceEligibility) {
+    this.storageBinding = storageAdapter;
+    this.persistenceEligibility = persistenceEligibility;
+  }
+
+  // -------------------------------------------------------------------
+  // OPERATION QUEUE
+  // -------------------------------------------------------------------
+  enqueueInput(text) {
+    if (Field.ctPendingOps.length >= CFG.CT_OP_QUEUE_CAP) {
+      // Backpressure: queue is saturated. Drop oldest INPUT ops to
+      // preserve queue invariant. This is a SE-02 metabolism choice:
+      // the field accepts only what it can metabolize.
+      const idx = Field.ctPendingOps.findIndex(op => op.kind === OP_KIND.INPUT);
+      if (idx >= 0) Field.ctPendingOps.splice(idx, 1);
+      else Field.ctPendingOps.shift();
+    }
+    Field.ctPendingOps.push({
+      kind: OP_KIND.INPUT,
+      payload: { text: Guards.clampString(text, CFG.INPUT_MAX) },
+      enqueuedAt: Field.step
+    });
+    Field.ctTotalOpsSeen++;
+  }
+
+  enqueueInternal(kind, payload) {
+    if (Field.ctPendingOps.length >= CFG.CT_OP_QUEUE_CAP) {
+      // Internal ops are not dropped; they are deferred. If queue is
+      // saturated, enqueueInternal silently drops to maintain bound.
+      // The exec-scope gap will rise, signaling the CT engine should
+      // catch up.
+      return false;
+    }
+    Field.ctPendingOps.push({
+      kind: kind,
+      payload: payload || {},
+      enqueuedAt: Field.step
+    });
+    Field.ctTotalOpsSeen++;
+    return true;
+  }
+
+  hasWork() {
+    return Field.ctPendingOps.length > 0 || Field.ctInFlightOp !== null;
+  }
+
+  // -------------------------------------------------------------------
+  // STEP: dequeue one op, execute it, commit it
+  //
+  // Per SE-06, the CT engine is sequential at execution scope. Each
+  // step processes one operation through phases:
+  //   1. dequeue: move from pending to in-flight
+  //   2. execute: run the op, produce committed-but-not-persisted state
+  //   3. commit: state in committed queue is observable in the field
+  //
+  // Note: persistence (snapshot, trace flush) is its own kind of op that
+  // gets enqueued; it is not implicit in commit.
+  // -------------------------------------------------------------------
+  async step() {
+    // Refresh exec-scope vector-delta at start of step
+    Field.refreshExecVectorDelta();
+    Field.updateExecSlowDelta(Field.execScalarDelta);
+    const execBefore = {
+      scalar: Field.execScalarDelta,
+      fast: Field.execFastDelta,
+      slow: Field.execSlowDelta,
+      gap: Field.execGap
+    };
+
+    // Maybe generate exec-scope predictions BEFORE doing work,
+    // if exec-gap signals reaching is appropriate
+    if (Field.execGap > CFG.EXEC_GAP_PREDICT_THRESH && Field.ctPendingOps.length < 4) {
+      this._generateExecPredictions();
+    }
+
+    if (Field.ctPendingOps.length === 0) {
+      // No work; record idle observation in trace
+      Trace.append("ct", "idle", { scalar: execBefore.scalar, fast: execBefore.fast,
+                                    slow: execBefore.slow, gap: execBefore.gap },
+                   "queue empty");
+      return null;
+    }
+
+    // Dequeue
+    const op = Field.ctPendingOps.shift();
+    Field.ctInFlightOp = op;
+
+    Trace.append("ct", "op-begin", execBefore, op.kind + " (queue=" + Field.ctPendingOps.length + ")");
+
+    // Execute
+    let result = null;
+    try {
+      result = await this._executeOp(op);
+    } catch (e) {
+      // Op failed; record and continue
+      Trace.append("ct", "op-failed", execBefore, op.kind + ": " + (e && e.message || e));
+      Field.ctInFlightOp = null;
+      return { kind: op.kind, ok: false, error: String(e && e.message || e) };
+    }
+
+    // Commit (move from in-flight to committed queue)
+    Field.ctInFlightOp = null;
+    Field.ctOpsCompleted++;
+    this.opsExecuted++;
+    Field.ctCommittedQueue.push({ kind: op.kind, atStep: Field.step, result: result });
+    while (Field.ctCommittedQueue.length > 32) Field.ctCommittedQueue.shift();
+
+    // Track for fast-exec-delta
+    this.recentExecOps.push({ step: Field.step, kind: op.kind });
+    while (this.recentExecOps.length > CFG.FAST_WINDOW) this.recentExecOps.shift();
+
+    // Refresh exec-scope vector-delta after committing
+    Field.refreshExecVectorDelta();
+
+    // Periodic snapshot and trace flush enqueueing
+    this._maybeSchedulePersistence();
+
+    return { kind: op.kind, ok: true, result: result };
+  }
+
+  // Run all pending ops to completion (used in tests; the host's frame
+  // loop calls step() once per frame instead).
+  async drainAll(maxOps) {
+    maxOps = maxOps || 1000;
+    let count = 0;
+    while (this.hasWork() && count < maxOps) {
+      await this.step();
+      count++;
+    }
+    return count;
+  }
+
+  // -------------------------------------------------------------------
+  // OPERATION EXECUTION
+  // -------------------------------------------------------------------
+  async _executeOp(op) {
+    switch (op.kind) {
+      case OP_KIND.INPUT:        return await this._opInput(op.payload.text);
+      case OP_KIND.TICK:         return this._opTick();
+      case OP_KIND.DEVELOP:      return this._opDevelop();
+      case OP_KIND.CORRELATE:    return this._opCorrelate();
+      case OP_KIND.REASON:       return this._opReason();
+      case OP_KIND.PROMOTE:      return this._opPromote();
+      case OP_KIND.EXEC_PREDICT: return this._opExecPredict(op.payload);
+      case OP_KIND.SNAPSHOT:     return this._opSnapshot();
+      case OP_KIND.TRACE_FLUSH:  return this._opTraceFlush();
+      default:                   throw new Error("unknown op kind: " + op.kind);
+    }
+  }
+
+  // Input op: full Phase 2 process loop, but as a CT operation. Compiles
+  // the field, dispatches to ER engine, reads back match results, then
+  // runs sequential post-match logic.
+  async _opInput(input) {
+    if (!input || !input.trim()) return { skipped: true };
+    Field.step++;
+    Field.inputCount++;
+    const named = Field.detectNames(input);
+    const wasNamed = named.length > 0;
+    if (wasNamed) {
+      Field.namedCount++;
+      for (const sc of named) { sc.namedCount++; sc.lastNamed = Field.step; }
+    }
+
+    // Phase 4c: recall fires from the gap state observed at the start
+    // of this input op - the pressure that exists when input arrives,
+    // not the pressure after the input is metabolized. Check the
+    // trigger BEFORE refreshing vector-delta. Recall is a response to
+    // prior structural pressure, parallel to predictive reaching being
+    // generated from prior gap.
+    let triggerRecall = false;
+    if (this.storageBinding) {
+      triggerRecall = Field.shouldTriggerRecall();
+    }
+
+    Field.refreshVectorDelta();
+    const vBefore = {
+      scalar: Field.scalarDelta, fast: Field.fastDelta,
+      slow: Field.slowDelta, gap: Field.gap
+    };
+    Trace.append("ct", "input-begin", vBefore, "input: " + Guards.clampString(input, 60));
+
+    // Dispatch to ER engine for parallel resolution
+    if (!this.erBinding || !this.compilerBinding) {
+      throw new Error("CT engine: erBinding or compilerBinding not set");
+    }
+
+    // Phase 4c: execute recall if trigger fired
+    if (triggerRecall) {
+      try {
+        const window = await this.storageBinding.recallConstraints({
+          limit: CFG.RECALL_WINDOW_SIZE
+        });
+        Field.setRecallWindow(window);
+        if (window.length > 0) {
+          this.recallEventsTriggered += 1;
+          Trace.append("ct", "recall-window", vBefore,
+            "+" + window.length + " persisted records available", "recalled");
+        }
+      } catch (e) {
+        // Recall failure is non-fatal; the field continues without it
+        Trace.append("ct", "recall-failed", vBefore,
+          "storage error: " + (e && e.message || e));
+        Field.setRecallWindow([]);
+      }
+    } else {
+      Field.setRecallWindow([]);
+    }
+
+    // Build evaluation population: live constraints + recall window.
+    // The compiler doesn't know they came from different places; the
+    // population is one array. Indices >= Field.constraints.length are
+    // recall-window records.
+    const evalPopulation = Field.buildEvaluationPopulation();
+    const compiled = this.compilerBinding.compileField(evalPopulation);
+    const inputRec = this.compilerBinding.computeInputRecord(input, compiled.tokenTable);
+    const matchArr = await this.erBinding.evaluateAsync(compiled, inputRec);
+    Trace.append("er", "eval", vBefore,
+      "n=" + evalPopulation.length + " (live=" + Field.constraints.length +
+      " recall=" + Field.recallWindow.length + ") in " +
+      this.erBinding.lastDispatchMS.toFixed(2) + "ms",
+      "frame");
+
+    // Process match results. matchArr indexes into evalPopulation.
+    const allMatched = [];
+    for (let i = 1; i < matchArr.length; i++) if (matchArr[i] === 1) allMatched.push(i);
+
+    // Partition into live and recalled
+    const partition = Field.partitionMatches(allMatched);
+    const matched = partition.live;     // indices into Field.constraints
+    const recalledMatches = partition.recalled;  // {combinedIdx, windowIdx, record}
+
+    // Phase 4c: handle recalled matches. Each recalled record that
+    // matched current input gets:
+    //   - Reinforcement (weight bump, recallSuccessCount increment)
+    //   - A surface event for observation
+    //   - Persistence-back so the strengthened record is durable
+    if (recalledMatches.length > 0) {
+      this.recallMatchesProduced += recalledMatches.length;
+      for (const rm of recalledMatches) {
+        const reinforced = Field.reinforceRecallMatch(rm.windowIdx);
+        if (reinforced) {
+          Field.recordRecallEvent("recalled", {
+            id: reinforced.id,
+            originalKind: reinforced.kind,
+            desc: reinforced.desc,
+            recallSuccessCount: reinforced.recallSuccessCount,
+            persistedAt: reinforced.persistedAt
+          });
+          // Persist the reinforced version back so the boost is durable.
+          // Fire-and-forget: don't await (would block the input op).
+          if (this.storageBinding) {
+            this.storageBinding.persistConstraint(reinforced).catch(() => {});
+          }
+        }
+      }
+      Trace.append("ct", "recall-matched", vBefore,
+        "+" + recalledMatches.length + " persisted record(s) matched current input",
+        "recalled");
+    }
+
+    // Phase 4b: evaluate compound constraints CPU-side. Compounds are
+    // not in the ER engine's instruction stream because their exec-side
+    // predicate references CT-engine state. They match here, after
+    // render-side resolution, and merge into the matched set so they
+    // contribute to selection, fidelity, and surface observation the
+    // same way other constraints do.
+    const compoundMatched = Field.evaluateCompounds(input);
+    // Phase 4d: record matched compound IDs for surface observation
+    // (Pass B compound-active detector reads this).
+    Field.lastMatchedCompoundIds = compoundMatched
+      .map(idx => Field.constraints[idx])
+      .filter(c => c)
+      .map(c => c.id);
+    if (compoundMatched.length) {
+      for (const idx of compoundMatched) {
+        if (matched.indexOf(idx) === -1) matched.push(idx);
+      }
+      Trace.append("ct", "compound-matched", vBefore,
+        "+" + compoundMatched.length + " compound(s)");
+    }
+
+    const novelty = Field.constraints.length <= 1
+      ? 1.0
+      : 1.0 - (matched.length / (Field.constraints.length - 1));
+    const evalResult = { matched: matched, novelty: Guards.clamp01(novelty) };
+
+    const chosen = Field.selectFromMatches(matched, named);
+    const chosenIndices = chosen.map(c => c.idx);
+
+    // Ratify matched predictions
+    const ratified = [];
+    for (const idx of matched) {
+      const c = Field.constraints[idx];
+      if (c && c.kind === "predictive" && Field.ratify(idx)) ratified.push(c);
+    }
+    if (ratified.length) {
+      Trace.append("ct", "ratification", vBefore, "ratified " + ratified.length, "ratified");
+    }
+
+    // Generate derived constraints from novelty
+    const generated = Field.generate(input, evalResult);
+    if (generated.length) {
+      Field.integrate(generated);
+      Trace.append("ct", "generated", vBefore, "+" + generated.length + " derived");
+    }
+
+    // Update correlations from co-firing
+    if (chosenIndices.length >= 2) Field.updateCorrelations(chosenIndices);
+    Field.markUsed(chosenIndices);
+    const touched = chosenIndices
+      .map(i => Field.constraints[i] && Field.constraints[i].id)
+      .filter(Boolean);
+    Field.recordOp("input", touched);
+
+    // Refresh render-scope delta after generation/marking
+    Field.refreshVectorDelta();
+    Field.updateSlowDelta(Field.scalarDelta);
+    Field.refreshVectorDelta();
+    let vAfter = {
+      scalar: Field.scalarDelta, fast: Field.fastDelta,
+      slow: Field.slowDelta, gap: Field.gap
+    };
+
+    // Naming bias to render-scope delta
+    if (wasNamed) {
+      const bonus = Math.min(0.4, CFG.NAMING_DELTA_DROP * named.length);
+      vAfter.scalar = Math.max(0, vAfter.scalar - bonus);
+      Field.scalarDelta = vAfter.scalar;
+      Trace.append("ct", "naming-bias", vAfter, "-" + bonus.toFixed(3));
+    }
+
+    Field.modulate();
+    const absDrop = vBefore.scalar - vAfter.scalar;
+    const relDrop = vBefore.scalar > 0.001 ? absDrop / vBefore.scalar : 0;
+    Field.recordFidelity(chosenIndices, relDrop);
+
+    // Phase 4b: record compound fidelity for compounds that matched
+    // this input. Same observation (relDrop) gets attributed to compounds
+    // that contributed; sustained drops promote them.
+    if (compoundMatched.length) {
+      Field.recordCompoundFidelity(compoundMatched, relDrop);
+    }
+
+    Field.reinforceNaming(wasNamed);
+
+    // Phase 4b: snapshot generation history for compound generation
+    // triggers. This must happen AFTER ratification, naming, and delta
+    // refresh so the snapshot reflects the full post-input state.
+    Field.recordCompoundGenerationSnapshot();
+
+    // Phase 4b: detect coincidence triggers and generate compounds
+    const compounds = Field.generateCompounds(input);
+    if (compounds.length) {
+      Field.integrate(compounds);
+      Trace.append("ct", "compounds-formed", vAfter,
+        "+" + compounds.length + " compound(s)");
+    }
+
+    // Phase 4b: check for compound promotions
+    const promotedCompounds = Field.checkCompoundPromotions();
+    if (promotedCompounds.length) {
+      Trace.append("ct", "compounds-promoted", vAfter,
+        "+" + promotedCompounds.length + " promoted");
+    }
+
+    // Render-scope predictive generation (still done CT-side because
+    // prediction is shape-derivative; per IMPLEMENTATION_PATH this is
+    // CPU-side, which means the CT engine does it)
+    const predictions = Field.generatePredictions();
+    if (predictions.length) {
+      Field.integrate(predictions);
+      Trace.append("ct", "predictions-generated", vAfter,
+        "+" + predictions.length + " predictive (gap=" + vAfter.gap.toFixed(3) + ")",
+        "predicted");
+    }
+    const evicted = Field.evictStalePredictions();
+    if (evicted.length) {
+      Trace.append("ct", "predictions-evicted", vAfter, "-" + evicted.length + " aged out");
+    }
+
+    Trace.append("ct", "input-commit", vAfter,
+      "chosen=" + chosen.length + " gen=" + generated.length + " rat=" + ratified.length);
+
+    // Phase 4c: persist newly-eligible records. Fire-and-forget so we
+    // don't block the input op on storage. The persistence eligibility
+    // helper decides what's worth persisting; this op just calls it.
+    if (this.storageBinding && this.persistenceEligibility) {
+      this._persistEligibleRecords(ratified, promotedCompounds);
+    }
+
+    return {
+      input: input,
+      chosen: chosen.length,
+      generated: generated.length,
+      predictions: predictions.length,
+      ratified: ratified.length,
+      recalledMatches: recalledMatches.length,
+      named: named.map(s => s.name),
+      vBefore: vBefore,
+      vAfter: vAfter
+    };
+  }
+
+  // Phase 4c: persist records that became eligible during this input.
+  // Called fire-and-forget. Records considered:
+  //   - Newly ratified constraints
+  //   - Newly promoted compounds
+  //   - Subcascades that just got promoted (consolidated this step)
+  //   - Tagged trace entries (for the trace store)
+  _persistEligibleRecords(ratified, promotedCompounds) {
+    if (!this.storageBinding || !this.persistenceEligibility) return;
+
+    // Ratified constraints
+    for (const c of ratified) {
+      if (this.persistenceEligibility.shouldPersistConstraint(c)) {
+        this.storageBinding.persistConstraint(c)
+          .then(() => { this.persistedConstraintCount += 1; })
+          .catch(() => {});
+      }
+    }
+
+    // Promoted compounds
+    for (const c of promotedCompounds) {
+      if (this.persistenceEligibility.shouldPersistConstraint(c)) {
+        this.storageBinding.persistConstraint(c)
+          .then(() => { this.persistedConstraintCount += 1; })
+          .catch(() => {});
+      }
+    }
+
+    // Subcascades that were just promoted (lastNamed === step is
+    // a proxy for recently-active; full eligibility is "all sub-
+    // cascades because they're high-signal by construction")
+    for (const sc of Field.subcascades) {
+      // Persist all subcascades - they're inherently high-signal
+      this.storageBinding.persistSubcascade(sc).catch(() => {});
+    }
+  }
+
+  _opTick() {
+    Field.step++;
+    Field.refreshVectorDelta();
+    Field.updateSlowDelta(Field.scalarDelta);
+    Field.refreshVectorDelta();
+    Field.modulate();
+    const preds = Field.generatePredictions();
+    if (preds.length) {
+      Field.integrate(preds);
+      Trace.append("ct", "tick-predictions", null, "+" + preds.length + " predictive", "predicted");
+    }
+    Field.evictStalePredictions();
+    Trace.append("ct", "tick", null, "idle advance");
+    return { step: Field.step };
+  }
+
+  _opDevelop() {
+    const produced = Field.developPatterns();
+    Field.refreshVectorDelta();
+    Trace.append("ct", "develop", null, "+" + produced.length + " meta");
+    OpsLog.append("DEVELOP", produced.length === 0
+      ? "no new patterns"
+      : "produced " + produced.length + " meta");
+    return { count: produced.length };
+  }
+
+  _opCorrelate() {
+    const top = Field.topCorrelations(15);
+    Trace.append("ct", "correlate-inspect", null, top.length + " top pairs");
+    OpsLog.append("CORRELATE", top.length === 0 ? "none" : "top " + top.length + " inspected");
+    return { count: top.length };
+  }
+
+  _opReason() {
+    const f = Field.reason();
+    Trace.append("ct", "reason", null, f.length + " findings");
+    for (let i = 0; i < f.length && i < 4; i++) OpsLog.append("REASON", f[i].text);
+    if (f.length === 0) OpsLog.append("REASON", "no findings");
+    return { count: f.length, findings: f };
+  }
+
+  _opPromote() {
+    const p = Field.checkPromotions();
+    Trace.append("ct", "check-promotions", null, p.length === 0 ? "none" : "+" + p.length);
+    if (p.length === 0) {
+      OpsLog.append("PROMOTE", "no families met threshold");
+    } else {
+      for (const sc of p) {
+        OpsLog.append("PROMOTE",
+          "'" + sc.name + "' (" + sc.familyType + ") fid=" + sc.fidAtBirth.toFixed(3));
+      }
+    }
+    return { count: p.length, promoted: p.map(sc => sc.name) };
+  }
+
+  // ----------------------------------------------------------
+  // EXECUTION-SCOPE PREDICTIVE GENERATION
+  //
+  // When execution-scope gap is high, the CT engine reaches:
+  // it generates operations it expects to need in upcoming steps.
+  //
+  // Examples:
+  // - If ratification rate is high and pending queue is shrinking,
+  //   schedule a TICK to keep the field metabolizing
+  // - If recent ops show repeated INPUTs but no DEVELOP, schedule
+  //   a DEVELOP to consolidate
+  // - If exec-gap is high but render-gap is low, the CT engine
+  //   has lagged behind the rendering substrate; schedule REASON
+  //   to inspect what state the divergence reflects
+  //
+  // These are predictions in the SE-05 sense: constraint-shaped
+  // candidates for closure, generated when a gap opens. They get
+  // ratified when the predicted op is what actually happens next,
+  // or aged out and discarded if not.
+  // ----------------------------------------------------------
+  _generateExecPredictions() {
+    if (this.recentExecOps.length < 4) return;
+
+    // Heuristic 1: if last 4+ ops were INPUTs without DEVELOP/CORRELATE,
+    // predict that DEVELOP would close exec-gap
+    const lastFour = this.recentExecOps.slice(-4);
+    const allInputs = lastFour.every(op => op.kind === OP_KIND.INPUT);
+    if (allInputs && !Field.ctPendingOps.some(op => op.kind === OP_KIND.DEVELOP)) {
+      this.enqueueInternal(OP_KIND.DEVELOP, { source: "exec-predict" });
+      this.predictionsGeneratedExec++;
+      Trace.append("ct", "exec-predict", null, "predicting DEVELOP (4 inputs without consolidation)");
+      return;
+    }
+
+    // Heuristic 2: if exec-gap is high and queue is empty, predict TICK
+    if (Field.ctPendingOps.length === 0 && Field.execGap > CFG.EXEC_GAP_PREDICT_THRESH * 1.5) {
+      this.enqueueInternal(OP_KIND.TICK, { source: "exec-predict" });
+      this.predictionsGeneratedExec++;
+      Trace.append("ct", "exec-predict", null, "predicting TICK (high exec-gap, idle queue)");
+      return;
+    }
+
+    // Heuristic 3: if many constraints exist but no recent PROMOTE check,
+    // predict PROMOTE
+    const lastPromote = this.recentExecOps.findIndex(op => op.kind === OP_KIND.PROMOTE);
+    if (lastPromote === -1 && Field.constraints.length > 10
+        && Object.keys(Field.familyFidelity).length > 0
+        && !Field.ctPendingOps.some(op => op.kind === OP_KIND.PROMOTE)) {
+      this.enqueueInternal(OP_KIND.PROMOTE, { source: "exec-predict" });
+      this.predictionsGeneratedExec++;
+      Trace.append("ct", "exec-predict", null, "predicting PROMOTE (untested fidelity)");
+    }
+  }
+
+  _opExecPredict(payload) {
+    // No-op: exec-predict is a marker op recording that prediction
+    // happened. The actual prediction work runs at the start of step().
+    return { source: payload && payload.source };
+  }
+
+  _opSnapshot() {
+    const json = Field.serialize();
+    const ok = PersistAdapter.saveFieldSnapshot(json);
+    if (ok) {
+      this.snapshotCount++;
+      Field.ctLastSnapshotStep = Field.step;
+      Trace.append("ct", "snapshot", null, "field state persisted (" + json.length + " bytes)");
+    } else {
+      Trace.append("ct", "snapshot-failed", null, "no persistent storage available");
+    }
+    return { ok: ok, bytes: json.length };
+  }
+
+  _opTraceFlush() {
+    const unflushed = Trace.unflushed();
+    if (unflushed.length === 0) return { flushed: 0 };
+    const ok = PersistAdapter.appendTrace(unflushed);
+    if (ok) {
+      Trace.markFlushed();
+      this.traceFlushCount++;
+    }
+    return { flushed: unflushed.length, ok: ok };
+  }
+
+  // ----------------------------------------------------------
+  // PERSISTENCE SCHEDULING
+  //
+  // After every committed op, the CT engine checks whether
+  // persistence work needs scheduling. Snapshots happen at
+  // CT_SNAPSHOT_INTERVAL steps; trace flushes when accumulated
+  // entries exceed CT_TRACE_FLUSH_INTERVAL.
+  //
+  // Per SE-06: the CT engine is responsible for state durability.
+  // The ER engine is in-memory only; a frame's results are not
+  // persisted unless the CT engine commits them.
+  // ----------------------------------------------------------
+  _maybeSchedulePersistence() {
+    if (!PersistAdapter.available()) return;
+
+    const stepsSinceSnapshot = Field.step - Field.ctLastSnapshotStep;
+    if (stepsSinceSnapshot >= CFG.CT_SNAPSHOT_INTERVAL
+        && !Field.ctPendingOps.some(op => op.kind === OP_KIND.SNAPSHOT)
+        && (!Field.ctInFlightOp || Field.ctInFlightOp.kind !== OP_KIND.SNAPSHOT)) {
+      this.enqueueInternal(OP_KIND.SNAPSHOT, {});
+    }
+
+    const unflushed = Trace.unflushed().length;
+    if (unflushed >= CFG.CT_TRACE_FLUSH_INTERVAL
+        && !Field.ctPendingOps.some(op => op.kind === OP_KIND.TRACE_FLUSH)
+        && (!Field.ctInFlightOp || Field.ctInFlightOp.kind !== OP_KIND.TRACE_FLUSH)) {
+      this.enqueueInternal(OP_KIND.TRACE_FLUSH, {});
+    }
+  }
+
+  // ----------------------------------------------------------
+  // STARTUP RESTORE
+  //
+  // On host initialization, the CT engine attempts to restore
+  // the field state from the most recent snapshot. If no
+  // snapshot exists, the field starts seed-only.
+  // ----------------------------------------------------------
+  restoreFromSnapshot() {
+    const json = PersistAdapter.loadFieldSnapshot();
+    if (!json) return false;
+    const ok = Field.deserialize(json);
+    if (ok) {
+      Trace.append("ct", "restore", null,
+        "restored field at step " + Field.step + " (" + Field.constraints.length + " constraints)");
+    } else {
+      Trace.append("ct", "restore-failed", null, "snapshot data invalid; starting fresh");
+      Field.reset();
+    }
+    return ok;
+  }
+
+  // Force-clear all persisted state (called by RESET button)
+  clearPersistence() {
+    PersistAdapter.clearAll();
+    Trace.append("ct", "persistence-cleared", null, "all snapshots and trace removed");
+  }
+
+  // Stats for UI
+  getStats() {
+    return {
+      opsExecuted: this.opsExecuted,
+      predictionsExec: this.predictionsGeneratedExec,
+      snapshots: this.snapshotCount,
+      traceFlushes: this.traceFlushCount,
+      pending: Field.ctPendingOps.length,
+      inFlight: Field.ctInFlightOp ? Field.ctInFlightOp.kind : null,
+      committed: Field.ctCommittedQueue.length,
+      execScalar: Field.execScalarDelta,
+      execGap: Field.execGap,
+      persistAvailable: PersistAdapter.available()
+    };
+  }
+}
+
+const CTengineModule = Object.freeze({
+  CTengine: CTengine,
+  OP_KIND: OP_KIND,
+  PersistAdapter: PersistAdapter,
+  PersistKeys: PersistKeys
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = CTengineModule;
+} else {
+  global.CTengineModule = CTengineModule;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === field-intake-extension.js (Phase 8 runtime) === */
+// ============================================================================
+// field-intake-extension.js  --  SE-08 input-feature buffer (Phase 8)
+// ============================================================================
+//
+// SPEC ANCHOR: SE-08
+//   "New module: input-feature buffer. Lives in field.js as shared state.
+//    Has bounded capacity per I3. Adapters write to it; ER reads it; CT
+//    does not write it."
+//
+// CONTRACT REFERENCE: KERNEL_RUNTIME_CONTRACT.md sec 2 (Input intake:
+// contributor records into the field).
+//
+// STRUCTURAL COMMITMENT (per SE-08):
+//   - The buffer is part of the substrate (S1: shared, owned by neither)
+//   - Adapters publish records on their own clock (F3: no supervision)
+//   - ER reads buffer alongside live constraints (S3: coupling via field)
+//   - CT samples shared field state on its own clock (S3 again)
+//   - I3-bounded: explicit cap; eviction on overflow
+//   - M5: trace fires when ER observes state changes, NOT when adapter writes
+//
+// SHAPE (per contract sec 2):
+//   Field.intake = {
+//     records: [],            // contributor records, FIFO order
+//     cap: <int>,             // I3 bound (default 256)
+//     totalReceived: <int>    // running counter (monotonic)
+//   }
+//
+//   Field.intake.publish({ type, value, timestamp, source })
+//     - returns void (per F3: no return value to adapters)
+//     - evicts oldest record(s) when records.length >= cap
+//     - increments totalReceived regardless of eviction
+//
+//   Field.intake.snapshot()
+//     - returns shallow array copy of current records
+//     - for ER consumption per resolution pass
+//
+// USAGE:
+//   This module attaches Field.intake to Field after field.js loads.
+//   Calling install(FieldModule) extends Field with intake state and
+//   wraps Field.reset() to also reset intake.
+//
+// HONORS:
+//   I1 (ASCII), I3 (bounded), I4 (no eval), F3 (no command path),
+//   S1 (shared substrate), F4 (does not block tick loop), M5 (no
+//   trace writes from publish).
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+const DEFAULT_CAP = 256;
+
+// ============================================================================
+// install: attach Field.intake to a FieldModule's Field instance
+// ============================================================================
+
+function install(FieldModule, opts) {
+  opts = opts || {};
+  const cap = (opts.cap | 0) || DEFAULT_CAP;
+  const Field = FieldModule.Field;
+
+  if (!Field) {
+    throw new Error("field-intake-extension: FieldModule has no Field");
+  }
+  if (Field.intake) {
+    // Already installed; idempotent
+    return Field.intake;
+  }
+
+  // ---- intake state ----
+  // Hung directly on Field per SE-08 (the buffer "lives in field.js
+  // as shared state").
+  Field.intake = {
+    records: [],
+    cap: cap,
+    totalReceived: 0,
+
+    publish: function (record) {
+      // Validate record shape per SE-08 contract sec 2:
+      //   { type, value, timestamp, source }
+      if (!record || typeof record !== "object") {
+        // Silently ignore malformed records per F3 (no error path back
+        // to caller). A future verifier may scan for adapter validation
+        // problems; the buffer itself remains permissive at the boundary.
+        return;
+      }
+      // Append. I3 bound enforced.
+      this.records.push({
+        type: String(record.type || ""),
+        value: record.value,
+        timestamp: (record.timestamp | 0),
+        source: String(record.source || "")
+      });
+      this.totalReceived++;
+      // Evict oldest if over cap. The records array is FIFO so shift
+      // from the front.
+      while (this.records.length > this.cap) {
+        this.records.shift();
+      }
+      // No return value (F3).
+    },
+
+    snapshot: function () {
+      // Shallow copy. ER reads this each resolution pass. Returning a
+      // copy means a long resolution pass doesn't see live mutations
+      // from concurrent publishes. Mid-pass mutations land on next pass.
+      return this.records.slice();
+    },
+
+    // For diagnostics / testing only - not for engine consumption.
+    occupancy: function () {
+      return this.records.length;
+    },
+
+    // Adapter backpressure read - SE-08: "backpressure must be substrate-
+    // readable; adapters can read records.length to self-throttle."
+    // This is just a convenience accessor; reading records.length directly
+    // is also valid.
+    isFull: function () {
+      return this.records.length >= this.cap;
+    },
+
+    clear: function () {
+      this.records.length = 0;
+      // totalReceived is monotonic - persists across clear() (the M5 trace
+      // and the buffer occupancy are different facts).
+    }
+  };
+
+  // ---- wrap Field.reset() to clear intake ----
+  // Field.reset re-initializes all field state. Intake should reset too,
+  // since the field is being returned to canonical starting state.
+  const originalReset = Field.reset.bind(Field);
+  Field.reset = function () {
+    originalReset();
+    if (Field.intake) {
+      Field.intake.clear();
+      Field.intake.totalReceived = 0;
+    }
+  };
+
+  return Field.intake;
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+
+const FieldIntakeExtension = Object.freeze({
+  install: install,
+  DEFAULT_CAP: DEFAULT_CAP
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = FieldIntakeExtension;
+} else {
+  global.FieldIntakeExtension = FieldIntakeExtension;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === kernel-cascade-evaluator.js (Phase 8 runtime) === */
+// ============================================================================
+// kernel-cascade-evaluator.js  --  ER pass for cascade-match constraints
+// ============================================================================
+//
+// This is the kernel substrate's per-tick evaluation of cascade-match
+// constraints. It mirrors the standalone kernel-cascade-match-oracle.js
+// (which is used for S2 verification against the Phase 7 oracle) but
+// integrates with the live Field state.
+//
+// SPEC GROUNDING:
+//   - SE-06: ER and CT couple through delta only. This module is part
+//     of the kernel's ER side. CT does not call it directly; CT samples
+//     the field state it produces.
+//   - SE-08: ER reads buffer alongside live constraints. Per-tick
+//     evaluation reads Field.intake and Field.constraints; writes match
+//     flags onto each constraint's own state (constraint.lastMatched,
+//     constraint.uses, constraint.lastUsed).
+//   - S2: substrate-resolution deterministic. The match logic here is
+//     identical to kernel-cascade-match-oracle.js (which the s2-verifier
+//     proves byte-equivalent to Phase 7's oracle).
+//   - F1: seed at constraints[0] is permanent; not modified by this pass.
+//   - F2: delta is one formula at every scope. This pass does not mutate
+//     vector-delta directly; the existing field.js _enforceCaps + delta
+//     refresh handles that.
+//   - M5: trace fires when match flags flip (state observable change),
+//     not on every read.
+//
+// SHAPE (input):
+//   - field: the Field object (from FieldModule)
+//   - opts: { traceModule: optional Trace for trace appends }
+//
+// SHAPE (output):
+//   - returns { matchedCount, evaluatedCount, currentNextOp, coordSnapshot }
+//   - mutates field.constraints[i].uses, lastUsed, lastMatched
+//   - mutates field.cascadeOutput (new field state property holding
+//     the resolved --next-op value, for CT to sample)
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+const KernelOracle = (typeof require !== "undefined")
+  ? require("./kernel-cascade-match-oracle.js")
+  : global.KernelCascadeMatchOracle;
+
+// ============================================================================
+// buildCoordSnapshotFromIntake
+// ============================================================================
+//
+// Reads the current Field.intake records and builds a coord-state map
+// representing the substrate's current input shape. The map's keys are
+// dimension names (without "data-" prefix); values are the dimension
+// values most-recently published.
+//
+// SE-08 NOTE: this pass over the buffer is the ER engine's "reads buffer
+// alongside live constraints". It runs per resolution pass; it does not
+// command adapters; adapters publish on their own clock.
+//
+// The intake records have shape { type, value, timestamp, source } per
+// SE-08. The synthesis convention used here:
+//
+//   record.type = "dom::<dimname>" - dimname is a coord dimension
+//     value: { dimname: <value-string> }
+//
+//   record.type = "time::<dimname>" - dimname is a coord dimension
+//     value: <value-string-or-number>
+//
+// Other type prefixes are ignored by cascade-match; they may be consumed
+// by other matcher types (predictive, text-token, etc.).
+// ============================================================================
+
+function buildCoordSnapshotFromIntake(field) {
+  const coordValues = {};
+  if (!field.intake || !field.intake.records) return coordValues;
+  // Walk in order; later publishes overwrite earlier (latest wins per dim)
+  for (const rec of field.intake.records) {
+    if (typeof rec.type !== "string") continue;
+    const colonIdx = rec.type.indexOf("::");
+    if (colonIdx < 0) continue;
+    const prefix = rec.type.substring(0, colonIdx);
+    const dimName = rec.type.substring(colonIdx + 2);
+    // For dom:: events, the value may be an object with the dim
+    if (prefix === "dom" && rec.value && typeof rec.value === "object") {
+      // value contains a map of dim -> value (e.g., {trigger: "toggle"})
+      for (const k of Object.keys(rec.value)) {
+        coordValues[k] = String(rec.value[k]);
+      }
+    } else {
+      // Generic: rec.value is the dim value directly
+      coordValues[dimName] = String(rec.value);
+    }
+  }
+  return coordValues;
+}
+
+// ============================================================================
+// evaluateCascade
+// ============================================================================
+//
+// Per-tick ER pass over cascade-match constraints in the field.
+//
+// Walks all constraints with pattern.type === "cascade-match"; for each,
+// evaluates against the current coord snapshot. Updates per-constraint
+// match state. Last matching constraint per emit.property wins (cascade
+// semantics: later rules override earlier).
+//
+// Honors F1: never modifies the seed (constraints[0] with kind=seed).
+// ============================================================================
+
+function evaluateCascade(field, opts) {
+  opts = opts || {};
+  const Trace = opts.traceModule || null;
+
+  if (!field || !field.constraints) {
+    return {
+      matchedCount: 0,
+      evaluatedCount: 0,
+      currentNextOp: null,
+      coordSnapshot: {}
+    };
+  }
+
+  const coordValues = buildCoordSnapshotFromIntake(field);
+
+  // Per-emit-property latest match
+  const latestMatchByProp = {};
+
+  let matchedCount = 0;
+  let evaluatedCount = 0;
+
+  for (let i = 0; i < field.constraints.length; i++) {
+    const c = field.constraints[i];
+    if (!c.pattern || c.pattern.type !== "cascade-match") continue;
+    if (c.kind === "seed") continue;  // F1: seed not subject to cascade-match
+
+    evaluatedCount++;
+    const wasMatched = !!c.lastMatched;
+    const matched = matchConstraintWithoutGeometry(c, coordValues);
+
+    // Update constraint state (these are the "match flags" SE-08 references)
+    c.lastMatched = matched;
+    if (matched) {
+      matchedCount++;
+      c.uses = (c.uses | 0) + 1;
+      c.lastUsed = field.step | 0;
+      // Track latest match per property (cascade override semantics)
+      if (c.emit && c.emit.property) {
+        latestMatchByProp[c.emit.property] = c;
+      }
+      // M5: trace fires on match-flag flip from false to true
+      if (!wasMatched && Trace) {
+        Trace.append("er", "cascade-match", null,
+          c.id + " -> " + c.emit.property + "=" + JSON.stringify(c.emit.value));
+      }
+    } else {
+      // M5: trace fires on flip from true to false
+      if (wasMatched && Trace) {
+        Trace.append("er", "cascade-unmatch", null, c.id);
+      }
+    }
+  }
+
+  // Surface the resolved --next-op as field state for CT sampling.
+  // Using a dedicated field property (field.cascadeOutput) per the
+  // contract sec 3 "the cascade's --next-op is field state".
+  if (!field.cascadeOutput) {
+    field.cascadeOutput = {};
+  }
+  let currentNextOp = null;
+  for (const prop of Object.keys(latestMatchByProp)) {
+    const c = latestMatchByProp[prop];
+    field.cascadeOutput[prop] = {
+      value: c.emit.value,
+      sourceConstraintId: c.id,
+      atStep: field.step | 0
+    };
+    if (prop === "--next-op") {
+      currentNextOp = c.emit.value;
+    }
+  }
+  // Clear any previously-resolved properties no longer matched
+  for (const prop of Object.keys(field.cascadeOutput)) {
+    if (!latestMatchByProp[prop]) {
+      delete field.cascadeOutput[prop];
+    }
+  }
+
+  return {
+    matchedCount: matchedCount,
+    evaluatedCount: evaluatedCount,
+    currentNextOp: currentNextOp,
+    coordSnapshot: coordValues
+  };
+}
+
+// ============================================================================
+// matchConstraintWithoutGeometry
+// ============================================================================
+//
+// Match logic for runtime evaluation - no geometry available (the
+// kernel runtime doesn't carry the pre-computed geometry; geometry is
+// a S2-verification artifact). Distinguishes presence-only attrs ("*")
+// from value-tested attrs.
+//
+// Per the synthesizer convention:
+//   selector["data-substrate-state"] = "*"   - presence-only marker
+//   selector["data-trigger"] = "toggle"      - value test
+//
+// At runtime, presence-only attrs are always-true: the deposition's
+// state element always has them set (per Phase 7 emission).
+// ============================================================================
+
+function matchConstraintWithoutGeometry(constraint, coordValues) {
+  if (!constraint.pattern || constraint.pattern.type !== "cascade-match") {
+    return false;
+  }
+  const sel = constraint.pattern.selector;
+  for (const attr of Object.keys(sel)) {
+    const required = sel[attr];
+    const dimName = stripDataPrefix(attr);
+    if (required === "*") {
+      // Presence-only: the runtime treats this as always-true on a
+      // state-element coord. The Phase 7 emission discipline guarantees
+      // this attribute is present on the state element.
+      continue;
+    }
+    const actual = coordValues[dimName];
+    if (actual !== required) return false;
+  }
+  return true;
+}
+
+function stripDataPrefix(attr) {
+  if (typeof attr !== "string") return attr;
+  if (attr.indexOf("data-") === 0) return attr.substring(5);
+  return attr;
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+
+const KernelCascadeEvaluator = Object.freeze({
+  evaluateCascade: evaluateCascade,
+  buildCoordSnapshotFromIntake: buildCoordSnapshotFromIntake,
+  matchConstraintWithoutGeometry: matchConstraintWithoutGeometry,
+  stripDataPrefix: stripDataPrefix
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = KernelCascadeEvaluator;
+} else {
+  global.KernelCascadeEvaluator = KernelCascadeEvaluator;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<script>
+/* === dom-bridge.js (Phase 8 runtime) === */
+// ============================================================================
+// dom-bridge.js  --  Browser-side bidirectional flow (Phase 8 K1)
+// ============================================================================
+//
+// CONTRACT REFERENCE: KERNEL_RUNTIME_CONTRACT.md sec 4
+//
+// The bridge runs in browser context. It does NOT contain application
+// logic; it is a transparent shim between two non-JS substrates:
+//
+//   - the DOM (browser CSS engine reads attributes, evaluates cascade)
+//   - the kernel field (JS-level state, per SE-08 input-feature buffer)
+//
+// FLOW 4a: field state -> DOM (called per tick)
+//   Reads Field.intake snapshot, builds coord state, writes data-*
+//   attributes onto the state element. Browser CSS engine then
+//   reads those attrs, evaluates cascade, surfaces --next-op via
+//   custom property.
+//
+// FLOW 4b: DOM events -> field intake (called by event listener)
+//   On click/input/keydown, wraps the event into a contributor
+//   record and calls Field.intake.publish. The published record
+//   participates in the next cascade resolution pass.
+//
+// SAMPLING (criterion 4 dispatch):
+//   The bridge has TWO equivalent sampling paths:
+//     (a) sampleNextOp() reads Field.cascadeOutput["--next-op"]
+//         directly (kernel evaluator authoritative)
+//     (b) sampleNextOpFromCss() reads getComputedStyle(stateElement)
+//         .getPropertyValue("--next-op") (browser CSS authoritative)
+//   Per S2: both paths yield the same value when constraint
+//   geometry is consistent. The kernel evaluator is the canonical
+//   path because it works in Node and browser identically; the CSS
+//   path requires the browser CSS engine.
+//
+// INVARIANTS HONORED
+//   - S1: bridge holds NO authoritative state. Field is the
+//     authority. Each projectFieldToDOM call regenerates DOM from
+//     current field state.
+//   - F3: bridge does not command engines. It calls publish() and
+//     enqueueFromCascade() on its own clock (the tick loop).
+//   - M5: bridge does NOT write to Trace.
+//   - I1: ASCII source.
+//   - I4: no eval/Function/document.write.
+//
+// FAILURE MODES (commented for future maintainers)
+//   - DO NOT cache field state in the bridge. Always re-read.
+//   - DO NOT process DOM events through application logic in JS.
+//     Wrap-and-publish only.
+//   - DO NOT mutate field directly from event handlers. Publish
+//     to intake; let ER's resolution pass do the work.
+// ============================================================================
+
+"use strict";
+
+(function (global) {
+
+// ============================================================================
+// Bridge state - per-instance (init creates a new bridge object)
+// ============================================================================
+
+function createBridge() {
+  let _field = null;
+  let _stateElement = null;
+  let _listeners = [];   // for teardown
+  let _lastObservedNextOp = null;
+  let _lastObservedAtStep = -1;
+  let _projectionCount = 0;
+
+  // ----------------------------------------------------------------------
+  // init: wire to field, locate state element
+  // ----------------------------------------------------------------------
+  function init(field, stateElement) {
+    _field = field;
+    _stateElement = stateElement;
+    if (!_field) throw new Error("dom-bridge: field required");
+    if (!_stateElement) throw new Error("dom-bridge: stateElement required");
+    if (!_field.intake) {
+      throw new Error("dom-bridge: field.intake not installed; " +
+        "call FieldIntakeExtension.install(FieldModule) first");
+    }
+    // Verify state element supports the DOM APIs we need. If not, this
+    // is a stub or non-DOM environment; the bridge stays initialized
+    // but projectFieldToDOM and event listening become no-ops.
+    if (typeof _stateElement.setAttribute !== "function" ||
+        typeof _stateElement.hasAttribute !== "function") {
+      _stateElement = null;  // degrade to no-op projection
+    }
+    _projectionCount = 0;
+    _lastObservedNextOp = null;
+    _lastObservedAtStep = -1;
+  }
+
+  // ----------------------------------------------------------------------
+  // projectFieldToDOM: flow 4a
+  //
+  // Walk Field.intake records; for each "dom::*" or "time::*" record
+  // whose value names a coord dimension, set the data-* attribute.
+  // Latest record per dimension wins (FIFO buffer; later overwrites).
+  //
+  // S1 honored: regenerated each call from current field state. No
+  // caching, no diff against previous projection.
+  // ----------------------------------------------------------------------
+  function projectFieldToDOM() {
+    if (!_field || !_stateElement) return;
+    const records = _field.intake.records;
+    const coords = {};
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i];
+      if (typeof rec.type !== "string") continue;
+      const colon = rec.type.indexOf("::");
+      // Three cases:
+      //   1. "dom::evt" with object value: object keys become coord keys
+      //      (e.g., {trigger:"toggle"} -> data-trigger="toggle")
+      //   2. "prefix::dimName" with scalar value: dim name = after "::"
+      //      (e.g., "time::now" with 1700... -> data-now="1700...")
+      //   3. "type-name" without "::": full type becomes dim name
+      //      (e.g., "time-now" with 1700... -> data-time-now="1700...")
+      // Case 3 supports K2 adapters that publish flat type names matching
+      // Phase 7's coord conventions (data-time-now, data-time-perf, etc.).
+      if (colon < 0) {
+        // Case 3: no prefix - full type is the dim name
+        coords[rec.type] = String(rec.value);
+        continue;
+      }
+      const prefix = rec.type.substring(0, colon);
+      const dimName = rec.type.substring(colon + 2);
+      if (prefix === "dom" && rec.value && typeof rec.value === "object") {
+        for (const k of Object.keys(rec.value)) {
+          coords[k] = String(rec.value[k]);
+        }
+      } else {
+        coords[dimName] = String(rec.value);
+      }
+    }
+    // Set the substrate-state presence marker if not already present
+    if (!_stateElement.hasAttribute("data-substrate-state")) {
+      _stateElement.setAttribute("data-substrate-state", "");
+    }
+    // Write coord values as data-* attributes
+    for (const k of Object.keys(coords)) {
+      _stateElement.setAttribute("data-" + k, coords[k]);
+    }
+    _projectionCount++;
+  }
+
+  // ----------------------------------------------------------------------
+  // addEventListener: flow 4b
+  //
+  // Wrap a DOM event listener to construct a contributor record and
+  // publish to Field.intake. The bridge's wrap-and-publish stays
+  // utterly mechanical: it does not contain application logic.
+  //
+  // recordBuilder(domEvent) -> { type, value, ... } returns the record
+  // shape the application's geometry expects. Default: dom::click
+  // with the target's data-trigger.
+  // ----------------------------------------------------------------------
+  function addDOMEventListener(target, eventType, recordBuilder) {
+    if (!_field) throw new Error("dom-bridge: not initialized");
+    if (!target || typeof target.addEventListener !== "function") return;
+    const handler = function (domEvent) {
+      const record = (typeof recordBuilder === "function")
+        ? recordBuilder(domEvent)
+        : defaultEventRecord(eventType, domEvent);
+      if (record) {
+        _field.intake.publish(record);
+      }
+    };
+    target.addEventListener(eventType, handler, false);
+    _listeners.push({ target: target, eventType: eventType, handler: handler });
+  }
+
+  function defaultEventRecord(eventType, domEvent) {
+    const tgt = domEvent && domEvent.target;
+    if (!tgt) return null;
+    // Pull data-trigger off the target (the rule the cascade is
+    // matching). This mirrors the deposition convention: clickable
+    // elements carry data-trigger="<op>" and the cascade matches.
+    const trigger = (typeof tgt.getAttribute === "function")
+      ? tgt.getAttribute("data-trigger") : null;
+    if (!trigger) return null;
+    const value = { trigger: trigger };
+    // Optional: pull data-input-present if the target also exposes it
+    const inputPresent = tgt.getAttribute && tgt.getAttribute("data-input-present");
+    if (inputPresent !== null && inputPresent !== undefined) {
+      value["input-present"] = String(inputPresent);
+    }
+    return {
+      type: "dom::" + eventType,
+      value: value,
+      timestamp: (typeof domEvent.timeStamp === "number")
+        ? Math.floor(domEvent.timeStamp) : 0,
+      source: "dom-bridge"
+    };
+  }
+
+  // ----------------------------------------------------------------------
+  // sampleNextOp: kernel-authoritative read
+  //
+  // Reads Field.cascadeOutput["--next-op"] (populated by the kernel
+  // evaluator). Returns null if no value, the current value otherwise.
+  //
+  // Caller (CT or tick loop) compares the returned value against
+  // last-observed and dedupes before enqueueing.
+  // ----------------------------------------------------------------------
+  function sampleNextOp() {
+    if (!_field || !_field.cascadeOutput) return null;
+    const entry = _field.cascadeOutput["--next-op"];
+    if (!entry) return null;
+    return entry;
+  }
+
+  // ----------------------------------------------------------------------
+  // sampleNextOpFromCss: browser-CSS-authoritative read
+  //
+  // Reads the cascade's resolved --next-op via getComputedStyle. This
+  // is the alternative path per contract sec 4. Per S2, both paths
+  // yield the same value. Useful for runtime cross-check / debugging.
+  // ----------------------------------------------------------------------
+  function sampleNextOpFromCss() {
+    if (!_stateElement || typeof getComputedStyle !== "function") return null;
+    const style = getComputedStyle(_stateElement);
+    const raw = style.getPropertyValue("--next-op");
+    if (!raw) return null;
+    // Custom property values come back as strings, possibly quoted
+    return raw.trim().replace(/^"(.*)"$/, "$1");
+  }
+
+  // ----------------------------------------------------------------------
+  // dispatchToCT: combines sample + dedup + enqueue
+  //
+  // Per contract sec 3: CT.enqueueFromCascade samples Field.cascadeOutput.
+  // The bridge handles the CT-side bookkeeping for dedup. Returns true
+  // if enqueued, false if deduplicated or no-op.
+  // ----------------------------------------------------------------------
+  function dispatchToCT(ct) {
+    const entry = sampleNextOp();
+    if (!entry) return false;
+    if (entry.value === _lastObservedNextOp &&
+        entry.atStep === _lastObservedAtStep) {
+      return false;  // already dispatched
+    }
+    _lastObservedNextOp = entry.value;
+    _lastObservedAtStep = entry.atStep;
+    return ct.enqueueInternal("cascade-op", {
+      op: entry.value,
+      sourceConstraintId: entry.sourceConstraintId,
+      observedAtStep: entry.atStep
+    });
+  }
+
+  // ----------------------------------------------------------------------
+  // teardown: remove event listeners
+  // ----------------------------------------------------------------------
+  function teardown() {
+    for (const l of _listeners) {
+      try {
+        l.target.removeEventListener(l.eventType, l.handler, false);
+      } catch (_) { /* best effort */ }
+    }
+    _listeners = [];
+    _field = null;
+    _stateElement = null;
+  }
+
+  // ----------------------------------------------------------------------
+  // Diagnostic accessors (no command path)
+  // ----------------------------------------------------------------------
+  function diagnostics() {
+    return {
+      initialized: _field !== null,
+      stateElementId: _stateElement && _stateElement.id ? _stateElement.id : null,
+      listenerCount: _listeners.length,
+      projectionCount: _projectionCount,
+      lastObservedNextOp: _lastObservedNextOp,
+      lastObservedAtStep: _lastObservedAtStep
+    };
+  }
+
+  return {
+    init: init,
+    projectFieldToDOM: projectFieldToDOM,
+    addDOMEventListener: addDOMEventListener,
+    sampleNextOp: sampleNextOp,
+    sampleNextOpFromCss: sampleNextOpFromCss,
+    dispatchToCT: dispatchToCT,
+    teardown: teardown,
+    diagnostics: diagnostics
+  };
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+
+const DOMbridge = Object.freeze({
+  createBridge: createBridge
+});
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = DOMbridge;
+} else {
+  global.DOMbridge = DOMbridge;
+}
+
+})(typeof globalThis !== "undefined" ? globalThis : (typeof window !== "undefined" ? window : this));
+
+</script>
+<!-- === END KERNEL RUNTIME === -->
+
+<!-- === APPLICATION === -->
+<script>
+/* Cascade rule constraints (deposition geometry) */
+globalThis.__DEPOSITION_CASCADE_RULES__ = [
+  {
+    "id": "deposit::1",
+    "kind": "derived",
+    "pattern": {
+      "type": "cascade-match",
+      "selector": {
+        "data-substrate-state": "*",
+        "data-trigger": "toggle"
+      }
+    },
+    "emit": {
+      "property": "--next-op",
+      "value": "toggleTodo"
+    },
+    "birth": 0,
+    "lastUsed": 0,
+    "uses": 0,
+    "weight": 1,
+    "permanent": false
+  },
+  {
+    "id": "deposit::2",
+    "kind": "derived",
+    "pattern": {
+      "type": "cascade-match",
+      "selector": {
+        "data-substrate-state": "*",
+        "data-trigger": "delete"
+      }
+    },
+    "emit": {
+      "property": "--next-op",
+      "value": "deleteTodo"
+    },
+    "birth": 0,
+    "lastUsed": 0,
+    "uses": 0,
+    "weight": 1,
+    "permanent": false
+  },
+  {
+    "id": "deposit::3",
+    "kind": "derived",
+    "pattern": {
+      "type": "cascade-match",
+      "selector": {
+        "data-substrate-state": "*",
+        "data-trigger": "submit",
+        "data-input-present": "1"
+      }
+    },
+    "emit": {
+      "property": "--next-op",
+      "value": "addTodo"
+    },
+    "birth": 0,
+    "lastUsed": 0,
+    "uses": 0,
+    "weight": 1,
+    "permanent": false
+  },
+  {
+    "id": "deposit::4",
+    "kind": "derived",
+    "pattern": {
+      "type": "cascade-match",
+      "selector": {
+        "data-substrate-state": "*",
+        "data-trigger": "clear-completed"
+      }
+    },
+    "emit": {
+      "property": "--next-op",
+      "value": "clearCompleted"
+    },
+    "birth": 0,
+    "lastUsed": 0,
+    "uses": 0,
+    "weight": 1,
+    "permanent": false
+  }
+];
+</script>
+<style>
+/* Original cascade rules - the CSS substrate's representation
+   of the same constraint geometry the kernel substrate holds */
+[data-substrate-state][data-trigger="toggle"] { --next-op: "toggleTodo"; }
+[data-substrate-state][data-trigger="delete"] { --next-op: "deleteTodo"; }
+[data-substrate-state][data-trigger="submit"][data-input-present="1"] { --next-op: "addTodo"; }
+[data-substrate-state][data-trigger="clear-completed"] { --next-op: "clearCompleted"; }
+</style>
+<!-- === END APPLICATION === -->
+
+<script>
+
+(function () {
+  "use strict";
+
+  // ---- Acquire kernel modules from global ----
+  var FieldModule       = globalThis.FieldModule;
+  var CTengineModule    = globalThis.CTengineModule;
+  var ERengineModule    = globalThis.ERengineModule;
+  var ConstraintCompiler = globalThis.ConstraintCompiler;
+
+  // Phase 8 runtime additions (may not be present if loaded standalone)
+  var FieldIntakeExtension   = globalThis.FieldIntakeExtension;
+  var KernelCascadeEvaluator = globalThis.KernelCascadeEvaluator;
+  var DOMbridge              = globalThis.DOMbridge;
+
+  if (!FieldModule || !CTengineModule || !ERengineModule) {
+    throw new Error("kernel runtime not loaded; modules missing on globalThis");
+  }
+
+  var Field = FieldModule.Field;
+  var Trace = FieldModule.Trace;
+  var SEED  = FieldModule.SEED;
+
+  // ---- Install Field.intake (SE-08) per contract sec 2 ----
+  if (FieldIntakeExtension) {
+    FieldIntakeExtension.install(FieldModule);
+  }
+
+  // ---- Initialize field ----
+  Field.reset();
+  Trace.clear();
+
+  // ---- F1 verification (post-reset) ----
+  if (Field.constraints.length === 0) {
+    throw new Error("F1 violation: Field.constraints empty after reset");
+  }
+  if (Field.constraints[0].id !== SEED.id) {
+    throw new Error("F1 violation: seed not at constraints[0]");
+  }
+  if (!Field.constraints[0].permanent) {
+    throw new Error("F1 violation: seed not marked permanent");
+  }
+
+  // ---- Load cascade rules (deposition geometry) ----
+  // Per KERNEL_RUNTIME_CONTRACT sec 1: cascade rules are appended after
+  // the seed. F1 invariant: seed remains at constraints[0].
+  var cascadeRules = globalThis.__DEPOSITION_CASCADE_RULES__ || [];
+  for (var i = 0; i < cascadeRules.length; i++) {
+    Field.constraints.push(cascadeRules[i]);
+  }
+
+  // ---- F1 verification (post-load) ----
+  if (Field.constraints[0].id !== SEED.id) {
+    throw new Error("F1 violation post-load: seed displaced from [0]");
+  }
+
+  // ---- Construct engines ----
+  var ER = new ERengineModule.ERengine();
+  ER.state = "cpu-fallback";  // browser ER will upgrade to GPU later
+  var CT = new CTengineModule.CTengine();
+  CT.bind(ER, ConstraintCompiler);
+
+  // ---- Initialize DOM bridge (browser only; degrades gracefully) ----
+  var bridge = null;
+  var stateElement = null;
+  try {
+    if (DOMbridge && typeof document !== "undefined" &&
+        typeof document.getElementById === "function") {
+      stateElement = document.getElementById("substrate-state");
+      if (stateElement) {
+        bridge = DOMbridge.createBridge();
+        bridge.init(Field, stateElement);
+        // Auto-wire [data-trigger] click handlers per contract sec 4 default
+        if (typeof document.querySelectorAll === "function") {
+          var triggers = document.querySelectorAll("[data-trigger]");
+          for (var t = 0; t < triggers.length; t++) {
+            // Skip the state element itself (don't make it a trigger source)
+            if (triggers[t] !== stateElement) {
+              bridge.addDOMEventListener(triggers[t], "click");
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Bridge is best-effort; runtime continues without it
+    bridge = null;
+  }
+
+  // Expose for inspection (read-only); not for command per F3
+  var SUBSTRATE_HANDLE = {
+    field: Field,
+    trace: Trace,
+    seed:  SEED,
+    er:    ER,
+    ct:    CT,
+    bridge: bridge,
+    tickCount: 0,
+    cascadeRuleCount: cascadeRules.length
+  };
+  Object.defineProperty(globalThis, "substrate", {
+    value: SUBSTRATE_HANDLE,
+    writable: false,
+    configurable: false
+  });
+
+  // ---- Tick loop (F4: indefinite operation) ----
+  function tick() {
+    // 1. Cascade evaluation: ER pass over cascade-match constraints
+    if (KernelCascadeEvaluator) {
+      KernelCascadeEvaluator.evaluateCascade(Field, { traceModule: Trace });
+    }
+    // 2. Project field to DOM (flow 4a) - so browser CSS engine can
+    //    render the cascade visually as a parallel observation
+    if (bridge) bridge.projectFieldToDOM();
+    // 3. Bridge samples cascade output, dispatches to CT (flow 4b -> CT)
+    if (bridge) bridge.dispatchToCT(CT);
+    // 4. CT processes its queue
+    CT.enqueueInternal("tick", {});
+    CT.drainAll(8).then(function () {
+      Field.refreshVectorDelta();
+      SUBSTRATE_HANDLE.tickCount++;
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(tick);
+      } else if (typeof setImmediate === "function") {
+        setImmediate(tick);
+      } else {
+        setTimeout(tick, 0);
+      }
+    });
+  }
+
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(tick);
+  } else if (typeof setImmediate === "function") {
+    setImmediate(tick);
+  } else {
+    setTimeout(tick, 0);
+  }
+})();
+
+</script>
+<script>
+// Status display poller. Reads substrate state via the read-
+// only handle exposed in skeleton init. This is an O-class
+// observer per INVARIANTS O1: read-only with respect to field.
+(function () {
+  function fmt(n) { return typeof n === 'number' ? n.toFixed(4) : String(n); }
+  function refresh() {
+    var s = globalThis.substrate;
+    if (!s) { setTimeout(refresh, 100); return; }
+    document.getElementById('tick-count').textContent = s.tickCount;
+    document.getElementById('field-step').textContent = s.field.step;
+    document.getElementById('constraint-count').textContent = s.field.constraints.length;
+    var seedOk = s.field.constraints[0] && s.field.constraints[0].id === s.seed.id;
+    document.getElementById('seed-ok').textContent = seedOk ? 'YES' : 'NO';
+    document.getElementById('scalar-delta').textContent = fmt(s.field.scalarDelta);
+    document.getElementById('fast-delta').textContent = fmt(s.field.fastDelta);
+    document.getElementById('slow-delta').textContent = fmt(s.field.slowDelta);
+    document.getElementById('gap').textContent = fmt(s.field.gap);
+    document.getElementById('trace-len').textContent = s.trace.entries.length;
+    setTimeout(refresh, 250);
+  }
+  refresh();
+})();
+</script>
+</body>
+</html>

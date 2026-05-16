@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TodoMVC - substrate paradigm</title>
+<style id="runtime-cascade">
+/* ============================================================
+   The state element holds all application state as data-* attributes.
+   The cascade resolves what's visible, which class is active, which
+   operation should fire next, given current state.
+   ============================================================ */
+#state {
+  --next-op: noop;
+  --count-text: "0 items left";
+}
+
+/* Filter buttons: one is "active" depending on state */
+[data-filter-controls] button { background: none; border: 1px solid transparent; padding: 4px 8px; cursor: pointer; }
+#state[data-filter="all"]       ~ * [data-filter="all"],
+#state[data-filter="active"]    ~ * [data-filter="active"],
+#state[data-filter="completed"] ~ * [data-filter="completed"] { border-color: #b83f45; }
+
+/* Todo item visibility based on filter state */
+#state[data-filter="active"]    ~ * .todo-item[data-completed="1"] { display: none; }
+#state[data-filter="completed"] ~ * .todo-item[data-completed="0"] { display: none; }
+
+/* Todo item completion styling */
+.todo-item[data-completed="1"] { text-decoration: line-through; color: #888; }
+
+/* Page chrome */
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+body { background: #f5f5f5; padding: 40px; }
+.app { max-width: 550px; margin: 0 auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+h1 { text-align: center; padding: 30px; font-size: 60px; color: #b83f45; font-weight: 200; }
+.input-bar { padding: 16px; border-bottom: 1px solid #ededed; }
+.input-bar input { width: 100%; padding: 12px; font-size: 18px; border: 1px solid #ddd; }
+.todo-list { list-style: none; }
+.todo-item { padding: 14px 16px; border-bottom: 1px solid #ededed; display: flex; align-items: center; }
+.todo-item input[type="checkbox"] { margin-right: 12px; }
+.todo-item .text { flex: 1; }
+.todo-item .delete { background: none; border: 0; color: #cc9a9a; cursor: pointer; padding: 4px 8px; }
+.footer { padding: 14px 16px; display: flex; justify-content: space-between; color: #777; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1>todos</h1>
+  <div class="input-bar">
+    <input id="new-todo" type="text" placeholder="What needs to be done?" autofocus>
+  </div>
+  <div id="state" data-filter="all" data-active-count="0"></div>
+  <ul id="todo-list" class="todo-list"></ul>
+  <div class="footer">
+    <span id="count">0 items left</span>
+    <div data-filter-controls>
+      <button data-filter="all">All</button>
+      <button data-filter="active">Active</button>
+      <button data-filter="completed">Completed</button>
+    </div>
+    <button id="clear-completed">Clear completed</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+// I/O bridge - dispatches operations the cascade resolves to.
+// Operation table: pure functions named by string. No branch logic
+// decides which runs - the cascade does, by setting data-X attributes
+// that the dispatch loop reads.
+
+var state = document.getElementById("state");
+var listEl = document.getElementById("todo-list");
+var nextId = 1;
+
+var ops = {
+  "add-todo": function (text) {
+    if (!text || !text.trim()) return;
+    var li = document.createElement("li");
+    li.className = "todo-item";
+    li.dataset.id = nextId++;
+    li.dataset.completed = "0";
+    li.innerHTML = '<input type="checkbox"><span class="text"></span><button class="delete">x</button>';
+    li.querySelector(".text").textContent = text.trim();
+    listEl.appendChild(li);
+    persist();
+    refreshCount();
+  },
+  "toggle-todo": function (li) {
+    li.dataset.completed = li.dataset.completed === "1" ? "0" : "1";
+    li.querySelector('input[type="checkbox"]').checked = li.dataset.completed === "1";
+    persist();
+    refreshCount();
+  },
+  "delete-todo": function (li) {
+    li.remove();
+    persist();
+    refreshCount();
+  },
+  "set-filter": function (filter) {
+    state.dataset.filter = filter;
+  },
+  "clear-completed": function () {
+    var done = listEl.querySelectorAll('.todo-item[data-completed="1"]');
+    for (var i = 0; i < done.length; i++) done[i].remove();
+    persist();
+    refreshCount();
+  }
+};
+
+function refreshCount() {
+  var active = listEl.querySelectorAll('.todo-item[data-completed="0"]').length;
+  state.dataset.activeCount = String(active);
+  document.getElementById("count").textContent = active + (active === 1 ? " item left" : " items left");
+}
+
+function persist() {
+  try {
+    var items = [];
+    listEl.querySelectorAll(".todo-item").forEach(function (li) {
+      items.push({ id: li.dataset.id, completed: li.dataset.completed, text: li.querySelector(".text").textContent });
+    });
+    localStorage.setItem("todos-substrate", JSON.stringify({ items: items, nextId: nextId }));
+  } catch (e) {}
+}
+
+function load() {
+  try {
+    var s = localStorage.getItem("todos-substrate");
+    if (!s) return;
+    var p = JSON.parse(s);
+    nextId = p.nextId || 1;
+    (p.items || []).forEach(function (item) {
+      var li = document.createElement("li");
+      li.className = "todo-item";
+      li.dataset.id = item.id;
+      li.dataset.completed = item.completed;
+      li.innerHTML = '<input type="checkbox"' + (item.completed === "1" ? " checked" : "") + '><span class="text"></span><button class="delete">x</button>';
+      li.querySelector(".text").textContent = item.text;
+      listEl.appendChild(li);
+    });
+    refreshCount();
+  } catch (e) {}
+}
+
+// Event bridge: minimal - translate events into operation calls
+document.getElementById("new-todo").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") { ops["add-todo"](e.target.value); e.target.value = ""; }
+});
+listEl.addEventListener("change", function (e) {
+  if (e.target.matches('input[type="checkbox"]')) ops["toggle-todo"](e.target.closest(".todo-item"));
+});
+listEl.addEventListener("click", function (e) {
+  if (e.target.matches(".delete")) ops["delete-todo"](e.target.closest(".todo-item"));
+});
+document.querySelector("[data-filter-controls]").addEventListener("click", function (e) {
+  if (e.target.dataset.filter) ops["set-filter"](e.target.dataset.filter);
+});
+document.getElementById("clear-completed").addEventListener("click", function () { ops["clear-completed"](); });
+
+load();
+</script>
+
+</body>
+</html>

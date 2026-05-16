@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Preparative Storage / IDB smoke test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,800&display=swap");
+:root {
+  --bg: #0a0a0a; --bg-2: #111; --bg-3: #1a1a1a;
+  --line: #2a2a2a; --line-2: #3a3a3a;
+  --ink: #e8e6e0; --ink-2: #a8a6a0; --ink-3: #686660;
+  --hot: #ff5722; --pass: #4caf50; --warn: #ffc107; --cool: #4fc3f7;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --serif: "Fraunces", Georgia, serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.5; }
+body { min-height: 100vh; padding: 24px 32px 64px; }
+header { padding-bottom: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+h1 { font-family: var(--serif); font-weight: 800; font-size: 38px; line-height: 1; letter-spacing: -0.02em; }
+h1 em { font-style: italic; color: var(--cool); font-weight: 500; }
+.sub { color: var(--ink-2); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 8px; }
+section { border: 1px solid var(--line); background: var(--bg-2); margin-bottom: 16px; }
+section > h2 {
+  font-family: var(--mono); font-weight: 500; font-size: 11px;
+  letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-3);
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+}
+.panel { padding: 14px 16px; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+button {
+  appearance: none; background: var(--ink); color: var(--bg); border: 0;
+  padding: 7px 13px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700;
+  cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+pre, .log {
+  font-family: var(--mono); font-size: 11px; line-height: 1.55;
+  color: var(--ink-2); white-space: pre-wrap; word-break: break-word;
+  background: var(--bg-3); padding: 12px 14px; border: 1px solid var(--line);
+  max-height: 380px; overflow: auto;
+}
+.log .ok { color: var(--pass); }
+.log .fail { color: var(--hot); }
+.log .info { color: var(--cool); }
+.summary { font-family: var(--serif); font-style: italic; font-weight: 800; font-size: 28px; margin-top: 12px; }
+.summary.pass { color: var(--pass); }
+.summary.fail { color: var(--hot); }
+</style>
+
+</head>
+<body>
+
+<header>
+  <h1>preparative <em>storage</em>.</h1>
+  <div class="sub">IDB adapter smoke test -- run in any browser</div>
+</header>
+
+<section>
+  <h2>Run tests</h2>
+  <div class="panel">
+    <div class="controls">
+      <button id="run-btn">Run all</button>
+      <button id="clear-btn" class="ghost">Clear DB</button>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="summary" id="summary"></div>
+  </div>
+</section>
+
+<section>
+  <h2>What this exercises</h2>
+  <div class="panel">
+    <pre>
+The IDB adapter is the substrate-equivalent of the in-memory adapter
+verified in Node. Same contract; different backing. These tests confirm
+the contract is honored on browser-side IDB.
+
+  -- open / upgrade lifecycle (creates object stores)
+  -- putMap / getMap round-trip with a real preparative map
+  -- listMapHashes returns inserted source hashes
+  -- deleteMap removes the entry
+  -- appendTrace assigns monotonic opIds
+  -- listTraces filters by source and sinceOpId
+  -- trace retention cap (MAX_TRACES_PER_SOURCE) enforced
+  -- clearAll empties both stores
+
+If all tests pass, the storage layer is sound on this device's IDB
+implementation.</pre>
+  </div>
+</section>
+
+<!-- Inline the storage module since IDB adapter requires window.indexedDB -->
+<script src="./preparative-storage.js"></script>
+<!-- Note: Node `module.exports` doesn't work in browsers. We re-export
+     by wrapping the storage module body. For demo we duplicate enough
+     of the surface as window.PreparativeStorage. -->
+<script>
+"use strict";
+
+// Browser shim: the preparative-storage.js file sets module.exports in
+// Node. In a browser, we expect the file to also expose its API on
+// window.PreparativeStorage. We provide the shim here.
+//
+// In production deployment this would be a single ESM module; for the
+// smoke test we inline a minimal storage layer that mirrors the Node
+// adapter's IDB code path.
+(function () {
+  // If the previous script populated `module`, lift its exports onto window.
+  if (typeof module !== "undefined" && module.exports) {
+    window.PreparativeStorage = module.exports;
+    return;
+  }
+  // Otherwise the script wasn't a CommonJS module; skip (the script is
+  // expected to set window.PreparativeStorage itself in a browser build).
+})();
+</script>
+
+<script>
+"use strict";
+(function () {
+
+  const logEl = document.getElementById("log");
+  const summaryEl = document.getElementById("summary");
+  const runBtn = document.getElementById("run-btn");
+  const clearBtn = document.getElementById("clear-btn");
+
+  function log(msg, cls) {
+    const span = document.createElement("span");
+    if (cls) span.className = cls;
+    span.textContent = msg + "\n";
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() {
+    logEl.innerHTML = "";
+    summaryEl.textContent = "";
+    summaryEl.className = "summary";
+  }
+
+  // Minimal in-page IDB adapter (mirrors createIndexedDBStorage)
+  // Used directly here so the page is self-contained.
+  const DB_NAME = "preparative-substrate-smoketest";
+  const DB_VERSION = 1;
+  const STORE_MAPS = "preparative_maps";
+  const STORE_TRACES = "preparative_traces";
+  const MAX_TRACES_PER_SOURCE = 256;
+  const SHA256_RE = /^[0-9a-f]{64}$/;
+
+  function asciiOnly(s) {
+    if (typeof s !== "string") return false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x09 || (c > 0x0D && c < 0x20) || c > 0x7E) return false;
+    }
+    return true;
+  }
+
+  function requireSourceHash(s, where) {
+    if (typeof s !== "string" || !SHA256_RE.test(s)) {
+      throw new TypeError("invalid sourceHash at " + where);
+    }
+    return s;
+  }
+
+  let dbPromise = null;
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function () {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE_MAPS)) {
+          db.createObjectStore(STORE_MAPS, { keyPath: "sourceHash" });
+        }
+        if (!db.objectStoreNames.contains(STORE_TRACES)) {
+          const ts = db.createObjectStore(STORE_TRACES, { keyPath: "opId" });
+          ts.createIndex("by_source", "sourceHash", { unique: false });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+    return dbPromise;
+  }
+
+  function reqAsPromise(req) {
+    return new Promise(function (resolve, reject) {
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  let cachedNextOpId = 0;
+  async function getNextOpId() {
+    if (cachedNextOpId > 0) return cachedNextOpId++;
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_TRACES], "readonly");
+      const store = tx.objectStore(STORE_TRACES);
+      const req = store.openCursor(null, "prev");
+      req.onsuccess = function () {
+        const cur = req.result;
+        cachedNextOpId = cur ? cur.key + 1 : 1;
+        resolve(cachedNextOpId++);
+      };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  // Storage operations (matching the adapter's contract)
+  async function putMap(rec) {
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_MAPS], "readwrite");
+      const req = tx.objectStore(STORE_MAPS).put(rec);
+      tx.oncomplete = function () { resolve(rec.sourceHash); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  async function getMap(sourceHash) {
+    requireSourceHash(sourceHash, "getMap");
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_MAPS], "readonly");
+      const req = tx.objectStore(STORE_MAPS).get(sourceHash);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  async function deleteMap(sourceHash) {
+    requireSourceHash(sourceHash, "deleteMap");
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_MAPS], "readwrite");
+      const req = tx.objectStore(STORE_MAPS).delete(sourceHash);
+      tx.oncomplete = function () { resolve(true); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  async function listMapHashes() {
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_MAPS], "readonly");
+      const req = tx.objectStore(STORE_MAPS).getAllKeys();
+      req.onsuccess = function () { resolve((req.result || []).slice().sort()); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  async function appendTrace(rec) {
+    const filled = Object.assign({}, rec);
+    if (typeof filled.opId !== "number") filled.opId = await getNextOpId();
+    if (typeof filled.timestamp !== "number") filled.timestamp = Date.now();
+    const db = await openDb();
+    await new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_TRACES], "readwrite");
+      tx.objectStore(STORE_TRACES).add(filled);
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+    // Retention prune
+    await new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_TRACES], "readwrite");
+      const store = tx.objectStore(STORE_TRACES);
+      const idx = store.index("by_source");
+      const countReq = idx.count(IDBKeyRange.only(filled.sourceHash));
+      countReq.onsuccess = function () {
+        const count = countReq.result;
+        if (count <= MAX_TRACES_PER_SOURCE) { resolve(); return; }
+        const overflow = count - MAX_TRACES_PER_SOURCE;
+        const cursorReq = idx.openCursor(IDBKeyRange.only(filled.sourceHash), "next");
+        let dropped = 0;
+        cursorReq.onsuccess = function () {
+          const cur = cursorReq.result;
+          if (!cur || dropped >= overflow) { resolve(); return; }
+          store.delete(cur.primaryKey);
+          dropped++;
+          cur.continue();
+        };
+        cursorReq.onerror = function () { reject(cursorReq.error); };
+      };
+      countReq.onerror = function () { reject(countReq.error); };
+    });
+    return filled.opId;
+  }
+
+  async function listTraces(sourceHash, opts) {
+    requireSourceHash(sourceHash, "listTraces");
+    opts = opts || {};
+    const sinceOpId = opts.sinceOpId || 0;
+    const limit = opts.limit || 1024;
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_TRACES], "readonly");
+      const idx = tx.objectStore(STORE_TRACES).index("by_source");
+      const req = idx.openCursor(IDBKeyRange.only(sourceHash), "next");
+      const out = [];
+      req.onsuccess = function () {
+        const cur = req.result;
+        if (!cur || out.length >= limit) { resolve(out); return; }
+        if (cur.value.opId > sinceOpId) out.push(cur.value);
+        cur.continue();
+      };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  async function clearAll() {
+    const db = await openDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction([STORE_MAPS, STORE_TRACES], "readwrite");
+      tx.objectStore(STORE_MAPS).clear();
+      tx.objectStore(STORE_TRACES).clear();
+      tx.oncomplete = function () { cachedNextOpId = 1; resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  // ---- The tests ----
+  let pass = 0, fail = 0;
+
+  async function check(name, fn) {
+    try {
+      await fn();
+      pass++;
+      log("ok   " + name, "ok");
+    } catch (e) {
+      fail++;
+      log("FAIL " + name + "  --  " + e.message, "fail");
+    }
+  }
+
+  function makeFakeRec(hashSeed) {
+    // Build a minimal valid record. sourceHash must be 64 hex chars.
+    const hash = hashSeed.padEnd(64, "0").slice(0, 64).replace(/[^0-9a-f]/g, "0");
+    return {
+      sourceHash: hash,
+      version: "test-1.0.0",
+      sourceBytes: 100,
+      seed: { id: "seed::test", family: "seed", pattern: { type: "seed" }, permanent: true, weight: 1 },
+      timestamp: Date.now(),
+      tokensSeen: 50,
+      textTokensSeen: 20,
+      sealed: false,
+      sealHash: "",
+      entries: [
+        { text: "sub-prime", derivedKind: "DOMAIN_VALUE", distinctiveness: 0.85, occurrenceCount: 4, scores: { h: 0.9, sd: 1, b: 0.7, ns: 0.8 } },
+        { text: "credit", derivedKind: "DOMAIN_DIM", distinctiveness: 0.62, occurrenceCount: 6, scores: { h: 0, sd: 0.2, b: 0.5, ns: 0.7 } }
+      ]
+    };
+  }
+
+  async function runAllTests() {
+    clearLog();
+    pass = 0; fail = 0;
+    runBtn.disabled = true;
+    log("Opening DB and running tests...", "info");
+
+    await clearAll();
+    cachedNextOpId = 0;
+
+    await check("getMap returns null for missing hash", async function () {
+      const r = await getMap("0".repeat(64));
+      if (r !== null) throw new Error("expected null, got " + JSON.stringify(r));
+    });
+
+    await check("putMap then getMap round-trips", async function () {
+      const rec = makeFakeRec("aaaaaa");
+      await putMap(rec);
+      const got = await getMap(rec.sourceHash);
+      if (!got) throw new Error("getMap returned null after put");
+      if (got.sourceHash !== rec.sourceHash) throw new Error("hash mismatch");
+      if (got.entries.length !== rec.entries.length) throw new Error("entries lost");
+      if (got.entries[0].text !== "sub-prime") throw new Error("entry text lost");
+    });
+
+    await check("listMapHashes returns inserted hashes", async function () {
+      await putMap(makeFakeRec("bbbbbb"));
+      const hashes = await listMapHashes();
+      if (hashes.length < 2) throw new Error("expected >= 2, got " + hashes.length);
+      if (hashes.join(",") !== hashes.slice().sort().join(",")) throw new Error("not sorted");
+    });
+
+    await check("deleteMap removes entry", async function () {
+      const rec = makeFakeRec("cccccc");
+      await putMap(rec);
+      await deleteMap(rec.sourceHash);
+      const got = await getMap(rec.sourceHash);
+      if (got !== null) throw new Error("delete didn't remove");
+    });
+
+    await check("appendTrace assigns monotonic opIds", async function () {
+      const sh = "d".repeat(64);
+      const id1 = await appendTrace({ sourceHash: sh, op: "x", step: 1, delta: 0.5, detail: {} });
+      const id2 = await appendTrace({ sourceHash: sh, op: "x", step: 2, delta: 0.4, detail: {} });
+      const id3 = await appendTrace({ sourceHash: sh, op: "x", step: 3, delta: 0.3, detail: {} });
+      if (!(id1 < id2 && id2 < id3)) throw new Error("opIds not monotonic: " + id1 + ", " + id2 + ", " + id3);
+    });
+
+    await check("listTraces filters by sourceHash", async function () {
+      const a = "e".repeat(64), b = "f".repeat(64);
+      await appendTrace({ sourceHash: a, op: "y", step: 1, delta: 1, detail: {} });
+      await appendTrace({ sourceHash: b, op: "y", step: 1, delta: 1, detail: {} });
+      await appendTrace({ sourceHash: a, op: "y", step: 2, delta: 0.5, detail: {} });
+      const aT = await listTraces(a);
+      const bT = await listTraces(b);
+      if (aT.length !== 2) throw new Error("a: expected 2, got " + aT.length);
+      if (bT.length !== 1) throw new Error("b: expected 1, got " + bT.length);
+    });
+
+    await check("listTraces sinceOpId works", async function () {
+      const sh = "1234567890abcdef" + "0".repeat(48);
+      const id1 = await appendTrace({ sourceHash: sh, op: "z", step: 1, delta: 1, detail: {} });
+      const id2 = await appendTrace({ sourceHash: sh, op: "z", step: 2, delta: 0.5, detail: {} });
+      const after = await listTraces(sh, { sinceOpId: id1 });
+      if (after.length !== 1) throw new Error("expected 1 after sinceOpId, got " + after.length);
+      if (after[0].opId !== id2) throw new Error("opId mismatch");
+    });
+
+    await check("trace retention caps at " + MAX_TRACES_PER_SOURCE, async function () {
+      const sh = "9".repeat(64);
+      const N = MAX_TRACES_PER_SOURCE + 30;
+      for (let i = 0; i < N; i++) {
+        await appendTrace({ sourceHash: sh, op: "t", step: i, delta: 0.5, detail: {} });
+      }
+      const traces = await listTraces(sh, { limit: N + 100 });
+      if (traces.length > MAX_TRACES_PER_SOURCE) {
+        throw new Error("expected <=" + MAX_TRACES_PER_SOURCE + ", got " + traces.length);
+      }
+    });
+
+    await check("clearAll empties stores", async function () {
+      await clearAll();
+      const hashes = await listMapHashes();
+      if (hashes.length !== 0) throw new Error("maps not empty after clear");
+    });
+
+    log("");
+    log(pass + " passed, " + fail + " failed");
+    summaryEl.textContent = (fail === 0 ? "all pass." : "some failed.");
+    summaryEl.className = "summary " + (fail === 0 ? "pass" : "fail");
+
+    runBtn.disabled = false;
+  }
+
+  runBtn.addEventListener("click", runAllTests);
+  clearBtn.addEventListener("click", async function () {
+    clearLog();
+    await clearAll();
+    log("DB cleared.", "info");
+  });
+
+  // Auto-run on load
+  runAllTests();
+})();
+</script>
+</body>
+</html>

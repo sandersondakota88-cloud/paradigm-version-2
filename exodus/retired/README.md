@@ -1,0 +1,1 @@
+# Exodus #### This project has been archived as visionary reference.### The concepts found within the Exodus project were informally brought about in an atttempt to inspire creative navigation of what is now *Project_METRIC*.

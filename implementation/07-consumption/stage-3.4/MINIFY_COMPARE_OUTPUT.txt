@@ -1,0 +1,135 @@
+Source: canonical-source.html (72080 bytes)
+
+Generating Minifier A (formatting-only)...
+  written: 41454 bytes (42.5% smaller)
+Generating Minifier B (formatting + rename)...
+  written: 41069 bytes (43.0% smaller)
+
+Running pipeline on ORIGINAL...
+  done in 226940ms (stage1 rows: 18088)
+Running pipeline on MIN-A...
+  done in 28271ms (stage1 rows: 1599)
+Running pipeline on MIN-B...
+  done in 28201ms (stage1 rows: 1599)
+
+========================================================
+SIDE-BY-SIDE COMPARISON
+========================================================
+
+                     ORIGINAL       MIN-A       MIN-B
+                     (format)    (rename)
+                 ------------------------------------
+source bytes           72080       41454       41069
+  reduction              0.0%       42.5%       43.0%
+
+stage1 rows            18088        1599        1599
+
+--- KIND PEER ---
+constraints             1461         733         733
+subcascades                3           3           3
+
+--- TEXT PEER ---
+constraints             8192        4372        4372
+subcascades                3           3           3
+
+--- COMPOSER ---
+constraints                9         202         202
+subcascades                0           2           2
+
+--- KIND PEER SUB-CASCADES ---
+  ORIGINAL:
+    cooc-punctop-ident (members=9, fid=5.07)
+    rep-whitespace- (members=56, fid=2.84)
+    trans-whitespace-ident (members=21, fid=2.62)
+  MIN-A:
+    cooc-punctop-ident (members=10, fid=6.72)
+    trans-ident-punctop (members=17, fid=3.23)
+    rep-punctop-- (members=82, fid=2.79)
+  MIN-B:
+    cooc-punctop-ident (members=10, fid=6.72)
+    trans-ident-punctop (members=17, fid=3.23)
+    rep-punctop-- (members=82, fid=2.79)
+
+--- TEXT PEER SUB-CASCADES ---
+  ORIGINAL:
+    id-recur-src (members=24, fid=3.03)
+    id-pos-src-ref (members=24, fid=3.03)
+    id-cooc-src-self (members=84, fid=4.55)
+  MIN-A:
+    id-recur-src (members=24, fid=3.03)
+    id-pos-src-ref (members=24, fid=3.03)
+    id-cooc-src-self (members=84, fid=4.55)
+  MIN-B:
+    id-recur-src (members=24, fid=3.03)
+    id-pos-src-ref (members=24, fid=3.03)
+    id-cooc-src-self (members=84, fid=4.55)
+
+--- TEXT PEER TOP TEXT VALUES ---
+  ORIGINAL:
+    uses= 238 ident-recur    "var"
+    uses= 238 ident-pos      "var" pos=REF
+    uses= 131 ident-recur    "0"
+    uses= 131 ident-pos      "0" pos=NUM
+    uses= 122 ident-recur    "function"
+    uses= 122 ident-pos      "function" pos=REF
+    uses= 121 ident-recur    "i"
+    uses= 114 ident-recur    "return"
+    uses= 114 ident-pos      "return" pos=REF
+    uses=  97 ident-recur    "if"
+  MIN-A:
+    uses=  22 ident-cooc     "btn<>\"id=\""
+    uses=  22 ident-recur    "\" \""
+    uses=  22 ident-pos      "\" \"" pos=STR
+    uses=  21 ident-cooc     "V<>probe"
+    uses=  17 ident-recur    "n"
+    uses=  17 ident-pos      "n" pos=REF
+    uses=  15 ident-cooc     "n<>\";css+=\""
+    uses=  14 ident-recur    "\"id=\""
+    uses=  14 ident-pos      "\"id=\"" pos=STR
+    uses=  14 ident-recur    "btn"
+  MIN-B:
+    uses=  22 ident-cooc     "btn<>\"id=\""
+    uses=  22 ident-recur    "\" \""
+    uses=  22 ident-pos      "\" \"" pos=STR
+    uses=  21 ident-cooc     "V<>probe"
+    uses=  17 ident-recur    "n"
+    uses=  17 ident-pos      "n" pos=REF
+    uses=  15 ident-cooc     "n<>\";css+=\""
+    uses=  14 ident-recur    "\"id=\""
+    uses=  14 ident-pos      "\"id=\"" pos=STR
+    uses=  14 ident-recur    "btn"
+
+--- COMPOSER PROMOTED SUB-CASCADES ---
+  ORIGINAL:
+  MIN-A:
+    jr- (family=joint-recur, members=100, fid=2.13)
+    jn-cooc-punctop-ident-id-recur-src (family=joint-naming, members=9, fid=3.10)
+  MIN-B:
+    jr- (family=joint-recur, members=100, fid=2.13)
+    jn-cooc-punctop-ident-id-recur-src (family=joint-naming, members=9, fid=3.10)
+
+--- COMPOSER JOINT-RECUR TOP TEXT VALUES ---
+  ORIGINAL: []
+  MIN-A:    [[" ",1000],["id=",700],["style=",550],[";css+=",350]]
+  MIN-B:    [[" ",1000],["id=",700],["style=",550],[";css+=",350]]
+
+--- DOMAIN VALUES IN COMPOSER (joint-recur) ---
+  ORIGINAL: []
+  MIN-A:    []
+  MIN-B:    []
+
+--- DOMAIN TERMS IN IDENTIFIER SUBSTRATE ---
+  ORIGINAL: [["product",12],["credit",10],["sub-prime",8],["mortgage",8],["residency",6],["business-line",6],["foreign",6],["employment",4],["prime",4],["near-prime",4],["personal",4],["auto",4],["trust",4],["diplomatic",4],["under50",4],["student",4],["unemployed",4]]
+  MIN-A:    [["prime",16],["mortgage",8],["business",8],["income",6],["auto",6],["foreign",6],["personal",4],["trust",4],["diplomatic",4],["employed",4],["student",4],["unemployed",4],["credit",2],["product",2],["applicant",2],["residency",2],["employment",2],["individual",2],["joint",2],["domestic",2],["retired",2]]
+  MIN-B:    [["prime",16],["mortgage",8],["business",8],["income",6],["auto",6],["foreign",6],["personal",4],["trust",4],["diplomatic",4],["employed",4],["student",4],["unemployed",4],["credit",2],["product",2],["applicant",2],["residency",2],["employment",2],["individual",2],["joint",2],["domestic",2],["retired",2]]
+
+--- IDENTIFIER-SUBSTRATE STRUCTURAL OVERLAP ---
+  ORIGINAL surfaces 17 domain terms
+  MIN-A overlap with original: 13/17
+  MIN-B overlap with original: 13/17
+
+========================================================
+VERDICT
+========================================================
+MOSTLY STRUCTURAL: most domain terms survive minification.
+Stage 3 path is supported with caveats.

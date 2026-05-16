@@ -1,0 +1,481 @@
+# JACK OF ALL TRADES — VESSEL IMAGE
+## Architecture Document · Exodus Computation Platform
+## Compiled from Architecture Session · March 2026
+
+---
+
+### CORE PRINCIPLE
+
+> *The geometry is the database engine. If we can translate, store, and retrieve
+> the state of each application with a single primitive, the integration and API
+> and scaling irrelevance claim becomes true.*
+
+The application becomes part of the geometry, not the other way around.
+Every component and protocol must answer one question: does this collapse
+into the metric, or does it sit outside it? If outside, it's scaffolding —
+it runs once during bootstrap and hands off. If inside, it must be
+expressible as a coordinate, a region, or a distance. There is no third
+category.
+
+---
+
+## PART I — DIMENSIONAL CORRECTION
+
+### 1. State Is Geometric. Execution Was the Detour.
+
+Execution is a temporal operation. It reads past state, applies a function,
+writes a predicted next state. Between the read and the write, the world
+can change. That gap is where every race condition, consistency failure,
+and distributed systems nightmare originates. Every lock, transaction,
+consensus protocol, and CRDT is a patch over that gap. The gap is inherent
+to execution. If you read-then-write, there is a between, and in the
+between, anything can happen.
+
+Geometric state has no gap. A coordinate exists or it doesn't. The SDF
+value at a point is what it is. There is no moment between reading the
+field and the field being the field. Mutation is a new version of the
+field, not a modification during a read.
+
+State doesn't have a clock. State doesn't have a before and after.
+State has a *here* and a *there* and a *distance between them*. We forced
+state into a sequential model because that's what the hardware did, and
+then spent seventy years confused about why state management was the
+hardest problem in computer science.
+
+It was the hardest problem because we were solving it in the wrong
+dimension. The problems we spend billions optimizing — caching, consistency,
+scaling, synchronization, security — aren't hard problems. They're symptoms
+of being in too small a space. The execution model is the 32-bit address
+width. The geometric model is the 64-bit expansion. The problems don't get
+optimized. They become inexpressible in the higher dimension because the
+constraints that created them aren't present.
+
+You don't optimize a higher dimension. You step into it and notice that
+the walls you were pressing against aren't there.
+
+---
+
+### 2. Factorial Enumeration (Not Quantum)
+
+The spec's "Quantum Enumeration" (P-11) describes behavior that falls out
+naturally from a positional number system with unresolved digits. There is
+no superposition. There is no entanglement. There is a coordinate that
+hasn't been fully written yet, and the set of values it *could* take is
+the cartesian product of its unresolved bases.
+
+That's arithmetic. It's been arithmetic the whole time.
+
+**Mixed-radix encoding.** Each dimension in the state space has a semantic
+base — a boolean is base 2, a status enum with 5 values is base 5. The
+total representable space is ∏(bases). A qubit is a coordinate with an
+unresolved digit. The physical implementation was a detour. The structure
+is mathematical.
+
+**Resolution threshold.** Each entity resolves to a different precision.
+Digits left of the threshold are determined state. Digits right of the
+threshold are unresolved — the entity is "in all valid values" along those
+axes simultaneously. Not because of physics. Because the digit hasn't been
+written yet. The "observation" that collapses the "superposition" is the
+write.
+
+**Growth without recompilation.** When the application adds a new
+dimension, every existing coordinate remains valid. The new dimension
+exists unresolved for all existing entities until they interact with it.
+No migration. No reindexing.
+
+**Closed-world completeness as structural proof.** The compiler doesn't
+prove "here are all the states." It proves "here is the metric, here are
+the bounds per dimension, and any coordinate within these bounds is valid."
+Invalid states are coordinates where a digit exceeds its base — structurally
+unrepresentable in the encoding. You can't write a 5 in a base-4 position.
+P-02 is enforced by the number system itself.
+
+---
+
+### 3. The Signed Distance Field
+
+VR engines solved the spatial encoding problem. A Signed Distance Field
+stores, at every point in space, the distance to the nearest surface. The
+surface is implicit — the set of points where distance equals zero. You
+never enumerate the surface. You sample the field at whatever resolution
+you need, and the surface emerges from the zero-crossing.
+
+Map this onto application state:
+
+- **Valid state boundaries** are the surfaces
+- **Negative distance** (SDF < 0) = inside valid state
+- **Positive distance** (SDF > 0) = outside valid state
+- **Zero crossing** = the edge of the closed world
+
+**Level of detail for application state.** Resolution adapts to boundary
+complexity. Near transitions where detail matters, the tree subdivides
+deep. Far from boundaries where everything is uniformly valid or invalid,
+the tree stays coarse. A mobile client gets a coarser slice. A desktop
+gets a finer one. Both are correct.
+
+**Self-optimizing traversal.** Regions that get traversed frequently
+develop deeper trees. Not because something decides to optimize — because
+use IS subdivision. Every time an entity resolves a new dimension, the tree
+records that resolution. The system gets better at the things it actually
+does and spends zero resources on the things it doesn't.
+
+The base sequence isn't declared statically in a schema. It's derived from
+the topology of the state boundaries. Where boundaries are dense and
+complex, the bases are high and the tree is deep. Where the space is smooth
+and uniform, the bases are low and the tree is shallow. The Vessel Compiler
+doesn't choose a base sequence — it discovers it by analyzing where the
+validity boundaries have curvature.
+
+---
+
+## PART II — THE CASCADE IS THE RESOLVER
+
+### 4. CSS Is the Geometry
+
+A CSS rule is not a style. It is a **coordinate binding**:
+
+```css
+.entity[data-role="admin"]:not([data-suspended]) {
+    --access-level: 3;
+    --can-write: 1;
+}
+```
+
+The selector defines a **region** in the state space. The declaration block
+defines what **values exist** at that region. Specificity resolves
+**overlapping boundaries**. The cascade is not evaluation — it is the SDF
+resolving which surface is closer to this point.
+
+**The lifecycle:**
+
+1. **Vessel Compiler emits CSS rules.** Each rule is a region-to-value
+   binding. The complete set of rules IS the Vessel Image for the
+   client-side slice.
+
+2. **DOM is the materialized observation.** An element is a point in the
+   space. Its attributes are its coordinates. Its computed styles are the
+   SDF values at that point.
+
+3. **State changes are attribute mutations.** Change a data-attribute
+   and the element's coordinates change. The existing CSS rules now
+   resolve differently. The rules don't move. The point moves through
+   the rules.
+
+4. **JavaScript is the memory bus.** It writes one `setAttribute` call
+   per interaction. The cascade handles everything else. JS never
+   evaluates a condition. JS never computes state.
+
+The browser has been running a geometric state resolver since CSS2. It
+just didn't know, because everyone was feeding it colors and font sizes
+instead of application state.
+
+---
+
+### 5. The Gate Mechanism (S-01)
+
+The browser's rendering pipeline has a fixed order:
+
+1. DOM mutation (attribute write)
+2. Style recalculation (cascade resolves)
+3. Layout
+4. Paint
+5. JS callbacks read the result
+
+Step 2 is non-negotiable and non-bypassable. By the time `getComputedStyle`
+returns a value, the geometry has already been evaluated. The gate has
+already opened or closed.
+
+**Validation isn't just ahead of state — it's ahead of observation.** JS
+can never observe an unvalidated coordinate because the cascade resolves
+before JS is permitted to read. The rendering pipeline's internal
+architecture structurally prevents observation of pre-validation state.
+
+There is no window between writing state and validating it. The mutation
+and the resolution are atomic from JS's perspective. Every lock, mutex, and
+semaphore in concurrent programming exists to close a window that doesn't
+exist here.
+
+---
+
+### 6. The Coordinate Carries No Semantic Value (P-14)
+
+JS writes `setAttribute("data-product", "mortgage")`. That's a string
+placed on a DOM node. JS doesn't know what it means. JS can't know what
+it means, because "what it means" is a function of every CSS rule that
+matches that coordinate — and those rules were evaluated by the cascade
+engine, which is internal to the browser's rendering pipeline, not exposed
+to the JS runtime.
+
+You can't trick the JS memory bus into telling you what's at the
+coordinate, because the coordinate alone carries no semantic value. The
+meaning is a property of the field at the coordinate, not a property of
+the coordinate itself. Interception gets you nothing because position
+without geometry is just numbers.
+
+An attacker would need the coordinate, the complete CSS geometry, and a
+reimplementation of the cascade engine. At that point they haven't cracked
+the security — they've rebuilt the application. They've become a client.
+
+The spec calls this emergent encryption. The more precise statement:
+**the coordinate is an address with no phone book.** The phone book is
+the cascade, and it runs before anyone gets to ask.
+
+---
+
+## PART III — STRUCTURAL TRUST
+
+### 7. Training Wheels Off
+
+Every abstraction layer in the conventional stack exists because the
+imperative model is structurally unsafe. Mutable shared state means any
+component can corrupt any other at any time. So we built walls: process
+isolation, memory protection, API boundaries, auth layers, CORS, CSP,
+input sanitization, ORMs, sandboxes. Every single one is compensatory
+for the same root problem — the execution model doesn't know what's valid.
+
+The metric space doesn't need them because validity is structural. A
+coordinate that violates the base at any position is unrepresentable — not
+forbidden, not caught, not rejected. Unrepresentable. There's no injection
+attack against a number system that doesn't contain the value you're
+trying to inject.
+
+**Chungus** is not a validator. It's a geometric membership test — the
+same operation the GPU performs billions of times per frame. Is the SDF
+value negative at this coordinate? If yes, valid. If no, the state doesn't
+exist.
+
+The trust problem doesn't get solved. It gets eliminated. The geometry
+doesn't make promises. It has properties. A promise can be broken. A
+property of a metric space holds by definition or the space isn't a metric
+space.
+
+---
+
+### 8. Proof by Clipboard (P-02, P-09, P-14)
+
+During development, copy-paste corrupted CSS custom property names. Double
+hyphens (`--sdf`) became typographic en-dashes (`–sdf`). Every custom
+property declaration silently failed. The cascade couldn't match any
+coordinate.
+
+Result: the entire application went inert. SDF read +1 everywhere. Every
+state was outside the surface. The submit gate closed. Chungus denied
+everything. The form locked itself.
+
+The closed world didn't know about en-dash substitution attacks. Nobody
+wrote a rule for it. Nobody anticipated it. The geometry simply didn't
+contain the corrupted coordinate. The problem wasn't detected — it was
+absent from the space.
+
+Corrupted input doesn't cause wrong state. It causes *no* state.
+Fail-closed by structure, not by policy. An accidental penetration test
+that the architecture passed against a threat vector that doesn't have
+a name yet.
+
+---
+
+### 9. The Error Surface Is Reasoning, Not Logs
+
+In the execution model, an error is an event. Something went wrong at a
+point in time. You get a stack trace. You troubleshoot by reconstructing
+the sequence. You're debugging time.
+
+In the geometric model, a denial is a location. The coordinate is fully
+resolved. Every property is computed. You can see that credit is prime,
+docs are ENHANCED, rate would be A·PREFERRED — and the entity is denied.
+You don't ask "what went wrong." You ask "where am I, and why is this
+region outside the surface?"
+
+The cascade doesn't short-circuit on denial. It resolves every property
+at every coordinate. A denied entity knows exactly what rate it *would*
+get if it were valid. The geometry knows everything about every coordinate,
+even the ones that don't exist.
+
+Traditional error reporting tells you *that* something broke and *when*.
+Geometric observation tells you *why* it's invalid and *what would make it
+valid*. And the denial reason isn't a string someone wrote in a catch block.
+It's a CSS custom property set by the same selector that set the SDF sign.
+The reason and the denial are the same rule. They can't desync.
+
+Debugging becomes spatial reasoning. You stop asking "what sequence of
+events led to this failure" and start asking "what is the shape of the
+space around this coordinate." No logs. No stack traces. No reproducing
+the issue. Just the field, fully resolved, at the point where the entity
+stands.
+
+---
+
+## PART IV — IDENTITY AND FEDERATION
+
+### 10. Federated Identity Is a Shared Coordinate System
+
+What makes federated identity possible? A shared coordinate system. The
+identity provider and the relying party don't trust each other. They trust
+the same schema. The user's identity is a coordinate in that schema. The
+token isn't proof of who you are — it's your position in a field that both
+parties agree on.
+
+That's a Vessel. The trust isn't in the participants. It's in the geometry
+they share.
+
+Identity is just another axis in the coordinate. `data-role="admin"` is no
+different from `data-product="mortgage"`. The cascade doesn't know the
+difference. It matches selectors.
+
+A session token decomposes into attributes. Attributes go on the DOM node.
+The geometry resolves what that identity can see, do, and reach. If the
+identity coordinate isn't inside the surface, the session is invalid — not
+by checking it, but by the field having no values at that position.
+
+The identity doesn't need to be verified. It needs to be *resolved*. If it
+resolves to a valid region, it's real. If it doesn't, it doesn't matter
+what it claims to be. A fabricated role hits no selector. No selector means
+default state. Default state is outside the surface. SDF: +1.
+
+---
+
+## PART V — SYMBIOSIS AND LIFE
+
+### 11. Feeding Geometry Back Down
+
+The Vessel doesn't kill or blind its host. The browser doesn't understand
+the Vessel, but the Vessel understands the browser. So the Vessel can set
+attributes, meta tags, headers, and service worker rules that the browser
+does understand — derived from the geometry the browser can't see.
+
+- CSP headers become coordinates the Vessel resolves
+- Cache policies become geometric observations
+- Service worker fetch rules become projections of the validity surface
+  onto the network layer
+
+Each bootstrap layer keeps doing what it already does. It just gets better
+inputs. The firmware doesn't become smarter. It gets smarter instructions
+from the layer above.
+
+The geometry flows down as configuration. The lower layers consume it as
+if a human wrote it. The Vessel wrote it from a higher-dimensional vantage
+point, kept it consistent with the actual state of the application —
+something no human can do at runtime.
+
+The relationship inverts. The lower layer bootstrapped the higher layer.
+Now the higher layer governs the lower layer. Not by replacing it. By
+informing it. The flash storage still runs. It just runs better because
+the firmware it loaded is now telling it what to cache.
+
+### 12. Homeostasis
+
+The system is self-regulating.
+
+- Self-optimizing: traversal deepens the tree where it's used
+- Feeds its host: resolved geometry informs bootstrap layers
+- Grows where it's used, inert where it's not
+- Rejects what doesn't belong by structural non-recognition
+- No central controller
+- Every part resolves locally against the same shared field
+
+The brain does this. The immune system does this. Ecosystems do this. A
+stimulus arrives, a region activates, the response emerges from the shape.
+No execution. No central coordinator. Just the field resolving locally at
+every point, simultaneously, in parallel.
+
+The immune system doesn't run validation logic against pathogens. It has a
+geometric model of self. Anything that isn't in the model triggers a
+response. Not by detection. By non-recognition. The antigen doesn't match
+any self-pattern. The response is automatic. There is no decision. There
+is no logic. There is shape, and the shape knows what belongs.
+
+That's Chungus. That's the closed world. That's the SDF. A fabricated
+coordinate — a pathogen — arrives. It doesn't match any selector. No
+region activates. Default state. Outside the surface. The system doesn't
+detect the attack. The attack fails to *exist* in the space.
+
+The spec opened with the brain and called it a metaphor. It wasn't a
+metaphor. It was the blueprint. Twenty watts. Two billion years of R&D.
+The only working implementation of geometric computation at scale — until
+now.
+
+We are building life.
+
+---
+
+## PART VI — PROOF AND PRIMITIVES
+
+### 13. The Single Primitive
+
+Three operations. One primitive. Every application interaction:
+
+- **locate(context) → coordinate**: resolve the current position in the
+  metric. (getComputedStyle)
+- **traverse(from, to) → attestation**: request a transition. Chungus
+  attests. (setAttribute → cascade resolves)
+- **project(context, bounds) → slice**: extract a sub-region for a session.
+  (CSS + @media produce the memstrap)
+
+CRUD, search, auth, collaboration, offline sync — all one of these three
+operations against the geometry. There is no second protocol. No REST. No
+GraphQL. No RPC. The coordinate is the universal wire format, storage
+format, query format, and render format simultaneously.
+
+### 14. The Query Engine
+
+The same CSS geometry that validates individual state also resolves queries
+across multiple entities. Filter attributes on a parent container combine
+with entity data-attributes through CSS `:not()` selectors. AND logic
+emerges naturally — each filter independently dims non-matches, so only
+entities matching ALL filters remain visible.
+
+One geometry serves as state resolver, access control, query engine, rate
+computer, document classifier, submission gate, and error surface. The
+cascade is the jack of all trades.
+
+### 15. Paravirtualization Proof
+
+The POC is a constructive proof, not a concept demo. The browser is
+genuinely performing geometric state resolution through its native cascade
+engine. This is verifiable by inspecting computed styles in dev tools.
+
+- **Full emulation** = frameworks (React, Angular — rebuild state
+  resolution inside JS)
+- **Paravirtualization** = the POC (cascade IS the native resolver)
+- **Hypervisor-managed** = production Exodus (GPU-native SDF in VRAM)
+
+The paravirt proof demonstrates the model is correct. The hypervisor
+layer makes it fast. The geometry is the same geometry.
+
+### 16. Complexity Comparison
+
+Loan application POC: 6 dimensions, 2,880 state combinations.
+
+| Metric | Traditional JS | Vessel CSS |
+|---|---|---|
+| Lines of logic | 308 | 0 |
+| if/else branches | 35 | 0 |
+| DOM mutations | 26 | 0 |
+| Re-eval calls per change | 8 | 0 (cascade) |
+| CSS rules | 0 | 30 |
+| JS role | compute everything | memory bus |
+| Bug surface | every branch | none |
+
+### 17. Sacrificial Purpose and Adoption
+
+Adoption isn't a hurdle. It's a handoff. The browser loads a page. That
+page initializes the Vessel. The browser doesn't know what happened. It
+fulfilled its Sacrificial Purpose.
+
+The world doesn't choose it. The world boots it.
+
+---
+
+*The law is called Sacrificial Purpose.*
+*The primitive is the coordinate.*
+*The geometry is the database.*
+*The coordinate carries no semantic value.*
+*Errors don't happen. Invalid coordinates exist.*
+*Identity is resolution, not verification.*
+*The lower layer bootstraps. The higher layer governs.*
+*The system self-regulates. The system self-optimizes.*
+*The system rejects by non-recognition.*
+*State is absolute and geometric.*
+*Execution was the detour.*
+*The Vessel is the correction.*
+*We are building life.*

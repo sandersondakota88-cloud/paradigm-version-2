@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EXODUS — minimal</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box }
+body { background:#08080a; color:#888; font-family:'SF Mono','Fira Code',monospace; font-size:11px; display:flex; flex-direction:column; min-height:100vh; padding:24px; gap:16px }
+
+/* ── THE PROBE: off-screen, in layout, invisible ── */
+/* JS writes data-* attrs here. CSS reads them. getComputedStyle reads the result. */
+/* This element IS the client runtime. */
+#probe { position:absolute; left:-9999px; top:-9999px; width:0; height:0; overflow:hidden; pointer-events:none }
+
+h2  { font-size:9px; letter-spacing:3px; color:#333; margin-bottom:8px }
+.box { border:1px solid #151518; border-radius:3px; padding:12px }
+.row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px }
+
+/* dimension buttons */
+.btn { padding:7px 12px; border-radius:3px; font:700 9px/1 'SF Mono',monospace; letter-spacing:1px; cursor:pointer; border:1px solid #222; background:#0e0e11; color:#444; transition:all .1s }
+.btn:hover { color:#888; border-color:#333 }
+.btn.on  { background:hsla(210,50%,18%,.4); border-color:hsl(210,50%,35%); color:hsl(210,70%,70%) }
+
+/* result */
+#result { font-size:13px; font-weight:700; letter-spacing:2px; padding:14px; border-radius:3px; border:1px solid #151518; background:#0a0a0d; line-height:1.8; white-space:pre }
+.allowed { color:hsl(160,60%,50%) }
+.denied  { color:hsl(0,55%,50%) }
+
+/* cascade source display */
+#css-src { font-size:7px; line-height:1.6; color:#2a2a30; white-space:pre; overflow-x:auto }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     THE PROBE ELEMENT
+     JS writes data-attributes. CSS resolves. JS reads back.
+     No logic anywhere in that path.
+     ══════════════════════════════════════════════════════════ -->
+<div id="probe"></div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     UI
+     ══════════════════════════════════════════════════════════ -->
+<div>
+  <h2>EXODUS · MINIMAL DEMO</h2>
+  <div style="font-size:8px;color:#2a2a30;letter-spacing:1px">CSS IS THE RUNTIME · JS IS I/O ONLY</div>
+</div>
+
+<div class="box">
+  <h2>DIMENSION — PLAN</h2>
+  <div class="row" id="ctrl-plan"></div>
+  <h2>DIMENSION — FEATURE</h2>
+  <div class="row" id="ctrl-feature"></div>
+</div>
+
+<div class="box">
+  <h2>CASCADE RESULT</h2>
+  <div id="result">—</div>
+</div>
+
+<div class="box">
+  <h2>INJECTED CSS  (this is the entire client runtime)</h2>
+  <div id="css-src"></div>
+</div>
+
+
+<script>
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  SERVER                                                    ║
+// ║  Owns geometry + rules. Ships them to client. That's it.   ║
+// ║  Never reads cascade output.                               ║
+// ╚══════════════════════════════════════════════════════════════╝
+var Server = {
+
+  dims: [
+    { name: "plan",    values: ["free", "pro", "enterprise"] },
+    { name: "feature", values: ["storage", "export", "api", "sso"] }
+  ],
+
+  // WHEN these dimension values are present → THEN set these outputs.
+  // This is ALL the domain logic. No branches. Pure declarations.
+  constraints: [
+    { when: { plan:"free",  feature:"export"  }, then: { sdf: 1, deny: "Pro required" } },
+    { when: { plan:"free",  feature:"api"     }, then: { sdf: 1, deny: "Pro required" } },
+    { when: { plan:"free",  feature:"sso"     }, then: { sdf: 1, deny: "Enterprise required" } },
+    { when: { plan:"pro",   feature:"sso"     }, then: { sdf: 1, deny: "Enterprise required" } }
+  ],
+
+  handleMessage: function(msg) {
+    if (msg.type === "CONNECT")
+      return { dims: this.dims, constraints: this.constraints };
+  }
+};
+
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  IPC                                                       ║
+// ║  Message bus. Synchronous. Logs traffic.                   ║
+// ╚══════════════════════════════════════════════════════════════╝
+var IPC = {
+  send: function(msg) { return Server.handleMessage(msg); }
+};
+
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  CLIENT                                                    ║
+// ║  Receives geometry + rules from server.                    ║
+// ║  Compiles rules → CSS. Injects into <head>.                ║
+// ║  CSS IS NOW THE RUNTIME.                                   ║
+// ║  Probes via setAttribute / getComputedStyle ONLY.          ║
+// ║  Never branches on resolved values.                        ║
+// ╚══════════════════════════════════════════════════════════════╝
+var Client = {
+  dims: [],
+  navState: [],
+  probeEl: document.getElementById("probe"),
+
+  connect: function() {
+    var res = IPC.send({ type: "CONNECT" });
+    this.dims = res.dims;
+    this.navState = res.dims.map(function() { return 0; });
+    this.rebuildCascade(res.constraints);
+    this.buildUI();
+    this.resolve();
+  },
+
+  // ── Compile WHEN/THEN rules → CSS attribute selectors ──
+  // After this runs, the browser's style engine IS the domain logic.
+  rebuildCascade: function(constraints) {
+    var css = "";
+
+    // Base rule: default outputs on the probe element
+    css += "#probe {\n";
+    css += "  --sdf: -1;\n";
+    css += "  --deny: '';\n";
+    css += "}\n\n";
+
+    // Each constraint → one CSS rule
+    constraints.forEach(function(c) {
+      var selector = "#probe";
+      for (var dim in c.when) selector += '[data-' + dim + '="' + c.when[dim] + '"]';
+      var decls = [];
+      if (c.then.sdf  !== undefined) decls.push("  --sdf: " + c.then.sdf);
+      if (c.then.deny !== undefined) decls.push('  --deny: "' + c.then.deny + '"');
+      css += selector + " {\n" + decls.join(";\n") + "\n}\n\n";
+    });
+
+    // Inject — this is the moment CSS becomes the runtime
+    var old = document.getElementById("cascade-rules");
+    if (old) old.remove();
+    var style = document.createElement("style");
+    style.id = "cascade-rules";
+    style.textContent = css;
+    document.head.appendChild(style);
+
+    // Show the source so it's inspectable
+    document.getElementById("css-src").textContent = css;
+  },
+
+  // ── Probe: the entire computation happens here in 2 lines ──
+  // Line 1: write coordinates as data-attributes → browser resolves cascade
+  // Line 2: read custom properties ← browser returns resolved output
+  // No logic. No branches. The CSS did it.
+  probe: function() {
+    var el = this.probeEl;
+    // WRITE
+    this.dims.forEach(function(d, i) {
+      el.setAttribute("data-" + d.name, d.values[Client.navState[i]]);
+    });
+    // READ
+    var cs = getComputedStyle(el);
+    return {
+      sdf:  cs.getPropertyValue("--sdf").trim(),
+      deny: cs.getPropertyValue("--deny").trim().replace(/"/g, "").replace(/'/g, "")
+    };
+  },
+
+  resolve: function() {
+    var res = this.probe();
+    var allowed = res.sdf === "-1";
+    var coord = this.dims.map(function(d, i) {
+      return d.name + "=" + d.values[Client.navState[i]];
+    }).join("  ");
+
+    var out = document.getElementById("result");
+    out.className = allowed ? "allowed" : "denied";
+    out.textContent = [
+      "  COORD   " + coord,
+      "  SDF     " + res.sdf + "  (" + (allowed ? "inside valid region" : "outside — denied") + ")",
+      "  RESULT  " + (allowed ? "✓ ALLOWED" : "✗ DENIED  — " + res.deny)
+    ].join("\n");
+  },
+
+  // ── Build nav buttons from server dimension definitions ──
+  // DOM is generated from data. Nothing is hard-coded in HTML.
+  buildUI: function() {
+    this.dims.forEach(function(dim, di) {
+      var container = document.getElementById("ctrl-" + dim.name);
+      if (!container) return;
+      dim.values.forEach(function(val, vi) {
+        var btn = document.createElement("button");
+        btn.className = "btn" + (vi === 0 ? " on" : "");
+        btn.textContent = val;
+        btn.addEventListener("click", function() {
+          // JS I/O: capture user input, send to server, get ack, update state
+          Client.navState[di] = vi;
+          container.querySelectorAll(".btn").forEach(function(b) { b.classList.remove("on") });
+          btn.classList.add("on");
+          Client.resolve();
+        });
+        container.appendChild(btn);
+      });
+    });
+  }
+};
+
+
+// ── Boot ──
+Client.connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
+<title>constraint substrate - Phase 2 - ER engine</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box }
+body { background: #060608; color: #a0a0aa; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; min-height: 100vh; }
+header { padding: 14px 20px; border-bottom: 1px solid #1a1a24; display: flex; justify-content: space-between; align-items: center; }
+header h1 { font-size: 11px; letter-spacing: 3px; color: #d8d8e0; }
+header .sub { font-size: 8px; letter-spacing: 2px; color: #44444e; margin-top: 2px; }
+header .er-status { padding: 4px 10px; border-radius: 2px; font-size: 9px; letter-spacing: 1px; }
+header .er-status.gpu-ready { background: #0a1a14; color: #6aa878; border: 1px solid #2a4a3a; }
+header .er-status.cpu-fallback { background: #1a1408; color: #c8a078; border: 1px solid #4a3a2a; }
+header .er-status.error { background: #1a0808; color: #c87878; border: 1px solid #4a2a2a; }
+header .er-status.initializing { background: #0a0a14; color: #7a8ac8; border: 1px solid #2a3a4a; }
+main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: #1a1a24; min-height: calc(100vh - 90px); }
+main > section { background: #060608; padding: 16px; overflow: auto; }
+.label { font-size: 8px; letter-spacing: 3px; color: #44444e; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #14141c; }
+.panel { background: #0a0a0e; border: 1px solid #14141c; border-radius: 3px; padding: 10px; margin-bottom: 12px; }
+.ptitle { font-size: 8px; letter-spacing: 2px; color: #555562; margin-bottom: 6px; }
+input[type="text"] { width: 100%; padding: 6px 8px; background: #050507; border: 1px solid #1e1e28; color: #c0c0c8; font: 12px/1.4 ui-monospace, monospace; border-radius: 2px; }
+button { padding: 6px 10px; border: 1px solid #1e1e28; background: #0a0a10; color: #a0a0aa; font: 9px/1 ui-monospace, monospace; letter-spacing: 1.2px; cursor: pointer; border-radius: 2px; margin-right: 3px; margin-bottom: 3px; }
+button:hover { border-color: #2e2e42; color: #d8d8e0; }
+button.primary { border-color: #2a4a3a; background: #0a1510; color: #6aa878; }
+button.op { border-color: #2a3a5a; background: #0a1018; color: #7a9ac8; }
+.controls { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.metric { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; border-bottom: 1px dashed #14141c; }
+.metric:last-child { border-bottom: none }
+.metric .k { color: #44444e; letter-spacing: 1px; font-size: 8px; }
+.metric .v { color: #c0c0c8; font-weight: 500; }
+.bar { height: 3px; background: #14141c; border-radius: 2px; overflow: hidden; margin-top: 3px; }
+.bar .fill { height: 100%; background: linear-gradient(90deg, #2a5a4a, #5a8a7a); transition: width 0.4s; }
+.bar.fast .fill { background: linear-gradient(90deg, #4a6a9a, #7a9ac8); }
+.bar.slow .fill { background: linear-gradient(90deg, #6a4a7a, #9a6aa8); }
+.bar.gap  .fill { background: linear-gradient(90deg, #8a6a4a, #c8a078); }
+#field-view, #trace-view, #out-view, #pred-view, #sub-view, #ops-view, #corr-view { background: #040406; border: 1px solid #14141c; border-radius: 2px; padding: 8px; font-size: 10px; line-height: 1.55; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+#out-view { max-height: 340px; }
+.c-row { padding: 3px 0; border-bottom: 1px dashed #12121a; font-size: 10px; }
+.c-row .k { color: #44444e; font-size: 8px; letter-spacing: 1px; }
+.c-row .v { color: #a0a0aa; }
+.c-row.seed .v { color: #b8a8d8; }
+.c-row.derived .v { color: #8aa8a0; }
+.c-row.predictive .v { color: #c8a078; }
+.c-row.ratified .v { color: #8ad8a8; }
+.c-row.meta .v { color: #c8b0d8; }
+.t-entry { padding: 2px 0; font-size: 9px; }
+.t-entry .scope { color: #44444e; font-size: 8px; }
+.t-entry .op { color: #9898c0; font-size: 9px; }
+.t-entry .delta { color: #d8c8a0; }
+.t-entry.predicted { background: #18100a; padding-left: 4px; border-left: 2px solid #c8a078; }
+.t-entry.ratified { background: #0a1810; padding-left: 4px; border-left: 2px solid #8ad8a8; }
+.t-entry.named { background: #101820; padding-left: 4px; border-left: 2px solid #aaccdc; }
+.t-entry.frame { background: #0a0a14; padding-left: 4px; border-left: 2px solid #4a5a8a; color: #6a7aa8; }
+.out-entry { padding: 8px; margin-bottom: 8px; background: #080810; border-left: 2px solid #2a4a3a; border-radius: 2px; }
+.out-entry.ratified { border-left-color: #8ad8a8; background: #081810; }
+.out-entry .in { color: #d8d8e0; font-weight: 500; font-size: 11px; margin-bottom: 4px; }
+.out-entry .desc { color: #a0a0aa; font-size: 10px; margin-bottom: 4px; }
+.out-entry .meta { color: #555562; font-size: 8px; }
+.sub-row { padding: 5px 6px; margin-bottom: 4px; background: #081018; border-left: 2px solid #4a6a8a; border-radius: 2px; font-size: 10px; }
+.sub-row.recently-named { border-left-color: #aaccdc; background: #0c1620; }
+.sub-row .sub-name { color: #aaccdc; font-weight: 500; letter-spacing: 1px; }
+.sub-row .sub-meta { color: #666678; font-size: 8px; margin-top: 2px; }
+.op-entry { padding: 6px 8px; margin-bottom: 6px; background: #080810; border-left: 2px solid #2a3a5a; border-radius: 2px; font-size: 10px; }
+.op-entry .op-label { color: #7a9ac8; font-weight: 500; letter-spacing: 1px; }
+.op-entry .op-detail { color: #8a8a9a; font-size: 9px; margin-top: 3px; }
+.corr-row { font-size: 9px; padding: 2px 0; border-bottom: 1px dashed #12121a; }
+.info { font-size: 10px; color: #555562; font-family: Georgia, serif; line-height: 1.7; padding: 8px 10px; background: #0a0a10; border-left: 2px solid #2a2a3a; border-radius: 2px; margin-bottom: 12px; }
+.info em { color: #9a9aa8; font-style: italic; }
+.warn { padding: 6px 10px; background: #180a0a; border-left: 2px solid #4a2a2a; color: #a87a7a; font-size: 10px; margin-bottom: 10px; display: none; }
+.warn.shown { display: block }
+footer { padding: 8px 20px; font-size: 8px; color: #2a2a34; letter-spacing: 1px; background: #0a0a10; border-top: 1px solid #14141c; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CONSTRAINT SUBSTRATE - PHASE 2</h1>
+    <div class="sub">ER engine + reduced host / SE-06 substrate-dual</div>
+  </div>
+  <div><span id="er-status" class="er-status initializing">ER: initializing</span></div>
+</header>
+<main>
+  <section>
+    <div class="label">INPUT / FIELD STATE</div>
+    <div class="info">Phase 2 moves constraint resolution from host JS to the ER engine. Per frame, the engine evaluates the live field against the current input record using a WebGPU compute shader (or CPU oracle if WebGPU is unavailable; the substrate is independent per <em>algorithm 16</em>). The host writes inputs and reads matches; it does not direct the engine. SE-06 in operation.</div>
+    <div class="panel"><div class="ptitle">INPUT</div>
+      <input type="text" id="input-box" placeholder="type anything, press enter"/>
+      <div class="controls">
+        <button class="primary" id="btn-submit">SUBMIT</button>
+        <button id="btn-tick">TICK</button>
+        <button id="btn-reset">RESET</button>
+      </div>
+    </div>
+    <div class="panel"><div class="ptitle">FIELD-LEVEL OPERATIONS</div>
+      <div class="controls">
+        <button class="op" id="btn-develop">DEVELOP</button>
+        <button class="op" id="btn-correlate">CORRELATE</button>
+        <button class="op" id="btn-reason">REASON</button>
+        <button class="op" id="btn-promote">PROMOTE</button>
+        <button class="op" id="btn-auto">AUTO TICK x20</button>
+      </div>
+    </div>
+    <div class="panel"><div class="ptitle">DELTA AT SCOPE</div>
+      <div class="metric"><span class="k">FIELD DELTA (scalar)</span><span class="v" id="m-delta">-</span></div>
+      <div class="bar"><div class="fill" id="bar-delta" style="width:0%"></div></div>
+      <div class="metric"><span class="k">FAST-DELTA</span><span class="v" id="m-fast-d">-</span></div>
+      <div class="bar fast"><div class="fill" id="bar-fast-d" style="width:0%"></div></div>
+      <div class="metric"><span class="k">SLOW-DELTA</span><span class="v" id="m-slow-d">-</span></div>
+      <div class="bar slow"><div class="fill" id="bar-slow-d" style="width:0%"></div></div>
+      <div class="metric"><span class="k">GAP</span><span class="v" id="m-gap">-</span></div>
+      <div class="bar gap"><div class="fill" id="bar-gap" style="width:0%"></div></div>
+    </div>
+    <div class="panel"><div class="ptitle">ER ENGINE</div>
+      <div class="metric"><span class="k">PIPELINE</span><span class="v" id="m-er-pipeline">-</span></div>
+      <div class="metric"><span class="k">FRAMES RUN</span><span class="v" id="m-er-frames">-</span></div>
+      <div class="metric"><span class="k">LAST DISPATCH</span><span class="v" id="m-er-dispatch">-</span></div>
+      <div class="metric"><span class="k">CONSTRAINTS</span><span class="v" id="m-er-input">-</span></div>
+    </div>
+    <div class="panel"><div class="ptitle">FIELD STATE</div>
+      <div class="metric"><span class="k">CONSTRAINTS</span><span class="v" id="m-total">-</span></div>
+      <div class="metric"><span class="k">DERIVED / PRED / RAT / META</span><span class="v" id="m-kinds">-</span></div>
+      <div class="metric"><span class="k">SUB-CASCADES</span><span class="v" id="m-sub">-</span></div>
+      <div class="metric"><span class="k">CORRELATIONS</span><span class="v" id="m-corr">-</span></div>
+      <div class="metric"><span class="k">INPUTS / NAMED</span><span class="v" id="m-inputs">-</span></div>
+      <div class="metric"><span class="k">RATIFICATIONS</span><span class="v" id="m-rats">-</span></div>
+      <div class="metric"><span class="k">STEP</span><span class="v" id="m-step">-</span></div>
+    </div>
+  </section>
+  <section>
+    <div class="label">CONSTRAINTS / PREDICTIONS / SUB-CASCADES</div>
+    <div class="panel"><div class="ptitle">SUB-CASCADES</div><div id="sub-view"></div></div>
+    <div class="panel"><div class="ptitle">CONSTRAINTS</div><div id="field-view"></div></div>
+    <div class="panel"><div class="ptitle">PREDICTIONS</div><div id="pred-view"></div></div>
+    <div class="panel"><div class="ptitle">OPERATIONS LOG</div><div id="ops-view"></div></div>
+    <div class="panel"><div class="ptitle">CORRELATIONS</div><div id="corr-view"></div></div>
+  </section>
+  <section>
+    <div class="label">OUTPUT / TRACE</div>
+    <div class="warn" id="warn-ascii">ASCII self-check failed.</div>
+    <div class="panel"><div class="ptitle">DESCRIPTIONS (newest first)</div><div id="out-view"></div></div>
+    <div class="panel"><div class="ptitle">TRACE</div><div id="trace-view"></div></div>
+  </section>
+</main>
+<footer>CONSTRAINT SUBSTRATE Phase 2 - ER engine + reduced host - one substrate split, coupled by delta</footer>
+
+<script src="constraint-compiler.js"></script>
+
+<script src="cpu-oracle.js"></script>
+
+<script src="er-engine.js"></script>
+
+<script>
+(function () {
+"use strict";
+
+(function asciiSelfCheck() {
+  try {
+    const scripts = document.querySelectorAll("script:not([src])");
+    for (const s of scripts) {
+      const src = s.textContent || "";
+      for (let i = 0; i < src.length; i++) {
+        const c = src.charCodeAt(i);
+        if (c > 0x7E && c !== 0x0A && c !== 0x09) {
+          const w = document.getElementById("warn-ascii");
+          if (w) w.className = "warn shown";
+          return;
+        }
+      }
+    }
+  } catch (e) {}
+})();
+
+const Guards = {
+  clampString(s, max) { if (typeof s !== "string") s = String(s == null ? "" : s); return s.length > max ? s.substring(0, max) : s; },
+  clamp01(n) { n = +n; if (!isFinite(n)) return 0; return n < 0 ? 0 : (n > 1 ? 1 : n); }
+};
+
+const CFG = Object.freeze({
+  INPUT_MAX: 512, FIELD_LIVE_CAP: 200, FIELD_AGED_CAP: 80, TRACE_CAP: 512, OUT_CAP: 28,
+  FAST_WINDOW: 12, FAST_DECAY: 0.85, SLOW_STEP: 0.002, MOD_SIGMA: 0.15,
+  GEN_NOVELTY_THRESH: 0.35, GAP_PREDICT_THRESH: 0.12,
+  PRED_MAX_NEW_PER_STEP: 2, PRED_AGE_LIMIT: 40, PRED_WEIGHT_BOOST: 1.8,
+  AGE_STEP_WINDOW: 24,
+  CORR_CAP: 200, CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 3,
+  FIDELITY_WINDOW: 8, FIDELITY_PROMOTE: 0.03, FIDELITY_MIN_FIRES: 3, SUB_CASCADE_CAP: 24,
+  NAMING_WEIGHT_BONUS: 1.5, NAMING_DELTA_DROP: 0.15, NAMING_PREF_RATE: 0.005,
+  SELECT_RECENCY_EXP: 1.5, AUTO_TICK_COUNT: 20, OPS_LOG_CAP: 48
+});
+
+const SEED = Object.freeze({
+  id: "seed::what-is-delta", kind: "seed", question: "what is delta?",
+  when: "always", then: "assert(delta = compute(field.state))",
+  birth: 0, uses: 0, permanent: true, weight: 1.0
+});
+
+const Field = {
+  constraints: [], aged: [], inputCount: 0, step: 0, ratCount: 0,
+  scalarDelta: 1.0, fastDelta: 1.0, slowDelta: 1.0, gap: 0.0,
+  fastMod: 0.0, slowMod: 0.5, recentOps: [],
+  correlations: Object.create(null), familyFidelity: Object.create(null),
+  subcascades: [], namingPref: 0.0, namedCount: 0, _idCtr: 0,
+
+  reset() {
+    this.constraints = [Object.assign({}, SEED)];
+    this.aged = []; this.inputCount = 0; this.step = 0; this.ratCount = 0;
+    this.scalarDelta = 1.0; this.fastDelta = 1.0; this.slowDelta = 1.0; this.gap = 0.0;
+    this.fastMod = 0.0; this.slowMod = 0.5; this.recentOps = [];
+    this.correlations = Object.create(null); this.familyFidelity = Object.create(null);
+    this.subcascades = []; this.namingPref = 0.0; this.namedCount = 0;
+  },
+
+  _deltaOver(cs) {
+    if (!cs || cs.length === 0) return 1.0;
+    let unresolved = 0, stale = 0;
+    for (const c of cs) {
+      if (c.kind === "seed" || c.kind === "predictive") { unresolved++; continue; }
+      if ((c.uses || 0) === 0) { unresolved++; continue; }
+      const age = this.step - (c.lastUsed || 0);
+      stale += Math.min(1, age / CFG.AGE_STEP_WINDOW);
+    }
+    return Guards.clamp01((unresolved + stale * 0.5) / cs.length);
+  },
+  computeScalarDelta() { return this._deltaOver(this.constraints); },
+  computeFastDelta() {
+    const recent = Object.create(null);
+    for (const op of this.recentOps) if (op.touched) for (const id of op.touched) recent[id] = true;
+    recent[SEED.id] = true;
+    const fc = this.constraints.filter(c => recent[c.id]);
+    return fc.length === 0 ? 1.0 : this._deltaOver(fc);
+  },
+  updateSlowDelta(cs) { this.slowDelta = this.slowDelta * (1 - CFG.SLOW_STEP) + cs * CFG.SLOW_STEP; },
+  refreshVectorDelta() {
+    this.scalarDelta = this.computeScalarDelta();
+    this.fastDelta = this.computeFastDelta();
+    this.gap = Math.abs(this.fastDelta - this.slowDelta);
+  },
+
+  generate(input, evalResult) {
+    if (!input) return [];
+    const lower = input.toLowerCase();
+    const tokens = lower.split(/\s+/).filter(t => t.length > 0);
+    const gen = [];
+    if (evalResult.novelty < CFG.GEN_NOVELTY_THRESH) return gen;
+    for (const t of tokens) {
+      if (gen.length >= 3) break;
+      if (t.length < 2 || t.length > 32) continue;
+      if (this._hasLike("has-token", t)) continue;
+      gen.push(this._mkDerived("has-token", { token: t }, "input contains '" + Guards.clampString(t, 24) + "'"));
+    }
+    const L = input.length;
+    if (!this._hasLengthCovering(L)) {
+      const lo = Math.max(1, L - 8), hi = L + 8;
+      gen.push(this._mkDerived("length-range", { min: lo, max: hi }, "length in [" + lo + "," + hi + "]"));
+    }
+    if (/\d/.test(input) && !this._hasLike("char-class", "digits")) gen.push(this._mkDerived("char-class", { cls: "digits" }, "contains digits"));
+    if (/[a-zA-Z]/.test(input) && !this._hasLike("char-class", "alpha")) gen.push(this._mkDerived("char-class", { cls: "alpha" }, "contains letters"));
+    if (/[^\w\s]/.test(input) && !this._hasLike("char-class", "symbol")) gen.push(this._mkDerived("char-class", { cls: "symbol" }, "contains symbol"));
+    if (tokens.length >= 2 && gen.length < 5) {
+      const a = tokens[0], b = tokens[tokens.length - 1];
+      if (a !== b && a.length >= 3 && b.length >= 3 && !this._hasCoOccurs(a, b))
+        gen.push(this._mkDerived("co-occurs", { a, b }, "'" + Guards.clampString(a, 16) + "' with '" + Guards.clampString(b, 16) + "'"));
+    }
+    return gen;
+  },
+  _hasLike(type, arg) { return this.constraints.some(c => c.pattern && c.pattern.type === type && (type === "has-token" ? c.pattern.token === arg : c.pattern.cls === arg)); },
+  _hasLengthCovering(L) { return this.constraints.some(c => c.pattern && c.pattern.type === "length-range" && L >= c.pattern.min && L <= c.pattern.max); },
+  _hasCoOccurs(a, b) { return this.constraints.some(c => c.pattern && c.pattern.type === "co-occurs" && ((c.pattern.a === a && c.pattern.b === b) || (c.pattern.a === b && c.pattern.b === a))); },
+  _mkDerived(type, pattern, desc) { return { id: "c::" + (++this._idCtr), kind: "derived", pattern: Object.assign({ type }, pattern), desc: Guards.clampString(desc, 120), birth: this.step, lastUsed: this.step, uses: 0, weight: 1.0, permanent: false }; },
+
+  generatePredictions() {
+    if (this.gap < CFG.GAP_PREDICT_THRESH) return [];
+    const gen = [];
+    const hasD = this._hasLike("char-class", "digits"), hasA = this._hasLike("char-class", "alpha"), hasS = this._hasLike("char-class", "symbol");
+    if (hasA && !hasD && gen.length < CFG.PRED_MAX_NEW_PER_STEP) gen.push(this._mkPredictive("char-class", { cls: "digits" }, "prediction: input containing digits would close the gap"));
+    if (hasD && !hasA && gen.length < CFG.PRED_MAX_NEW_PER_STEP) gen.push(this._mkPredictive("char-class", { cls: "alpha" }, "prediction: input containing letters would close the gap"));
+    if ((hasA || hasD) && !hasS && gen.length < CFG.PRED_MAX_NEW_PER_STEP) gen.push(this._mkPredictive("char-class", { cls: "symbol" }, "prediction: input containing symbols would close the gap"));
+    return gen;
+  },
+  _mkPredictive(type, pattern, desc) { return { id: "p::" + (++this._idCtr), kind: "predictive", pattern: Object.assign({ type }, pattern), desc: Guards.clampString(desc, 160), birth: this.step, lastUsed: this.step, uses: 0, weight: 1.0, permanent: false }; },
+  ratify(idx) { const c = this.constraints[idx]; if (!c || c.kind !== "predictive") return false; c.kind = "ratified"; c.weight = Math.min(3.0, c.weight * CFG.PRED_WEIGHT_BOOST); c.lastUsed = this.step; this.ratCount++; return true; },
+  evictStalePredictions() {
+    const evicted = [], kept = [];
+    for (const c of this.constraints) {
+      if (c.kind === "predictive" && (this.step - c.birth) > CFG.PRED_AGE_LIMIT) { evicted.push(c); this.aged.push(c); }
+      else kept.push(c);
+    }
+    this.constraints = kept;
+    while (this.aged.length > CFG.FIELD_AGED_CAP) this.aged.shift();
+    return evicted;
+  },
+  integrate(newCs) { for (const c of newCs) this.constraints.push(c); this._enforceCaps(); },
+  _enforceCaps() {
+    if (this.constraints.length <= CFG.FIELD_LIVE_CAP) return;
+    const scored = [];
+    for (let i = 0; i < this.constraints.length; i++) {
+      const c = this.constraints[i];
+      if (c.kind === "seed") continue;
+      const recency = this.step - (c.lastUsed || 0);
+      const kindBonus = (c.kind === "ratified") ? 15 : 0;
+      scored.push({ idx: i, score: (c.uses||0)*10 + (c.weight||1)*5 + kindBonus - recency });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    const toEvict = this.constraints.length - CFG.FIELD_LIVE_CAP;
+    const evictIdx = Object.create(null);
+    for (let j = 0; j < toEvict; j++) evictIdx[scored[j].idx] = true;
+    const kept = [];
+    for (let k = 0; k < this.constraints.length; k++) {
+      if (evictIdx[k]) this.aged.push(this.constraints[k]); else kept.push(this.constraints[k]);
+    }
+    this.constraints = kept;
+    while (this.aged.length > CFG.FIELD_AGED_CAP) this.aged.shift();
+  },
+  selectFromMatches(matched, named) {
+    if (matched.length === 0) return [];
+    const namedIds = Object.create(null);
+    if (named) for (const sc of named) for (const id of sc.memberIds) namedIds[id] = true;
+    const chosen = [];
+    for (const idx of matched) {
+      const c = this.constraints[idx]; if (!c) continue;
+      const recency = this.step - (c.lastUsed || 0);
+      const recencyFactor = 1.0 / (1.0 + recency * 0.05);
+      const fastBias = 1.0 + this.fastMod * 0.5;
+      let kindMult = 1.0;
+      if (c.kind === "ratified") kindMult = 1.3; else if (c.kind === "meta") kindMult = 1.15;
+      const namedBias = namedIds[c.id] ? CFG.NAMING_WEIGHT_BONUS : 1.0;
+      const eff = (c.weight || 1.0) * Math.pow(recencyFactor, CFG.SELECT_RECENCY_EXP) * fastBias * kindMult * namedBias;
+      chosen.push({ idx, effectiveWeight: eff, kind: c.kind, named: !!namedIds[c.id] });
+    }
+    chosen.sort((a, b) => b.effectiveWeight - a.effectiveWeight);
+    return chosen;
+  },
+  markUsed(matched) {
+    for (const idx of matched) {
+      const c = this.constraints[idx];
+      if (!c || c.kind === "seed") continue;
+      c.uses = (c.uses || 0) + 1; c.lastUsed = this.step;
+      c.weight = Math.min(3.0, (c.weight || 1.0) + 0.02);
+    }
+    if (this.constraints[0] && this.constraints[0].kind === "seed") this.constraints[0].uses = (this.constraints[0].uses || 0) + 1;
+  },
+  modulate() {
+    const dev = this.fastDelta - this.slowDelta;
+    this.fastMod = this.fastMod * CFG.FAST_DECAY + dev * CFG.MOD_SIGMA;
+    this.slowMod = this.slowMod * (1 - CFG.SLOW_STEP) + this.slowDelta * CFG.SLOW_STEP;
+  },
+  recordOp(kind, touched) { this.recentOps.push({ step: this.step, kind, touched: touched || [] }); while (this.recentOps.length > CFG.FAST_WINDOW) this.recentOps.shift(); },
+  _findById(id) { for (const c of this.constraints) if (c.id === id) return c; return null; },
+
+  updateCorrelations(matched) {
+    for (let i = 0; i < matched.length; i++) {
+      for (let j = i + 1; j < matched.length; j++) {
+        const ca = this.constraints[matched[i]], cb = this.constraints[matched[j]];
+        if (!ca || !cb || ca.kind === "seed" || cb.kind === "seed") continue;
+        const key = (ca.id < cb.id) ? (ca.id + "::" + cb.id) : (cb.id + "::" + ca.id);
+        if (!this.correlations[key]) this.correlations[key] = { a: ca.id, b: cb.id, coFire: 0, lastSeen: 0 };
+        this.correlations[key].coFire++; this.correlations[key].lastSeen = this.step;
+      }
+    }
+    const keys = Object.keys(this.correlations);
+    if (keys.length > CFG.CORR_CAP) {
+      const entries = keys.map(k => ({ key: k, score: this.correlations[k].coFire + this.correlations[k].lastSeen / 100 }));
+      entries.sort((a, b) => a.score - b.score);
+      const toEvict = keys.length - CFG.CORR_CAP;
+      for (let i = 0; i < toEvict; i++) delete this.correlations[entries[i].key];
+    }
+  },
+  topCorrelations(limit) {
+    limit = limit || 20;
+    const out = [];
+    for (const k in this.correlations) if (Object.prototype.hasOwnProperty.call(this.correlations, k)) out.push(this.correlations[k]);
+    out.sort((a, b) => b.coFire - a.coFire);
+    return out.slice(0, limit);
+  },
+
+  developPatterns() {
+    const produced = [];
+    for (const corr of this.topCorrelations(30)) {
+      const ca = this._findById(corr.a), cb = this._findById(corr.b);
+      if (!ca || !cb || (ca.uses||0) < CFG.CORR_MIN_USES || (cb.uses||0) < CFG.CORR_MIN_USES) continue;
+      if (this._hasMetaWithRefs([corr.a, corr.b])) continue;
+      const ratio = corr.coFire / Math.max(ca.uses, cb.uses);
+      if (ratio < CFG.CORR_THRESH) continue;
+      produced.push(this._mkMeta([corr.a, corr.b], "pair: " + (ca.desc||ca.id) + " + " + (cb.desc||cb.id) + " (coFire=" + corr.coFire + ")", "pair"));
+    }
+    const families = Object.create(null);
+    for (const c of this.constraints) {
+      if ((c.kind !== "derived" && c.kind !== "ratified") || !c.pattern) continue;
+      if (!families[c.pattern.type]) families[c.pattern.type] = [];
+      families[c.pattern.type].push(c.id);
+    }
+    for (const famName in families) {
+      if (families[famName].length < CFG.FAMILY_MIN_SIZE) continue;
+      if (this._hasFamilyMetaFor(famName)) continue;
+      const fm = this._mkMeta(families[famName], "family: " + families[famName].length + " of type '" + famName + "'", "family");
+      fm.familyType = famName;
+      produced.push(fm);
+    }
+    if (produced.length > 0) this.integrate(produced);
+    return produced;
+  },
+  _mkMeta(refs, desc, metaKind) { return { id: "m::" + (++this._idCtr), kind: "meta", metaKind: metaKind || "pair", refs: refs.slice(), desc: Guards.clampString(desc, 160), birth: this.step, lastUsed: this.step, uses: 0, weight: 1.0, permanent: false }; },
+  _hasMetaWithRefs(refs) { const sorted = refs.slice().sort().join("|"); return this.constraints.some(c => c.kind === "meta" && c.refs && c.refs.slice().sort().join("|") === sorted); },
+  _hasFamilyMetaFor(famType) { return this.constraints.some(c => c.kind === "meta" && c.metaKind === "family" && c.familyType === famType); },
+
+  reason() {
+    const findings = [];
+    const derived = this.constraints.filter(c => (c.kind === "derived" || c.kind === "ratified") && (c.uses || 0) >= 1);
+    const byType = Object.create(null);
+    for (const c of derived) { if (!c.pattern) continue; if (!byType[c.pattern.type]) byType[c.pattern.type] = []; byType[c.pattern.type].push(c); }
+    for (const t in byType) {
+      const arr = byType[t];
+      if (arr.length === 1) findings.push({ kind: "isolated", text: "'" + arr[0].desc + "' is the only '" + t + "' constraint" });
+      else findings.push({ kind: "differentiation", text: "'" + arr[0].desc + "' vs '" + arr[1].desc + "': " + this._diffPair(arr[0], arr[1]) });
+    }
+    const unused = this.constraints.filter(c => (c.kind === "derived" || c.kind === "predictive") && (c.uses || 0) === 0);
+    if (unused.length > 0) findings.push({ kind: "observation", text: unused.length + " constraint(s) never matched input since creation" });
+    const pred = this.constraints.filter(c => c.kind === "predictive").length;
+    const rat = this.constraints.filter(c => c.kind === "ratified").length;
+    if (pred + rat > 0) findings.push({ kind: "reaching", text: "field has " + pred + " active prediction(s), " + rat + " ratified; ratification rate = " + (this.ratCount / Math.max(1, this.inputCount)).toFixed(2) });
+    if (this.subcascades.length > 0) findings.push({ kind: "observation", text: this.subcascades.length + " sub-cascade(s); naming preference = " + this.namingPref.toFixed(3) });
+    if (this.gap > CFG.GAP_PREDICT_THRESH) findings.push({ kind: "vector-delta", text: "gap " + this.gap.toFixed(3) + " above threshold; field is reaching" });
+    else findings.push({ kind: "vector-delta", text: "gap " + this.gap.toFixed(3) + " within threshold; field is settled" });
+    return findings;
+  },
+  _diffPair(a, b) {
+    if (!a.pattern || !b.pattern) return "patterns missing";
+    const t = a.pattern.type;
+    if (t === "has-token") return "tokens '" + a.pattern.token + "' vs '" + b.pattern.token + "'";
+    if (t === "length-range") return "ranges [" + a.pattern.min + "," + a.pattern.max + "] vs [" + b.pattern.min + "," + b.pattern.max + "]";
+    if (t === "char-class") return "classes " + a.pattern.cls + " vs " + b.pattern.cls;
+    if (t === "co-occurs") return "pairs '" + a.pattern.a + "+" + a.pattern.b + "' vs '" + b.pattern.a + "+" + b.pattern.b + "'";
+    return "same type";
+  },
+
+  recordFidelity(matched, deltaDrop) {
+    const byFam = Object.create(null);
+    for (const idx of matched) {
+      const c = this.constraints[idx];
+      if (!c || !c.pattern || (c.kind !== "derived" && c.kind !== "ratified")) continue;
+      byFam[c.pattern.type] = (byFam[c.pattern.type] || 0) + 1;
+    }
+    for (const fam in byFam) {
+      if (byFam[fam] < 2) continue;
+      if (!this.familyFidelity[fam]) this.familyFidelity[fam] = { observations: [], totalFires: 0 };
+      const fid = this.familyFidelity[fam];
+      fid.observations.push(deltaDrop); fid.totalFires++;
+      while (fid.observations.length > CFG.FIDELITY_WINDOW) fid.observations.shift();
+    }
+  },
+  fidelityOf(famType) { const fid = this.familyFidelity[famType]; if (!fid || fid.observations.length === 0) return 0; return fid.observations.reduce((s, x) => s + x, 0) / fid.observations.length; },
+  checkPromotions() {
+    const promoted = [];
+    if (this.subcascades.length >= CFG.SUB_CASCADE_CAP) return promoted;
+    for (const fam in this.familyFidelity) {
+      const fid = this.familyFidelity[fam];
+      if (fid.totalFires < CFG.FIDELITY_MIN_FIRES) continue;
+      const avg = this.fidelityOf(fam);
+      if (avg < CFG.FIDELITY_PROMOTE) continue;
+      if (this._subForFamily(fam)) continue;
+      const members = this.constraints.filter(c => (c.kind === "derived" || c.kind === "ratified") && c.pattern && c.pattern.type === fam).map(c => c.id);
+      if (members.length < 2) continue;
+      const sc = this._mkSubcascade(fam, members, avg);
+      this.subcascades.push(sc); promoted.push(sc);
+      if (this.subcascades.length >= CFG.SUB_CASCADE_CAP) break;
+    }
+    return promoted;
+  },
+  _subForFamily(famType) { return this.subcascades.find(sc => sc.familyType === famType) || null; },
+  _mkSubcascade(famType, memberIds, fidAtBirth) {
+    let dom = null, maxU = -1;
+    for (const id of memberIds) { const c = this._findById(id); if (c && (c.uses || 0) > maxU) { maxU = c.uses || 0; dom = c; } }
+    let raw = famType;
+    if (dom && dom.pattern) {
+      const p = dom.pattern;
+      if (p.type === "has-token") raw = p.token;
+      else if (p.type === "char-class") raw = p.cls;
+      else if (p.type === "length-range") raw = "len-" + p.min + "-" + p.max;
+      else if (p.type === "co-occurs") raw = p.a + "-" + p.b;
+    }
+    let name = String(raw).toLowerCase().replace(/[^a-z0-9-]/g, "").substring(0, 20);
+    if (!name) name = "sc";
+    let final = name, suffix = 2;
+    while (this._nameInUse(final)) { final = name + "-" + suffix; suffix++; if (suffix > 99) { final = name + "-x"; break; } }
+    return { id: "sc::" + (++this._idCtr), name: final, familyType: famType, memberIds: memberIds.slice(), birth: this.step, lastNamed: -1, namedCount: 0, fidAtBirth };
+  },
+  _nameInUse(name) { return this.subcascades.some(sc => sc.name === name); },
+  detectNames(input) {
+    if (!input || this.subcascades.length === 0) return [];
+    const tokens = input.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    return this.subcascades.filter(sc => sc.name && tokens.indexOf(sc.name) >= 0);
+  },
+  computeSubcascadeDelta(sc) {
+    if (!sc || !sc.memberIds.length) return 1.0;
+    const members = sc.memberIds.map(id => this._findById(id)).filter(c => c);
+    return this._deltaOver(members);
+  },
+  reinforceNaming(wasNamed) {
+    if (wasNamed) this.namingPref = Math.min(1.0, this.namingPref + CFG.NAMING_PREF_RATE * 2);
+    else this.namingPref = Math.max(0.0, this.namingPref - CFG.NAMING_PREF_RATE * 0.5);
+  }
+};
+
+const Trace = {
+  entries: [],
+  append(scope, op, vd, detail, tag) {
+    this.entries.push({
+      step: Field.step, scope: String(scope || "field"), op: String(op || ""),
+      scalar: vd && typeof vd.scalar === "number" ? vd.scalar : Field.scalarDelta,
+      fast: vd && typeof vd.fast === "number" ? vd.fast : Field.fastDelta,
+      slow: vd && typeof vd.slow === "number" ? vd.slow : Field.slowDelta,
+      gap: vd && typeof vd.gap === "number" ? vd.gap : Field.gap,
+      detail: Guards.clampString(detail || "", 100), tag: tag || null
+    });
+    while (this.entries.length > CFG.TRACE_CAP) this.entries.shift();
+  },
+  clear() { this.entries = []; }
+};
+
+const OpsLog = {
+  entries: [],
+  append(opLabel, detail) {
+    this.entries.unshift({ step: Field.step, op: String(opLabel), detail: Guards.clampString(detail || "", 140) });
+    while (this.entries.length > CFG.OPS_LOG_CAP) this.entries.pop();
+  },
+  clear() { this.entries = []; }
+};
+
+const er = new (window.ERengineModule.ERengine)();
+
+const Processor = {
+  async process(input) {
+    input = Guards.clampString(input, CFG.INPUT_MAX);
+    if (!input) return null;
+    Field.step++; Field.inputCount++;
+    const named = Field.detectNames(input);
+    const wasNamed = named.length > 0;
+    if (wasNamed) { Field.namedCount++; for (const sc of named) { sc.namedCount++; sc.lastNamed = Field.step; } }
+    Field.refreshVectorDelta();
+    const vBefore = { scalar: Field.scalarDelta, fast: Field.fastDelta, slow: Field.slowDelta, gap: Field.gap };
+    Trace.append("field", "seed-eval", vBefore, "what is delta? -> s=" + vBefore.scalar.toFixed(3));
+    if (wasNamed) Trace.append("field", "named-event", vBefore, "called by name: " + named.map(s=>s.name).join(", "), "named");
+
+    const compiled = window.ConstraintCompiler.compileField(Field.constraints);
+    const inputRec = window.ConstraintCompiler.computeInputRecord(input, compiled.tokenTable);
+    const matchArr = await er.evaluateAsync(compiled, inputRec);
+    Trace.append("er", "eval", vBefore, "n=" + Field.constraints.length + " in " + er.lastDispatchMS.toFixed(2) + "ms", "frame");
+
+    const matched = [];
+    for (let i = 1; i < matchArr.length; i++) if (matchArr[i] === 1) matched.push(i);
+    const novelty = Field.constraints.length <= 1 ? 1.0 : 1.0 - (matched.length / (Field.constraints.length - 1));
+    const evalResult = { matched, novelty: Guards.clamp01(novelty) };
+
+    const chosen = Field.selectFromMatches(matched, named);
+    const chosenIndices = chosen.map(c => c.idx);
+    const ratified = [];
+    for (const idx of matched) {
+      const c = Field.constraints[idx];
+      if (c && c.kind === "predictive" && Field.ratify(idx)) ratified.push(c);
+    }
+    if (ratified.length) Trace.append("field", "ratification", vBefore, "ratified " + ratified.length, "ratified");
+
+    const generated = Field.generate(input, evalResult);
+    if (generated.length) { Field.integrate(generated); Trace.append("field", "generated", vBefore, "+" + generated.length + " derived"); }
+    if (chosenIndices.length >= 2) Field.updateCorrelations(chosenIndices);
+    Field.markUsed(chosenIndices);
+    const touched = chosenIndices.map(i => Field.constraints[i] && Field.constraints[i].id).filter(Boolean);
+    Field.recordOp("input", touched);
+
+    Field.refreshVectorDelta(); Field.updateSlowDelta(Field.scalarDelta); Field.refreshVectorDelta();
+    let vAfter = { scalar: Field.scalarDelta, fast: Field.fastDelta, slow: Field.slowDelta, gap: Field.gap };
+    if (wasNamed) {
+      const bonus = Math.min(0.4, CFG.NAMING_DELTA_DROP * named.length);
+      vAfter.scalar = Math.max(0, vAfter.scalar - bonus);
+      Field.scalarDelta = vAfter.scalar;
+      Trace.append("field", "naming-bias", vAfter, "-" + bonus.toFixed(3) + " from naming");
+    }
+    Field.modulate();
+    const absDrop = vBefore.scalar - vAfter.scalar;
+    const relDrop = vBefore.scalar > 0.001 ? absDrop / vBefore.scalar : 0;
+    Field.recordFidelity(chosenIndices, relDrop);
+    Field.reinforceNaming(wasNamed);
+
+    const predictions = Field.generatePredictions();
+    if (predictions.length) { Field.integrate(predictions); Trace.append("field", "predictions-generated", vAfter, "+" + predictions.length + " predictive", "predicted"); }
+    const evicted = Field.evictStalePredictions();
+    if (evicted.length) Trace.append("field", "predictions-evicted", vAfter, "-" + evicted.length + " aged out");
+
+    return this.describe(input, chosen, generated, predictions, ratified, named, vBefore, vAfter);
+  },
+  describe(input, chosen, generated, predictions, ratified, named, vBefore, vAfter) {
+    const chosenDescs = [];
+    for (let i = 0; i < chosen.length && i < 6; i++) {
+      const c = Field.constraints[chosen[i].idx];
+      if (c && c.desc) {
+        let tag = "";
+        if (c.kind === "ratified") tag = " [RAT]";
+        else if (c.kind === "meta") tag = " [" + (c.metaKind || "meta").toUpperCase() + "]";
+        chosenDescs.push(c.desc + tag + (chosen[i].named ? " [NAMED]" : "") + " [w=" + chosen[i].effectiveWeight.toFixed(2) + "]");
+      }
+    }
+    const namedNames = (named || []).map(s => s.name);
+    let posture;
+    if (namedNames.length) posture = "named " + namedNames.join(", ") + "; " + chosen.length + " chosen / " + generated.length + " new";
+    else if (ratified.length) posture = "ratified " + ratified.length + " prediction(s)";
+    else if (chosen.length === 0 && generated.length === 0) posture = "no field-response";
+    else if (chosen.length === 0) posture = "novel; generated " + generated.length;
+    else if (generated.length === 0) posture = "recognized; " + chosen.length + " chosen";
+    else posture = "partial; " + chosen.length + " chosen / " + generated.length + " new";
+    return { input, posture, chosen: chosenDescs, generated: generated.map(c=>c.desc), predictions: predictions.map(c=>c.desc), ratified: ratified.map(c=>c.desc), named: namedNames, vBefore, vAfter, step: Field.step };
+  },
+  async tick() {
+    Field.step++;
+    Field.refreshVectorDelta(); Field.updateSlowDelta(Field.scalarDelta); Field.refreshVectorDelta();
+    Field.modulate();
+    const preds = Field.generatePredictions();
+    if (preds.length) { Field.integrate(preds); Trace.append("field", "tick-predictions", null, "+" + preds.length + " predictive", "predicted"); }
+    Field.evictStalePredictions();
+    Trace.append("field", "tick", null, "idle advance");
+  },
+  runDevelop() { const p = Field.developPatterns(); Field.refreshVectorDelta(); Trace.append("field", "develop-patterns", null, "+" + p.length + " meta"); OpsLog.append("DEVELOP", p.length === 0 ? "no new patterns" : "produced " + p.length + " meta"); return p; },
+  runCorrelate() { const t = Field.topCorrelations(15); Trace.append("field", "correlate-inspect", null, t.length + " top pairs"); OpsLog.append("CORRELATE", t.length === 0 ? "no correlations yet" : "top " + t.length + " inspected"); return t; },
+  runReason() { const f = Field.reason(); Trace.append("field", "reason", null, f.length + " findings"); for (let i = 0; i < f.length && i < 4; i++) OpsLog.append("REASON", f[i].text); if (f.length === 0) OpsLog.append("REASON", "no findings"); return f; },
+  runPromote() { const p = Field.checkPromotions(); Trace.append("field", "check-promotions", null, p.length === 0 ? "none" : "+" + p.length); if (p.length === 0) OpsLog.append("PROMOTE", "no families met threshold"); else for (const sc of p) OpsLog.append("PROMOTE", "'" + sc.name + "' (" + sc.familyType + ") fid=" + sc.fidAtBirth.toFixed(3)); return p; },
+  async autoTick(count) {
+    count = count || CFG.AUTO_TICK_COUNT;
+    let meta = 0, prom = 0;
+    for (let i = 0; i < count; i++) {
+      await this.tick();
+      if ((i % 5) === 4) { meta += Field.developPatterns().length; prom += Field.checkPromotions().length; }
+    }
+    OpsLog.append("AUTO TICK x" + count, "+" + meta + " meta, +" + prom + " sub-cascades");
+  }
+};
+
+const UI = {
+  outputs: [], busy: false,
+  async mount() {
+    const byId = id => document.getElementById(id);
+    byId("btn-submit").addEventListener("click", () => UI.submit());
+    byId("btn-tick").addEventListener("click", () => UI.tickClick());
+    byId("btn-reset").addEventListener("click", () => UI.reset());
+    byId("btn-develop").addEventListener("click", () => UI.develop());
+    byId("btn-correlate").addEventListener("click", () => UI.correlate());
+    byId("btn-reason").addEventListener("click", () => UI.reason());
+    byId("btn-promote").addEventListener("click", () => UI.promote());
+    byId("btn-auto").addEventListener("click", () => UI.auto());
+    byId("input-box").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); UI.submit(); } });
+    Field.reset(); Field.refreshVectorDelta(); this.render();
+    this.setStatus("initializing", "ER: initializing");
+    const state = await er.init(async () => { const r = await fetch("resolve-fresh.wgsl"); return await r.text(); });
+    if (state === "gpu-ready") this.setStatus("gpu-ready", "ER: GPU ready");
+    else if (state === "cpu-fallback") this.setStatus("cpu-fallback", "ER: CPU fallback");
+    else this.setStatus("error", "ER: error");
+    this.render();
+  },
+  setStatus(cls, text) { const el = document.getElementById("er-status"); if (el) { el.className = "er-status " + cls; el.textContent = text; } },
+  async submit() {
+    if (this.busy) return;
+    this.busy = true;
+    const inp = document.getElementById("input-box");
+    const val = inp.value;
+    if (!val || !val.trim()) { this.busy = false; return; }
+    const desc = await Processor.process(val);
+    if (desc) { this.outputs.unshift(desc); while (this.outputs.length > CFG.OUT_CAP) this.outputs.pop(); }
+    inp.value = "";
+    this.render();
+    this.busy = false;
+  },
+  async tickClick() { if (this.busy) return; this.busy = true; await Processor.tick(); this.render(); this.busy = false; },
+  reset() { Field.reset(); Field.refreshVectorDelta(); Trace.clear(); OpsLog.clear(); this.outputs = []; Trace.append("field", "reset", null, "seed-only"); this.render(); },
+  develop() { Processor.runDevelop(); this.render(); },
+  correlate() { Processor.runCorrelate(); this.render(); },
+  reason() { Processor.runReason(); this.render(); },
+  promote() { Processor.runPromote(); this.render(); },
+  async auto() { if (this.busy) return; this.busy = true; await Processor.autoTick(); this.render(); this.busy = false; },
+  render() {
+    this.renderMetrics(); this.renderEr(); this.renderSubcascades();
+    this.renderField(); this.renderPredictions(); this.renderOps();
+    this.renderCorrelations(); this.renderTrace(); this.renderOutputs();
+  },
+  _t(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; },
+  _b(id, frac) { const el = document.getElementById(id); if (el) el.style.width = (Guards.clamp01(frac) * 100).toFixed(1) + "%"; },
+  renderMetrics() {
+    this._t("m-delta", Field.scalarDelta.toFixed(4)); this._b("bar-delta", Field.scalarDelta);
+    this._t("m-fast-d", Field.fastDelta.toFixed(4)); this._b("bar-fast-d", Field.fastDelta);
+    this._t("m-slow-d", Field.slowDelta.toFixed(4)); this._b("bar-slow-d", Field.slowDelta);
+    this._t("m-gap", Field.gap.toFixed(4)); this._b("bar-gap", Math.min(1, Field.gap * 3));
+    let d=0,p=0,r=0,m=0;
+    for (const c of Field.constraints) { if (c.kind==="derived") d++; else if (c.kind==="predictive") p++; else if (c.kind==="ratified") r++; else if (c.kind==="meta") m++; }
+    this._t("m-total", String(Field.constraints.length));
+    this._t("m-kinds", d + " / " + p + " / " + r + " / " + m);
+    this._t("m-sub", String(Field.subcascades.length));
+    this._t("m-corr", String(Object.keys(Field.correlations).length));
+    this._t("m-inputs", Field.inputCount + " / " + Field.namedCount);
+    this._t("m-rats", String(Field.ratCount));
+    this._t("m-step", String(Field.step));
+  },
+  renderEr() {
+    this._t("m-er-pipeline", er.state);
+    this._t("m-er-frames", String(er.framesRun));
+    this._t("m-er-dispatch", er.lastDispatchMS.toFixed(2) + " ms");
+    this._t("m-er-input", er.lastCompiled ? ("n=" + er.lastCompiled.constraintCount) : "-");
+  },
+  renderSubcascades() {
+    const view = document.getElementById("sub-view"); if (!view) return;
+    view.innerHTML = "";
+    if (Field.subcascades.length === 0) { const h = document.createElement("div"); h.style.color="#44444e"; h.style.fontStyle="italic"; h.style.fontSize="9px"; h.textContent="no sub-cascades yet."; view.appendChild(h); return; }
+    for (const sc of Field.subcascades) {
+      const row = document.createElement("div");
+      const recently = (Field.step - sc.lastNamed) < 5 && sc.lastNamed >= 0;
+      row.className = "sub-row" + (recently ? " recently-named" : "");
+      const nm = document.createElement("div"); nm.className = "sub-name"; nm.textContent = sc.name + "  (" + sc.familyType + ")";
+      const mt = document.createElement("div"); mt.className = "sub-meta";
+      mt.textContent = "members=" + sc.memberIds.length + "  named=" + sc.namedCount + "  local-d=" + Field.computeSubcascadeDelta(sc).toFixed(3) + "  fid=" + sc.fidAtBirth.toFixed(3);
+      row.appendChild(nm); row.appendChild(mt); view.appendChild(row);
+    }
+  },
+  renderField() {
+    const view = document.getElementById("field-view"); if (!view) return;
+    view.innerHTML = "";
+    const sorted = Field.constraints.slice().sort((a, b) => {
+      if (a.kind === "seed") return -1; if (b.kind === "seed") return 1;
+      if (a.kind === "ratified" && b.kind !== "ratified") return -1;
+      if (b.kind === "ratified" && a.kind !== "ratified") return 1;
+      return (b.birth || 0) - (a.birth || 0);
+    });
+    for (let i = 0; i < sorted.length && i < 50; i++) {
+      const c = sorted[i]; if (c.kind === "predictive") continue;
+      const row = document.createElement("div"); row.className = "c-row " + c.kind;
+      let txt;
+      if (c.kind === "seed") txt = "[seed] " + c.question;
+      else if (c.kind === "meta") txt = "[" + (c.metaKind || "meta") + "] " + (c.desc || "") + "  (uses=" + (c.uses||0) + ")";
+      else txt = "[" + (c.pattern && c.pattern.type || "?") + "] " + (c.desc || "") + "  (uses=" + (c.uses||0) + " w=" + (c.weight||1).toFixed(2) + ")";
+      const k = document.createElement("div"); k.className = "k"; k.textContent = c.id;
+      const v = document.createElement("div"); v.className = "v"; v.textContent = txt;
+      row.appendChild(k); row.appendChild(v); view.appendChild(row);
+    }
+  },
+  renderPredictions() {
+    const view = document.getElementById("pred-view"); if (!view) return;
+    view.innerHTML = "";
+    const preds = Field.constraints.filter(c => c.kind === "predictive");
+    if (preds.length === 0) { const h = document.createElement("div"); h.style.color="#44444e"; h.style.fontStyle="italic"; h.style.fontSize="9px"; h.textContent="no active predictions."; view.appendChild(h); return; }
+    for (const c of preds.sort((a,b) => (b.birth||0)-(a.birth||0))) {
+      const row = document.createElement("div"); row.className = "c-row predictive";
+      const age = Field.step - c.birth;
+      const k = document.createElement("div"); k.className = "k"; k.textContent = c.id;
+      const v = document.createElement("div"); v.className = "v"; v.textContent = "[" + (c.pattern && c.pattern.type || "?") + "] " + (c.desc || "") + "  (age=" + age + "/" + CFG.PRED_AGE_LIMIT + ")";
+      row.appendChild(k); row.appendChild(v); view.appendChild(row);
+    }
+  },
+  renderOps() {
+    const view = document.getElementById("ops-view"); if (!view) return;
+    view.innerHTML = "";
+    if (OpsLog.entries.length === 0) { const h = document.createElement("div"); h.style.color="#44444e"; h.style.fontStyle="italic"; h.style.fontSize="9px"; h.textContent="no operations yet."; view.appendChild(h); return; }
+    for (const e of OpsLog.entries) {
+      const box = document.createElement("div"); box.className = "op-entry";
+      const lbl = document.createElement("div"); lbl.className = "op-label"; lbl.textContent = "[" + e.step + "] " + e.op;
+      const det = document.createElement("div"); det.className = "op-detail"; det.textContent = e.detail;
+      box.appendChild(lbl); box.appendChild(det); view.appendChild(box);
+    }
+  },
+  renderCorrelations() {
+    const view = document.getElementById("corr-view"); if (!view) return;
+    view.innerHTML = "";
+    const top = Field.topCorrelations(15);
+    if (top.length === 0) { const h = document.createElement("div"); h.style.color="#44444e"; h.style.fontStyle="italic"; h.style.fontSize="9px"; h.textContent="no correlations yet."; view.appendChild(h); return; }
+    for (const c of top) {
+      const row = document.createElement("div"); row.className = "corr-row";
+      row.textContent = c.a + " <-> " + c.b + "  coFire=" + c.coFire;
+      view.appendChild(row);
+    }
+  },
+  renderTrace() {
+    const view = document.getElementById("trace-view"); if (!view) return;
+    view.innerHTML = "";
+    const recent = Trace.entries.slice(-36).reverse();
+    for (const e of recent) {
+      const row = document.createElement("div"); row.className = "t-entry" + (e.tag ? " " + e.tag : "");
+      const s1 = document.createElement("span"); s1.className = "scope"; s1.textContent = "[" + String(e.step).padStart(3, "0") + "] ";
+      const s2 = document.createElement("span"); s2.className = "op"; s2.textContent = e.op + " ";
+      const s3 = document.createElement("span"); s3.className = "delta";
+      s3.textContent = "s=" + e.scalar.toFixed(2) + " f=" + e.fast.toFixed(2) + " l=" + e.slow.toFixed(2) + "  " + (e.detail || "");
+      row.appendChild(s1); row.appendChild(s2); row.appendChild(s3); view.appendChild(row);
+    }
+  },
+  renderOutputs() {
+    const view = document.getElementById("out-view"); if (!view) return;
+    view.innerHTML = "";
+    if (this.outputs.length === 0) {
+      const h = document.createElement("div"); h.style.color="#44444e"; h.style.fontStyle="italic"; h.style.fontSize="9px";
+      h.textContent="no descriptions yet. submit input.";
+      view.appendChild(h); return;
+    }
+    for (const o of this.outputs) {
+      const box = document.createElement("div");
+      box.className = "out-entry" + (o.ratified && o.ratified.length ? " ratified" : "");
+      const inp = document.createElement("div"); inp.className = "in";
+      inp.textContent = "[" + o.step + "] \"" + o.input + "\"";
+      const post = document.createElement("div"); post.className = "desc"; post.textContent = o.posture;
+      box.appendChild(inp); box.appendChild(post);
+      if (o.named && o.named.length) { const n = document.createElement("div"); n.className = "desc"; n.textContent = "NAMED: " + o.named.join(", "); n.style.color = "#aaccdc"; box.appendChild(n); }
+      if (o.chosen && o.chosen.length) { const c = document.createElement("div"); c.className = "desc"; c.textContent = "chosen: " + o.chosen.slice(0,3).join("; "); box.appendChild(c); }
+      if (o.generated && o.generated.length) { const g = document.createElement("div"); g.className = "desc"; g.textContent = "+ " + o.generated.length + " generated"; box.appendChild(g); }
+      if (o.predictions && o.predictions.length) { const p = document.createElement("div"); p.className = "desc"; p.style.color = "#c8a078"; p.textContent = "reaching: " + o.predictions.slice(0,2).join("; "); box.appendChild(p); }
+      if (o.ratified && o.ratified.length) { const r = document.createElement("div"); r.className = "desc"; r.style.color = "#8ad8a8"; r.textContent = "RATIFIED: " + o.ratified.join("; "); box.appendChild(r); }
+      const m = document.createElement("div"); m.className = "meta";
+      m.textContent = "s: " + o.vBefore.scalar.toFixed(3) + " -> " + o.vAfter.scalar.toFixed(3) + " | f: " + o.vAfter.fast.toFixed(2) + " | gap: " + o.vAfter.gap.toFixed(2);
+      box.appendChild(m);
+      view.appendChild(box);
+    }
+  }
+};
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => UI.mount());
+else UI.mount();
+
+})();
+</script>
+
+</body>
+</html>

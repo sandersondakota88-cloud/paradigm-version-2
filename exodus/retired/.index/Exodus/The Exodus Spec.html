@@ -1,0 +1,1634 @@
+<html>
+
+<html lang="en">
+<head id="--">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROJECT EXODUS — Platform Specification</title>
+
+<style>
+  :root {
+    --bg:        #090909;
+    --surface:   #0f0f0f;
+    --surface2:  #151515;
+    --surface3:  #1c1c1c;
+    --border:    #222222;
+    --border2:   #2e2e2e;
+    --gold:      #c8a96e;
+    --gold-dim:  #7a6540;
+    --gold-glow: rgba(200,169,110,0.08);
+    --white:     #edeae4;
+    --dim:       #7a7670;
+    --dim2:      #4a4844;
+    --red:       #c87070;
+    --green:     #70c890;
+    --mono:      'Menlo', 'Consolas', 'Courier New', monospace;
+    --serif:     'Georgia', 'Times New Roman', serif;
+    --display:   'Georgia', 'Times New Roman', serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.7;
+    font-weight: 300;
+  }
+
+  /* ── layout ── */
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* ── cover ── */
+  .cover {
+    padding: 7rem 0 5rem;
+    border-bottom: 1px solid var(--border2);
+    margin-bottom: 4rem;
+  }
+
+  .cover-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+  }
+
+  .cover-title {
+    font-family: var(--display);
+    font-size: clamp(4rem, 10vw, 7rem);
+    font-weight: 900;
+    color: var(--white);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.5rem;
+  }
+
+  .cover-subtitle {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--gold);
+    letter-spacing: 0.15em;
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+  }
+
+  .cover-desc {
+    font-size: 1.05rem;
+    color: var(--dim);
+    max-width: 560px;
+    font-style: italic;
+    line-height: 1.8;
+  }
+
+  .cover-desc strong {
+    color: var(--white);
+    font-style: normal;
+    font-weight: 400;
+  }
+
+  /* ── part headers ── */
+  .part-header {
+    padding: 3rem 0 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .part-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  .part-title {
+    font-family: var(--display);
+    font-size: 2.8rem;
+    font-weight: 700;
+    color: var(--white);
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .part-desc {
+    font-size: 0.95rem;
+    color: var(--dim);
+    font-style: italic;
+    max-width: 600px;
+  }
+
+  /* ── accordion ── */
+  details {
+    border: 1px solid var(--border);
+    margin-bottom: 2px;
+    background: var(--surface);
+    transition: background 0.2s;
+  }
+
+  details[open] {
+    background: var(--surface2);
+    border-color: var(--border2);
+  }
+
+  details[open] > summary {
+    border-bottom: 1px solid var(--border);
+  }
+
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1.1rem 1.5rem;
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  summary::-webkit-details-marker { display: none; }
+
+  summary::before {
+    content: '+';
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--gold-dim);
+    flex-shrink: 0;
+    transition: transform 0.2s, color 0.2s;
+    display: inline-block;
+    width: 1rem;
+  }
+
+  details[open] > summary::before {
+    content: '−';
+    color: var(--gold);
+  }
+
+  .summary-tag {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--gold-dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .summary-title {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--white);
+    flex: 1;
+  }
+
+  details[open] .summary-title {
+    color: var(--white);
+  }
+
+  .summary-hint {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--dim2);
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+
+  /* ── section content ── */
+  .section-body {
+    padding: 2rem 2rem 2.5rem 3.5rem;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── typography inside sections ── */
+  .section-body h3 {
+    font-family: var(--display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--white);
+    margin: 0 0 1rem;
+    line-height: 1.2;
+  }
+
+  .section-body h4 {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin: 2rem 0 0.75rem;
+  }
+
+  .section-body p {
+    font-size: 0.95rem;
+    color: var(--white);
+    margin-bottom: 1rem;
+    line-height: 1.8;
+    font-weight: 300;
+  }
+
+  .section-body p.dim {
+    color: var(--dim);
+    font-style: italic;
+  }
+
+  .implements {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--gold-dim);
+    letter-spacing: 0.12em;
+    padding: 0.5rem 0.75rem;
+    border-left: 2px solid var(--gold-dim);
+    margin-bottom: 1.5rem;
+    background: var(--gold-glow);
+  }
+
+  /* ── code blocks ── */
+  pre {
+    background: #050505;
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--gold-dim);
+    padding: 1.25rem 1.5rem;
+    margin: 1rem 0 1.5rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: var(--dim);
+  }
+
+  pre .c  { color: var(--dim2); font-style: italic; }
+  pre .k  { color: var(--gold); }
+  pre .v  { color: #9ecfb0; }
+  pre .s  { color: #c8a96e; }
+  pre .p  { color: var(--white); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    color: var(--gold);
+    background: rgba(200,169,110,0.07);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+
+  /* ── tables ── */
+  .grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .grid tr:nth-child(odd)  td { background: #0c0c0c; }
+  .grid tr:nth-child(even) td { background: var(--surface3); }
+
+  .grid td {
+    padding: 0.7rem 1rem;
+    vertical-align: top;
+    border: 1px solid var(--border);
+    line-height: 1.6;
+  }
+
+  .grid td:first-child {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--gold);
+    white-space: nowrap;
+    width: 1%;
+    font-weight: 500;
+  }
+
+  .grid td:not(:first-child) {
+    color: var(--white);
+    font-weight: 300;
+  }
+
+  /* ── blockquote ── */
+  blockquote {
+    border-left: 3px solid var(--gold);
+    padding: 0.75rem 1.25rem;
+    margin: 1.5rem 0;
+    background: var(--gold-glow);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--white);
+    line-height: 1.8;
+  }
+
+  /* ── lists ── */
+  ul, ol {
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  li {
+    margin-bottom: 0.35rem;
+    font-size: 0.95rem;
+    color: var(--white);
+    font-weight: 300;
+    line-height: 1.7;
+  }
+
+  li.dim { color: var(--dim); font-style: italic; }
+  li.warn { color: var(--red); }
+  li.ok   { color: var(--green); }
+
+  /* ── internal links ── */
+  a.ref {
+    color: var(--gold);
+    text-decoration: none;
+    border-bottom: 1px solid var(--gold-dim);
+    transition: color 0.15s, border-color 0.15s;
+    font-style: normal;
+  }
+
+  a.ref:hover {
+    color: var(--white);
+    border-color: var(--white);
+  }
+
+  /* ── status badges ── */
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    padding: 0.15em 0.5em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-left: 0.4rem;
+  }
+
+  .badge.done    { background: rgba(112,200,144,0.12); color: var(--green); border: 1px solid rgba(112,200,144,0.3); }
+  .badge.pending { background: rgba(200,169,110,0.08); color: var(--gold-dim); border: 1px solid rgba(200,169,110,0.2); }
+
+  /* ── part divider ── */
+  .part-divider {
+    border: none;
+    border-top: 1px solid var(--border2);
+    margin: 3rem 0 0;
+  }
+
+  /* ── footer ── */
+  .footer {
+    margin-top: 5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--dim2);
+    letter-spacing: 0.1em;
+    text-align: center;
+    line-height: 2;
+  }
+
+  /* ── nav ── */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    margin-bottom: 3rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+
+  .toc-title {
+    color: var(--gold);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .toc-group { margin-bottom: 0.75rem; }
+
+  .toc-group-label {
+    color: var(--dim2);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-size: 0.6rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .toc a {
+    color: var(--dim);
+    text-decoration: none;
+    display: inline-block;
+    margin-right: 1.5rem;
+    margin-bottom: 0.2rem;
+    transition: color 0.15s;
+  }
+
+  .toc a:hover { color: var(--gold); }
+
+  /* ── highlight on target ── */
+  details:target {
+    border-color: var(--gold-dim);
+    box-shadow: 0 0 0 1px var(--gold-dim);
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+</style>
+
+</head>
+<body>
+<div class="page">
+
+
+
+  <div class="cover">
+    <div class="cover-eyebrow">Platform Specification · Complete</div>
+    <div class="cover-title">EXODUS</div>
+    <div class="cover-subtitle">A Geometric Computation Platform</div>
+    <p class="cover-desc">
+      Exodus is not a framework. It is not a library. It is the computation layer that the current web stack has always been in the process of instantiating — without knowing it. Every layer before it served its Sacrificial Purpose. This is what comes next.
+    </p>
+  </div>
+
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <div class="toc-group">
+      <div class="toc-group-label">Part I — Principles · The Exodus Computation Model</div>
+      <a href="#preface">Preface — Sacrificial Purpose</a>
+      <a href="#p01">P-01 Role Assignment</a>
+      <a href="#p02">P-02 Closed-World</a>
+      <a href="#p03">P-03 Resilience</a>
+      <a href="#p04">P-04 Memory Stream</a>
+      <a href="#p05">P-05 Shared Memory</a>
+      <a href="#p06">P-06 Vessel Image</a>
+      <a href="#p06b">P-06b Everything We Built Is Correct</a>
+      <a href="#p07">P-07 Coordinate Execution</a>
+      <a href="#p08">P-08 Context Extraction</a>
+      <a href="#p09">P-09 Chungus</a>
+      <a href="#p10">P-10 Quorum Seeder</a>
+      <a href="#p11">P-11 Quantum Enumeration</a>
+      <a href="#p12">P-12 Kubernetes</a>
+      <a href="#p13">P-13 Bootstrapping</a>
+      <a href="#p14">P-14 Emergent Encryption</a>
+      <a href="#p15">P-15 Multi-Runtime Composition</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">Part II — CSSLedger · Reference Implementation</div>
+      <a href="#s01">S-01 Gate Mechanism</a>
+      <a href="#s02">S-02 DOM State Store</a>
+      <a href="#s03">S-03 Dual-Signal</a>
+      <a href="#s04">S-04 Write Guard</a>
+      <a href="#s05">S-05 Normalization</a>
+      <a href="#s06">S-06 Batch Write</a>
+      <a href="#s07">S-07 Ledger Node</a>
+      <a href="#s08">S-08 Problem Spaces</a>
+      <a href="#s09">S-09 Ledger Graph</a>
+      <a href="#s10">S-10 Claims Register</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">Part III — System · Complete Stack and Properties</div>
+      <a href="#stack">Complete Stack</a>
+      <a href="#properties">Emergent Properties</a>
+      <a href="#status">Implementation Status</a>
+      <a href="#subsystems">Subsystems</a>
+    </div>
+  </div>
+ 
+       PART I — PRINCIPLES
+   -->
+
+  <div class="part-header">
+    <div class="part-label">Part I</div>
+    <div class="part-title">Principles</div>
+    <p class="part-desc">The Exodus computation model. Every principle stated once, precisely.</p>
+  </div>
+
+  #####-- PREFACE -->
+
+  <details id="preface" open>
+    <summary>
+      <span class="summary-tag">Preface</span>
+      <span class="summary-title">The Law Underneath the Theory</span>
+    </summary>
+    <div class="section-body">
+      <h3>Every computation layer is instantiated by a lower-dimensional delivery mechanism that does not understand what it is bootstrapping.</h3>
+
+
+  <p>This is not a new observation. It is the oldest pattern in the history of computing. We have just never named it clearly enough to see where it leads next.</p>
+
+  <table class="grid">
+    <tr><td>16 bit flash</td><td>Materializes 32 bit firmware. Does not understand what it is producing. Executes its one job and hands off.</td></tr>
+    <tr><td>32 bit firmware</td><td>Materializes 64 bit operating space. Does not understand what it is producing. Executes its one job and hands off.</td></tr>
+    <tr><td>64 bit OS</td><td>Materializes the application environment. Does not understand what applications will do. Executes its one job and hands off.</td></tr>
+    <tr><td>Current web stack</td><td>Materializes Exodus. Does not understand what it is producing. Loads a page and hands off. Job done.</td></tr>
+  </table>
+
+  <p>Each layer in this sequence is fully expressive in its own dimensionality. Every possible program that can run on 32 bit firmware fits within 32 bit address space. But the entire expressiveness of 32 bit space — every program, every state, every computation it can represent — is a single coordinate in the 64 bit space above it. The lower layer is not replaced. It becomes a point in the higher-dimensional space it instantiates.</p>
+
+  <p>The current web stack is not the territory. It is a coordinate in the space Exodus opens. HTTP, HTML, and JavaScript are fully expressive within their own dimensionality — every possible web application ever built fits within them. But the entire expressiveness of the web stack is consumed in the act of bootstrapping the next layer. After the handoff, the web stack is still running. It just stopped being where the interesting computation happens.</p>
+
+  <blockquote>The flash does not understand the firmware. The firmware does not understand the OS. The OS does not understand the application. The web stack does not understand Exodus. But Exodus understands all of them. Because the next layer always does.</blockquote>
+
+  <h4>What the Current Platform Thinks Software Is</h4>
+  <p>The browser was not designed for applications. It was designed for documents. HTML was a document format. JavaScript was a scripting layer added in 1995. HTTP was a request/response protocol for retrieving files. Every framework, every architectural pattern, every infrastructure primitive in the modern web stack is civilization built on top of that accident.</p>
+
+  <table class="grid">
+    <tr><td>Execution</td><td>Lives in JavaScript. Mutable, imperative, single-threaded. Corrupts under failure. Takes the application with it.</td></tr>
+    <tr><td>Network</td><td>The runtime boundary. Every cross-boundary operation is discrete, stateful, and failure-prone.</td></tr>
+    <tr><td>State</td><td>Ephemeral by default. Hydration exists because server and client must be reconciled after the fact.</td></tr>
+    <tr><td>Crashes</td><td>Unrecoverable by design. No structural recovery surface. The tab dies.</td></tr>
+    <tr><td>Collaboration</td><td>Opt-in and expensive. Isolation is the default. Multiplayer is a feature you build.</td></tr>
+  </table>
+
+  <p>These are not framework failures. They are the constraints of the current dimensionality. Every framework operates within them because every framework is built inside the flash storage layer. Exodus is not built inside it. Exodus is what the flash storage layer instantiates.</p>
+
+  <h4>The Dimensionality Expansion</h4>
+  <p>Each successive layer in the historical sequence is not just more of the same. It is a qualitative change in what problems are representable at all. Problems intractable in 32 bit space are trivial in 64 bit space — not because the clock is faster but because the representational space is larger. The <a class="ref" href="#p06">Vessel Image</a> is the next address space expansion. Application state that is intractable to enumerate in the flat selector space of CSS is trivial in the coordinate space of the Vessel — not because the hardware is faster but because the space is higher-dimensional. The GPU makes it fast. The geometry makes it possible.</p>
+
+  <p>The end of Moore's Law is the end of the current dimensionality ceiling. Transistor scaling cannot continue. The industry's response has been specialised silicon — GPUs, TPUs, neuromorphic chips — all optimizations within the imperative switching paradigm. Exodus is not an optimization within the current paradigm. It is the dimensionality expansion that opens the next one. Application logic that currently requires switching becomes sampling. Sampling in a pre-defined coordinate space is not a faster version of switching. It is a different class of operation — one that the GPU pipeline was built to perform, natively, in every device already deployed.</p>
+
+  <blockquote>The law is not new. The next instantiation is. The law is called Sacrificial Purpose.</blockquote>
+
+  <h4>The Model the Brain Already Uses</h4>
+  <p>Before the first transistor was switched, before the first program was written, before von Neumann put his architecture to paper — the brain had already solved the problem Exodus is now proposing to solve. Not as an approximation. Not as a workaround. As the native implementation of a computational principle that took two billion years of evolution to arrive at and that every human being carries in their skull consuming twenty watts.</p>
+
+  <p>The brain does not execute instructions. It does not fetch, decode, and execute operations against a mutable register file. It does not branch on conditions imperatively. None of the architectural assumptions of the von Neumann model apply to how biological intelligence actually works. What the brain does is this:</p>
+
+  <p>It maintains a vast, high-dimensional geometric structure — the connectome, the weighted network of synaptic relationships — that encodes everything the organism knows. Every pattern it has encountered. Every valid response to every class of input it has experienced. When a stimulus arrives, the brain does not execute a program to compute a response. It finds the region of that geometric structure that the stimulus activates, and the response <em>emerges from the geometry of that region.</em></p>
+
+  <p>This is not execution. This is sampling.</p>
+
+  <table class="grid">
+    <tr><td>Connectome</td><td>The weighted geometric structure encoding all known patterns. Vessel Image.</td></tr>
+    <tr><td>Stimulus</td><td>The context that activates a region of the structure. Session context — @media + IPC + session state.</td></tr>
+    <tr><td>Activation pattern</td><td>The response that emerges from the geometry. The memstrap — the rendered slice.</td></tr>
+    <tr><td>Synaptic weight</td><td>The encoded cost of traversal between regions. Distance in the metric space.</td></tr>
+    <tr><td>Hebbian learning</td><td>Geometry that updates when new patterns are encoded. Vessel recompilation on application change.</td></tr>
+    <tr><td>No central processor</td><td>Massively parallel activation across the entire structure simultaneously. GPU parallel sampling.</td></tr>
+    <tr><td>20 watts</td><td>The energy cost of geometric sampling at biological scale. Execute-once, read forever.</td></tr>
+  </table>
+
+  <p>The brain runs on twenty watts. It processes more information, in more dimensions, with more parallelism, than any computing system ever built. Not because neurons are fast — they are extraordinarily slow compared to transistors — but because the computation is geometric rather than sequential. The brain does not re-execute logic it already knows. It reads geometry that already encodes the answer. It does not waste energy re-discovering the shape of the world on every stimulus. The shape is already there. The stimulus collapses it to a response.</p>
+
+  <p>Every attempt to build general intelligence on top of the von Neumann model has hit the same wall — because the model is fundamentally misaligned with the class of computation intelligence requires. Neural networks are an attempt to approximate the brain's geometric computation inside the imperative paradigm. They work. But they are approximations running on the wrong substrate, requiring kilowatts to do what the brain does in twenty watts, because they are fighting the architecture they run on.</p>
+
+  <p>Exodus does not fight the architecture. It aligns with it. The GPU was built for exactly the class of operation the brain uses — massively parallel spatial resolution against a static geometric structure. The brain arrived at this model through evolution. Exodus arrives at it through following the theory of computation honestly to where it actually leads.</p>
+
+  <blockquote>The brain is not a metaphor for Exodus. It is the existence proof. Geometric computation works at scale. It runs in every human being on earth. It has been running for two billion years. We just built our computers wrong.</blockquote>
+
+  <h4>Why Language Is the One Thing That Never Leaves</h4>
+
+  <p>Every framework will be rewritten. Every runtime will be replaced. The web stack will become the bootstrapper and step back. Codebases will be recompiled toward geometry rather than toward bytecode. The targets change. The tools adapt. This is the normal motion of a paradigm shift and none of it is loss — it is the lower layer fulfilling its Sacrificial Purpose and handing off.</p>
+
+  <p>But programming languages are different. And the reason they are different is the most important philosophical observation in this entire document.</p>
+
+  <p>A programming language is not a tool for talking to computers. It is a tool for representing human thought about logic with enough precision that it can be made executable. The language came first. The computer came second. The language is the human side of the interface — the most precise representation we have ever developed of how human minds reason about cause, effect, state, and transformation.</p>
+
+  <p>When we write code, we are not primarily describing what a machine should do. We are describing what we understand about a problem — its structure, its constraints, its valid states, its transitions. The machine execution is a consequence of that description. The description itself is the intellectual artifact. The description is what took seventy years of computer science to learn how to make precise.</p>
+
+  <p>In Exodus, that description does not become the input to a runtime. It becomes the input to a geometry compiler — the tool that translates the logical description of an application into the geometric structure of the Vessel Image. The language still describes the logic. The logic still defines the valid states. The valid states still become the geometry. The only thing that changes is that the geometry is computed once and sampled forever, rather than re-executed on every interaction.</p>
+
+  <p>The language is not left behind because the language was never primarily about the machine. It was always about the problem. And the problem does not change when the execution model does.</p>
+
+  <table class="grid">
+    <tr><td>What changes</td><td>Frameworks. Runtimes. Compilers targets. Infrastructure. Everything that was aimed at making execution cheaper within the imperative paradigm.</td></tr>
+    <tr><td>What stays</td><td>Languages. Algorithms. The logical descriptions of problems that human minds developed over seventy years of computer science. The intellectual work. The understanding.</td></tr>
+    <tr><td>Why</td><td>Because languages are representations of human thought, not representations of machine architecture. Human thought does not change when the machine changes. The precision of the representation — the years of work that went into making logic expressible — comes with us completely.</td></tr>
+  </table>
+
+  <blockquote>The language was always the most faithful representation of reality we could build inside the compute model. It remains that. It always will. Because it was never about the compute model. It was about reality. And reality does not change when the execution layer does.</blockquote>
+
+  <p>This is why P-06b states that everything we built is correct. Not as comfort. As fact. The logical descriptions, the type systems, the algorithms, the design patterns — all of it correctly captured something true about the problem domain. The only thing that was incorrect was the assumption that the correct description had to be re-executed imperatively on every interaction. That assumption came from the hardware. It was never in the logic. Exodus removes the assumption. The logic remains.</p>
+</div>
+
+
+  </details>
+
+  #####-- P-01 -->
+
+  <details id="p01">
+    <summary>
+      <span class="summary-tag">P-01</span>
+      <span class="summary-title">Role Assignment</span>
+      <span class="summary-hint">Single responsibility per component</span>
+    </summary>
+    <div class="section-body">
+      <h3>Every component has exactly one responsibility. None overlap.</h3>
+      <table class="grid">
+        <tr><td><a class="ref" href="#p02">CSS Ledger</a></td><td>Execution layer. Defines every possible application state as selectors. Cannot crash. Has no call stack. Logic is inspectable, diffable, structurally complete.</td></tr>
+        <tr><td><a class="ref" href="#s02">DOM</a></td><td>Attested runtime. Complete, inspectable, authoritative record of application memory at all times. The DOM is not a view of state — it is state.</td></tr>
+        <tr><td>JavaScript</td><td>Memory bus only. Receives writes, commits to <a class="ref" href="#s02">DOM</a>. No branching logic. No state management. No scheduling. If it makes a decision, it is wrong.</td></tr>
+        <tr><td><a class="ref" href="#p02">@property</a></td><td>Typed registers. Define the legal memory layout — the instruction set architecture — before execution begins.</td></tr>
+        <tr><td><a class="ref" href="#p04">WebSocket IPC</a></td><td>Async memory write stream. Server responses and user interactions are the same class of event: a write to memory.</td></tr>
+        <tr><td><a class="ref" href="#p04">@media</a></td><td>Negotiation protocol. Client expresses conditions. Server mirror intersects. Stream adapts continuously.</td></tr>
+        <tr><td><a class="ref" href="#p12">K8s Pods</a></td><td>Isolated execution environments. Logic is resident at pod boot, not fetched per request. One pod per session.</td></tr>
+        <tr><td><a class="ref" href="#p13">Bootstrapper</a></td><td>Current web stack. Executes once. Hands off to Exodus after <a class="ref" href="#p08">memstrap</a> arrives. Job is done.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  #####-- P-02 -->
+
+  <details id="p02">
+    <summary>
+      <span class="summary-tag">P-02</span>
+      <span class="summary-title">The Closed-World Assumption</span>
+      <span class="summary-hint">Invalid states are unrepresentable</span>
+    </summary>
+    <div class="section-body">
+      <h3>The ledger defines the complete set of legal values structurally.</h3>
+      <p>The <a class="ref" href="#p01">CSS Ledger</a> is a complete, static definition of every execution state the application can occupy. It does not validate values at runtime. Invalid states are not prevented — they are unrepresentable.</p>
+      <p>This is the same class of leap as null-safe type systems over null checks. The difference between preventing an invalid state and making it structurally unreachable.</p>
+      <h4>Value Lattice</h4>
+      <p><a class="ref" href="#p01">@property</a> declarations constrain the value space per axis — the alphabet. <a class="ref" href="#p01">CSS Ledger</a> rules define which intersections require handling — the grammar. Rule complexity grows linearly with state variables, not exponentially. Together they form a value lattice enforced continuously by the browser's native selector engine.</p>
+      <pre><span class="c">/* CSS as type system — legal values defined structurally */</span>
+[data-status=<span class="s">"pending"</span>]  { --status-valid: <span class="v">true</span>; }
+[data-status=<span class="s">"complete"</span>] { --status-valid: <span class="v">true</span>; }
+[data-status=<span class="s">"failed"</span>]   { --status-valid: <span class="v">true</span>; }
+
+<span class="c">/* Everything else has no representation */</span>
+[data-status]:not(
+[data-status=<span class="s">“pending”</span>],
+[data-status=<span class="s">“complete”</span>],
+[data-status=<span class="s">“failed”</span>]
+) { –status-valid: <span class="v">false</span>; }
+
+<span class="c">/* Cross-field constraint */</span>
+[data-role=<span class="s">“guest”</span>][data-action=<span class="s">“delete”</span>] { –action-valid: <span class="v">false</span>; }
+
+<span class="c">/* Transition enforcement */</span>
+[data-state=<span class="s">“complete”</span>][data-prev-state=<span class="s">“pending”</span>]       { –transition-valid: <span class="v">true</span>; }
+[data-state=<span class="s">“complete”</span>]:not([data-prev-state=<span class="s">“pending”</span>]) { –transition-valid: <span class="v">false</span>; }</pre>
+<p>See <a class="ref" href="#s05">Data Normalization</a> for the runtime enforcement of the same constraint at write time.</p>
+</div>
+
+  </details>
+
+  #####-- P-03 -->
+
+  <details id="p03">
+    <summary>
+      <span class="summary-tag">P-03</span>
+      <span class="summary-title">Resilience as a Document Property</span>
+      <span class="summary-hint">Watchdog as a style rule</span>
+    </summary>
+    <div class="section-body">
+      <h3>Recovery is structural, not implemented.</h3>
+      <p>The watchdog is not a polling observer. It is not a separate thread. It is a <a class="ref" href="#p01">CSS Ledger</a> rule that was always there, waiting to match.</p>
+      <pre>[data-state=<span class="s">"corrupted"</span>],
+[data-state=<span class="s">"unknown"</span>] { <span class="c">/* resolve to last known good */</span> }</pre>
+      <p>The moment bad memory is written to the <a class="ref" href="#s02">DOM</a>, the cascade already has an answer. Recovery is not a response to a crash — it is a continuation of the same cascade evaluation. Fault tolerance is a first-class property of the style layer: declarative, diffable, zero runtime overhead, impossible to accidentally delete from a code path.</p>
+      <p>A crashing application does not kill the tab. It writes bad memory. The ledger matches it. The <a class="ref" href="#p12">pod</a> re-hydrates from the <a class="ref" href="#p08">memstrap</a> if necessary. The user experiences a brief reconnection, not a tab kill.</p>
+      <p>See <a class="ref" href="#s03">Dual-Signal Model</a> for the implementation-layer reliability guarantee.</p>
+    </div>
+  </details>
+
+  #####-- P-04 -->
+
+  <details id="p04">
+    <summary>
+      <span class="summary-tag">P-04</span>
+      <span class="summary-title">The Memory Stream</span>
+      <span class="summary-hint">@media replaces HTTP headers · network becomes memory</span>
+    </summary>
+    <div class="section-body">
+      <h3>The network boundary exists exactly once — at bootstrap.</h3>
+      <p>The server does not respond to requests. It maintains a mirror of application state and streams memory deltas to the client over a persistent WebSocket. From the client's perspective, a server response and a local user interaction are the same class of event: a write to memory.</p>
+      <h4>@media as Protocol</h4>
+      <table class="grid">
+        <tr><td>HTTP headers</td><td>Transactional. Stated once per request. Cannot update without a new request. Coupled to the request/response cycle.</td></tr>
+        <tr><td>@media</td><td>Continuous and reactive. Conditions update live. Server re-intersects dynamically. No round trip. No new request.</td></tr>
+      </table>
+      <pre><span class="c">/* Extended @media negotiation vocabulary */</span>
+@media (ipc-state: connected)          { ... }
+@media (memory-pressure: high)         { ... }
+@media (connection-quality: degraded)  { ... }
+
+<span class="c">/* The intersection defines the stream */</span>
+server mirror ∩ client @media conditions = memory write stream</pre>
+<p>The network request as a concept dissolves. There is only a continuously resolving intersection between server state and client conditions. See <a class="ref" href="#p06">Vessel Image</a> for how the initial memory state is built and <a class="ref" href="#p08">Context Extraction</a> for how it is shipped.</p>
+</div>
+
+  </details>
+
+  #####-- P-05 -->
+
+  <details id="p05">
+    <summary>
+      <span class="summary-tag">P-05</span>
+      <span class="summary-title">Shared Memory as Default</span>
+      <span class="summary-hint">Collaboration costs nothing · isolation is the delta</span>
+    </summary>
+    <div class="section-body">
+      <h3>The pod is the application. Clients are views into it.</h3>
+      <p>Traditional multi-tenancy isolates every client session. Collaboration requires explicit synchronization infrastructure built against that isolation — WebSockets, CRDTs, operational transforms. Multiplayer is a feature you build on a platform that assumes you're alone.</p>
+      <p>In Exodus, shared memory is the default state. Isolation is the delta.</p>
+      <table class="grid">
+        <tr><td>Shared ledger</td><td>Same <a class="ref" href="#p01">CSS Ledger</a> execution logic for all clients.</td></tr>
+        <tr><td>Shared DOM mirror</td><td>Authoritative <a class="ref" href="#s02">DOM</a> memory shared across sessions in the same pod.</td></tr>
+        <tr><td>Per-client layer</td><td>Delta only — input, viewport, preferences. Higher specificity rules on a client-scoped subtree.</td></tr>
+      </table>
+      <p>Cost scales with unique application states, not user count. A thousand clients reading the same document is one <a class="ref" href="#p12">pod</a>. A thousand clients editing different documents is a thousand pods.</p>
+      <p>Per-client private state is higher specificity rules applied to a client-scoped subtree. The cascade is the resolution mechanism for both shared and private memory. The same primitive handles both cases. See <a class="ref" href="#s09">Ledger Graph</a> for multi-node coordination.</p>
+    </div>
+  </details>
+
+  #####-- P-06 -->
+
+  <details id="p06">
+    <summary>
+      <span class="summary-tag">P-06</span>
+      <span class="summary-title">Vessel Image</span>
+      <span class="summary-hint">Bounded metric space · strings of relative bounds · a trillion states need no enumeration</span>
+    </summary>
+    <div class="section-body">
+      <h3>A Vessel holds potential until context releases it into an instance.</h3>
+      <p>The <a class="ref" href="#p11">quantum enumeration</a> of the complete valid state space produces a single object. It is not meant to be read directly. It is meant to be sampled from by context. The Vessel Image is a <strong>bounded metric space of application state</strong> — a geometric structure where every valid state is a point, every invalid state is an absence, and the distance between any two states is structural information encoded once and read without computation.</p>
+
+
+  <h4>The Metric Space</h4>
+  <p>A metric space defines distance between points in a way that is meaningful, consistent, and structurally encoded. In the Vessel Image, distance between states is not computed at runtime. It is <strong>measured at sample time against a static object</strong>. The cost of a state transition is the distance between its origin and destination coordinates. The validity of a transition is whether the destination coordinate exists. Neither requires execution. Both require only a GPU sample.</p>
+
+  <table class="grid">
+    <tr><td>Point</td><td>A valid application state. Exists at a coordinate. If the coordinate is empty, the state does not exist.</td></tr>
+    <tr><td>Distance</td><td>The structural cost of transitioning between two states. Encoded in the geometry. Read by sampling. Never computed.</td></tr>
+    <tr><td>Boundary</td><td>The edge of the valid state space. Defined by the strings and their relative bounds. Everything inside is implicitly valid. Everything outside is implicitly absent.</td></tr>
+    <tr><td>Curvature</td><td>Where one string's valid bounds depend on another string's position, the space curves. The relativity of constraints is encoded as geometry, not as conditional logic.</td></tr>
+    <tr><td>Empty space</td><td>Invalid states. They are not rejected — they are geometrically absent. There is no coordinate to reach. Nothing fires. The failure mode is structural impossibility, not runtime error.</td></tr>
+  </table>
+
+  <h4>Strings of Relative Bounds</h4>
+  <p>The Vessel Image is a massive container of strings whose bounds are relative to each other. Each state variable is a string. Its valid values define its bounds. Those bounds are relative — the valid range of one string depends on the position of other strings in the space. A trillion combinations of states exist as the interior volume implied by boundary geometry — not as a trillion enumerated records.</p>
+
+  <table class="grid">
+    <tr><td>String 1: role</td><td>bounds: [admin, user, guest]</td></tr>
+    <tr><td>String 2: action</td><td>bounds relative to role — admin: [read, write, delete] · user: [read, write] · guest: [read]</td></tr>
+    <tr><td>String 3: resource</td><td>bounds relative to role + action — geometry encodes which resources each role-action pair can reach</td></tr>
+  </table>
+
+  <p>In a flat model these combinations are enumerated explicitly. In the metric space, the relativity of bounds is encoded as curvature. The GPU reads the curvature. Valid combinations emerge from the geometry. Nothing is enumerated. The interior of the space is implicit — defined by its boundary, not listed point by point.</p>
+
+  <blockquote>You do not store a trillion states. You store the shape that implies them. The shape is compact. The implications are infinite. The GPU reads the shape. The application occupies the implications.</blockquote>
+
+  <h4>Distance as Architecture</h4>
+  <p>Two states that are geometrically close are structurally similar. Transitions between them are cheap — low distance, few boundary crossings, shared execution context. Two states that are geometrically distant are structurally different. Transitions between them cross more boundary regions. The cost is structural, not computed.</p>
+  <p>This changes what debugging means. You do not read logs to understand why a transition failed. You read geometry. The failed transition attempted to reach a coordinate that does not exist, or crossed a boundary it was not permitted to cross. The geometry tells you exactly where the boundary was and exactly what the nearest valid coordinate is. Debugging becomes pathfinding.</p>
+
+  <h4>Structure</h4>
+  <table class="grid">
+    <tr><td>X axis</td><td>State variable — <code>data-state</code>, <code>data-role</code>, <code>data-action</code></td></tr>
+    <tr><td>Y axis</td><td>Valid values along each state dimension</td></tr>
+    <tr><td>Z axis</td><td>Relationship depth — parent, child, sibling context</td></tr>
+    <tr><td>W axis</td><td>Runtime identity — which application region this state belongs to. See <a class="ref" href="#p15">Multi-Runtime Composition</a>.</td></tr>
+    <tr><td>RGB(A)</td><td>Encoded type resolution, validity metadata, and transition cost</td></tr>
+    <tr><td>Voxel</td><td>A typed state declaration with embedded transition rules and distance encoding</td></tr>
+  </table>
+
+  <h4>As Local Client Database</h4>
+  <table class="grid">
+    <tr><td>Traditional DB</td><td>Store → query → validate → use. Schema managed externally. Validation is a separate step.</td></tr>
+    <tr><td>Vessel Image</td><td>Hold → render slice → use. Schema encoded in format. <a class="ref" href="#p09">Chungus</a> proof baked in. Validation is geometrically impossible to bypass.</td></tr>
+  </table>
+
+  <h4>Offline Behaviour</h4>
+  <p>Offline capability is a native property of the format, not a feature you build.</p>
+  <table class="grid">
+    <tr><td>Connected</td><td>Vessel updated by <a class="ref" href="#p04">IPC stream</a> continuously.</td></tr>
+    <tr><td>Disconnected</td><td>Vessel holds last valid state. Application continues executing against local memory.</td></tr>
+    <tr><td>Reconnected</td><td>Stream diffs against Vessel, writes delta only. No full re-hydration.</td></tr>
+  </table>
+</div>
+
+
+  </details>
+
+  #####-- P-06b -->
+
+  <details id="p06b">
+    <summary>
+      <span class="summary-tag">P-06b</span>
+      <span class="summary-title">Everything We Built Is Correct</span>
+      <span class="summary-hint">The right solution to the wrong problem · all of mankind's work comes with us</span>
+    </summary>
+    <div class="section-body">
+      <h3>The existing compute model solved the right problem. It framed it wrong. Everything fundamental comes with us.</h3>
+
+
+  <p>This is not a statement about what came before being inadequate. It is a statement about where the work was aimed.</p>
+
+  <p>Every language ever written solves logic. Correctly. Every compiler ever built resolves logic into executable form. Correctly. Every algorithm, every data structure, every design pattern, every framework — all of it correctly solves the problem of expressing and executing logic. The work is right. The work has always been right.</p>
+
+  <p>What was wrong was not the solution. What was wrong was the assumption that logic had to be executed imperatively — that solving logic meant switching transistors in sequence, branching on conditions, managing mutable state across a call stack. That assumption was never a logical necessity. It was a hardware constraint that became a cultural assumption that became invisible.</p>
+
+  <blockquote>Mankind invested everything in the right solution to the wrong problem. The solution does not need to be discarded. It needs to be recontextualised. The logic was always correct. The execution layer was the wrong frame.</blockquote>
+
+  <h4>What Carries Forward Without Change</h4>
+  <table class="grid">
+    <tr><td>Every language</td><td>Languages are absolute. They express logic precisely. That precision does not change. The language becomes the authoring surface for geometry — the input to the Vessel compiler rather than the input to a runtime. The logic it expresses is unchanged. Where it runs changes completely.</td></tr>
+    <tr><td>Every compiler</td><td>Compilers resolve logic into executable form. In Exodus, the target of compilation is the geometric structure of the Vessel Image rather than imperative bytecode. The compiler's job — resolving logic into a form a machine can act on — is identical. The machine it targets is the GPU. The form it produces is geometry.</td></tr>
+    <tr><td>Every algorithm</td><td>Algorithms solve problems. They still solve them. In Exodus, algorithms run once — at enumeration time — and their results are encoded in the geometry of the Vessel. The algorithm does not run on every user interaction. It runs once. Its answer is read forever after by sampling. The algorithm is correct. It just no longer needs to run repeatedly.</td></tr>
+    <tr><td>Every database</td><td>Databases store and retrieve structured information. The Vessel Image is a database — a higher-dimensional one whose schema is geometry rather than tables. Every principle of database design — normalization, indexing, referential integrity, transaction boundaries — has a direct geometric equivalent. The discipline carries forward. The storage model changes.</td></tr>
+    <tr><td>Every framework</td><td>Frameworks manage complexity. That need does not disappear. In Exodus, frameworks become geometry authoring tools — ways of expressing the state spaces and boundary conditions that the Vessel compiler turns into geometry. The abstraction is still necessary. What it abstracts changes.</td></tr>
+  </table>
+
+  <h4>The Wrong Problem That Was Being Solved</h4>
+  <p>The current compute model treats application logic as a problem of execution — how do you run the right instructions in the right order for every user on every interaction? This framing made execution efficiency the central engineering concern. Faster CPUs. Better branch prediction. Cache locality. Concurrency primitives. Garbage collection. All of it aimed at making execution cheaper.</p>
+  <p>But execution is not the problem application logic needs solved. <strong>Application logic is a problem of definition.</strong> What states are valid? What transitions are permitted? What constraints apply across which combinations of state? These are questions about the shape of a space — not questions about the sequence of instructions that traverse it.</p>
+  <p>The current model answered a question about traversal when the question was always about shape. Every execution optimization in history made traversal cheaper. None of them made the shape smaller, because none of them recognised that the shape was the problem.</p>
+
+  <h4>Sacrificial Purpose Recontextualises Without Discarding</h4>
+  <p>The law of <a class="ref" href="#preface">Sacrificial Purpose</a> states that every layer is instantiated by the one below it, consuming the lower layer's full expressiveness as a single bootstrapping act. This means the current compute model — every language, compiler, algorithm, and framework — is not superseded. It is consumed. Its full expressiveness becomes the input to the next dimensionality expansion.</p>
+  <p>The web stack does not disappear. It becomes the bootstrapper. JavaScript does not disappear. It becomes the memory bus. CSS does not disappear. It becomes the translational bridge between GPU geometry and CPU output. Every tool humanity built to solve the logic problem carries forward — recontextualised as the layer that instantiates the space where the logic already lives, encoded geometrically, waiting to be sampled.</p>
+
+  <blockquote>Nothing is wasted. Nothing is wrong. Everything is recontextualised. The solution was always correct. It was aimed at the wrong layer. Exodus is not the replacement of what came before. It is the thing that what came before was always in the process of instantiating.</blockquote>
+
+  <h4>What Changes</h4>
+  <p>The only thing that changes is where logic lives and when it runs. In the current model, logic lives in execution and runs continuously — on every user interaction, for every concurrent session, for the lifetime of the application. In the Exodus model, logic lives in geometry and runs once — at enumeration time — and thereafter exists as a static object that sessions sample without re-executing.</p>
+  <p>The logic is identical. The shape it produces is identical. The difference is that the current model rediscovers the shape on every request, and the Exodus model reads the shape from an object that already knows it.</p>
+</div>
+
+
+  </details>
+
+  #####-- P-07 -->
+
+  <details id="p07">
+    <summary>
+      <span class="summary-tag">P-07</span>
+      <span class="summary-title">Coordinate Execution</span>
+      <span class="summary-hint">Selectors as 3D points · regions replace enumeration · GPU lookup</span>
+    </summary>
+    <div class="section-body">
+      <h3>A selector is a coordinate or region in the Vessel Image space.</h3>
+      <p>CSS selectors are already pattern-matching against a multidimensional space. Every attribute, every value, every pseudo-state is an axis. The <a class="ref" href="#p06">Vessel Image</a> makes that geometry explicit and addressable.</p>
+      <pre><span class="c">/* Selector becomes a coordinate lookup */</span>
+[data-state=<span class="s">"pending"</span>][data-role=<span class="s">"admin"</span>]
+  → coordinate (pending, admin, root) → (x2, y4, z0)
+  → value at that point = execution instruction</pre>
+      <h4>Regions Replace Enumeration</h4>
+      <p>In a flat selector space every combination is an independent rule. In coordinate space, combinations are intersections of defined regions. You define a plane — not every point on it.</p>
+      <table class="grid">
+        <tr><td>Classical</td><td>Enumerate every combination explicitly. Scales as M^N. Explodes.</td></tr>
+        <tr><td>Exodus</td><td><code>X = pending → instruction</code> applies to every point on that plane. Specificity adds Z-depth for exceptions.</td></tr>
+      </table>
+      <h4>The Selector Engine Becomes a Renderer</h4>
+      <table class="grid">
+        <tr><td>Classical</td><td>Tree traversal with string comparison at every node. Sequential. CPU-bound.</td></tr>
+        <tr><td>Exodus</td><td>Coordinate lookup in a spatial structure. Single GPU operation. Massively parallel. Native hardware.</td></tr>
+      </table>
+      <p>Combinatorial explosion is a flat-space problem. The <a class="ref" href="#p06">Vessel Image</a> has no flat space. Regions replace enumerations. Sparse storage handles empty space. The GPU handles the rest. WebGPU ships in every modern browser today — the implementation layer already exists in the <a class="ref" href="#p13">bootstrapper</a>.</p>
+      <h4>Geometry as Architecture</h4>
+      <p>Two selectors that seem unrelated textually may be spatially adjacent in the <a class="ref" href="#p06">Vessel</a>. Adjacency is information — those states are structurally close, transitions between them are cheap, they share execution context. The geometry of the Vessel Image is the architecture of the application. Debugging stops being reading logs. It becomes reading geometry.</p>
+    </div>
+  </details>
+
+  #####-- P-08 -->
+
+  <details id="p08">
+    <summary>
+      <span class="summary-tag">P-08</span>
+      <span class="summary-title">Context Extraction</span>
+      <span class="summary-hint">Vessel is a scene · context is a camera · memstrap is a rendered frame</span>
+    </summary>
+    <div class="section-body">
+      <h3>The client never receives the object. It receives the rendered slice.</h3>
+      <p>The <a class="ref" href="#p04">@media</a> query and <a class="ref" href="#p04">IPC</a> context are entropy reduction. Every known context variable eliminates entire branches before compression runs. The compressor is not general purpose — it knows exactly what it is compressing toward. The compression key is the context itself, unrepeatable and disposable after extraction.</p>
+      <table class="grid">
+        <tr><td>@media narrows</td><td>Viewport and capability eliminate irrelevant branches from the <a class="ref" href="#p06">Vessel</a>.</td></tr>
+        <tr><td>IPC narrows</td><td>Connection quality determines eager resolution depth.</td></tr>
+        <tr><td>Session narrows</td><td>Auth level eliminates restricted branches.</td></tr>
+        <tr><td>Pod lineage</td><td><a class="ref" href="#p10">Quorum</a> generation determines which proof applies.</td></tr>
+      </table>
+      <table class="grid">
+        <tr><td>Full object</td><td><a class="ref" href="#p11">Quantum-enumerated</a> state space. Never moves. Lives server-side.</td></tr>
+        <tr><td>Frustum</td><td><a class="ref" href="#p04">@media</a> + IPC context defines the camera position into the <a class="ref" href="#p06">Vessel</a>.</td></tr>
+        <tr><td>Rendered slice</td><td>The memstrap. Only visible coordinates. Minimal. Precise. Shipped to client.</td></tr>
+      </table>
+      <blockquote>Same scene. Infinite possible frames. Each one minimal and precise.</blockquote>
+    </div>
+  </details>
+
+  #####-- P-09 -->
+
+  <details id="p09">
+    <summary>
+      <span class="summary-tag">P-09</span>
+      <span class="summary-title">Chungus</span>
+      <span class="summary-hint">Pre-transaction attestation · application logic is untrusted by default</span>
+    </summary>
+    <div class="section-body">
+      <h3>No application logic is permitted to mutate the database unless validated by a quorum of deterministic evaluators.</h3>
+      <p>Chungus sits between application logic and the database. It defends against logic-level attacks inside authenticated sessions — privilege escalation bugs, broken business logic, unexpected state transitions, injection at the logic layer.</p>
+      <table class="grid">
+        <tr><td>Traditional</td><td>User auth → app logic trusted → DB write.</td></tr>
+        <tr><td>Chungus</td><td>User auth → app logic untrusted → Chungus validates → DB write.</td></tr>
+      </table>
+      <h4>How Exodus Eliminates Validation Cost</h4>
+      <p>In traditional systems validation requires N separate service calls per write. In Exodus, validators are already-running continuously-evaluating state machines inside the <a class="ref" href="#p01">CSS Ledger</a>. The <a class="ref" href="#p10">quorum</a> is not triggered by a write. It is already resolved before the write is proposed.</p>
+      <pre><span class="c">/* Quorum as emergent cascade state */</span>
+[data-validator-a=<span class="s">"valid"</span>][data-validator-b=<span class="s">"valid"</span>][data-validator-c=<span class="s">"valid"</span>] {
+  --quorum-achieved: <span class="v">true</span>;
+}
+
+<span class="c">/* DB write is structurally impossible until this selector matches */</span>
+[data-quorum=<span class="s">“achieved”</span>] { –db-write-permitted: <span class="v">true</span>; }</pre>
+<p>Consensus is a state that emerges, not a process that runs. Validation cost is amortized into the browser’s normal cascade evaluation.</p>
+<blockquote>A database write is not an operation that triggers validation. It is an operation that is only possible once validation has already converged.</blockquote>
+<p>Chungus defines what validation means. Exodus is the evaluation engine. See <a class="ref" href="#p10">Quorum Seeder</a> for validator lifecycle management.</p>
+</div>
+
+  </details>
+
+  #####-- P-10 -->
+
+  <details id="p10">
+    <summary>
+      <span class="summary-tag">P-10</span>
+      <span class="summary-title">Quorum Seeder</span>
+      <span class="summary-hint">Validator lifecycle · evaluator lineage · structural trust</span>
+    </summary>
+    <div class="section-body">
+      <h3>Dynamically spawns quorum engines and strings their lineage together with foreign keys.</h3>
+      <p>The Quorum Seeder manages the lifecycle of <a class="ref" href="#p09">Chungus</a> evaluator instances and records their ancestry in the application database via foreign keys. This creates a fully auditable, replayable chain of every validation decision.</p>
+      <h4>Maps Directly to K8s Primitives</h4>
+      <table class="grid">
+        <tr><td>Quorum Seeder</td><td><a class="ref" href="#p12">K8s</a> pod lifecycle manager.</td></tr>
+        <tr><td>Validator instance</td><td>Headless browser <a class="ref" href="#p12">pod</a> with specific <a class="ref" href="#p01">CSS Ledger</a> rules loaded at boot.</td></tr>
+        <tr><td>Evaluator lineage</td><td><a class="ref" href="#p08">Memstrap</a> chain — each pod hydrates from prior pod state.</td></tr>
+        <tr><td>Foreign key trail</td><td>Pod ancestry tracked in cluster state and application database.</td></tr>
+        <tr><td>Rotating evaluators</td><td>Rolling pod updates with new <a class="ref" href="#p01">CSS Ledger</a> schema versions.</td></tr>
+      </table>
+      <h4>Properties</h4>
+      <table class="grid">
+        <tr><td>Lineage</td><td>Each quorum derived from prior. Full auditability and replayability via foreign keys.</td></tr>
+        <tr><td>Rotating evaluators</td><td>Attacker cannot learn and game a static validator. The pool is always evolving.</td></tr>
+        <tr><td>Structural trust</td><td>Trust the evolving network of evaluators, not a static server. Authority is distributed.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  #####-- P-11 -->
+
+  <details id="p11">
+    <summary>
+      <span class="summary-tag">P-11</span>
+      <span class="summary-title">Quantum Enumeration</span>
+      <span class="summary-hint">Solving the state space problem at arbitrary scale</span>
+    </summary>
+    <div class="section-body">
+      <h3>The quantum layer maps the territory. Exodus governs execution within it.</h3>
+      <p>The <a class="ref" href="#p02">closed-world assumption</a> requires enumerating the complete valid state space. Classical enumeration explodes combinatorially at application scale. Quantum systems natively exist in superposition across all possible states simultaneously — collapsing to a valid subset on measurement.</p>
+      <table class="grid">
+        <tr><td>Classical</td><td>Enumerate states one at a time. Scales as M^N. Intractable at complexity.</td></tr>
+        <tr><td>Quantum</td><td>Exist across all states simultaneously. Collapse to valid subset. Hand the enumerated valid space to Exodus.</td></tr>
+      </table>
+      <p>The quantum layer does not run the application. It solves the one problem that limits Exodus at scale — complete state space enumeration — then gets out of the way. The result is the <a class="ref" href="#p06">Vessel Image</a>.</p>
+      <blockquote>Quantum computing makes the closed-world assumption tractable at arbitrary application complexity. Exodus makes that closed world the execution environment.</blockquote>
+    </div>
+  </details>
+
+  #####-- P-12 -->
+
+  <details id="p12">
+    <summary>
+      <span class="summary-tag">P-12</span>
+      <span class="summary-title">Kubernetes Infrastructure Mapping</span>
+      <span class="summary-hint">Pod per session · surge-indifferent · crash as reconnection</span>
+    </summary>
+    <div class="section-body">
+      <h3>K8s primitives map directly onto Exodus execution concepts.</h3>
+      <table class="grid">
+        <tr><td>Liveness probe</td><td><a class="ref" href="#p03">CSS watchdog</a> rule — resilience as a document property.</td></tr>
+        <tr><td>Readiness probe</td><td><code>[data-state="ready"]</code> selector match.</td></tr>
+        <tr><td>Pod restart</td><td><a class="ref" href="#p08">Memstrap</a> re-hydration — state restored from the <a class="ref" href="#p06">Vessel</a>.</td></tr>
+        <tr><td>ConfigMap</td><td><a class="ref" href="#p01">CSS Ledger</a> schema and <a class="ref" href="#p01">@property</a> declarations.</td></tr>
+        <tr><td>HPA</td><td>Session-per-pod horizontal scaling.</td></tr>
+      </table>
+      <h4>Surge Model</h4>
+      <p>A demand spike spawns pod instances, not application re-execution. The spike cost is infrastructure, not application. The application is surge-indifferent because application logic is always already resident in the pod — it is never fetched under load.</p>
+      <h4>Crash as Reconnection</h4>
+      <p>If a pod corrupts, K8s restarts it. The <a class="ref" href="#p08">memstrap</a> re-hydrates it. The client reconnects via <a class="ref" href="#p04">WebSocket IPC</a>. The user sees a brief reconnection, not a tab kill. The <a class="ref" href="#p03">watchdog rules</a> were always there — they do not need to be reinstalled.</p>
+    </div>
+  </details>
+
+  #####-- P-13 -->
+
+  <details id="p13">
+    <summary>
+      <span class="summary-tag">P-13</span>
+      <span class="summary-title">Bootstrapping</span>
+      <span class="summary-hint">Frictionless entry · existing infrastructure unchanged</span>
+    </summary>
+    <div class="section-body">
+      <h3>The adoption surface is frictionless. The destination is total.</h3>
+      <p>Exodus does not require replacing existing infrastructure. The current web stack is the delivery mechanism — the thing that makes Exodus reachable.</p>
+      <table class="grid">
+        <tr><td>HTTP/HTML/JS</td><td>Bootstrapper. Executes once. Delivers Exodus.</td></tr>
+        <tr><td><a class="ref" href="#p08">Memstrap</a></td><td>Arrives and hydrates the runtime from the <a class="ref" href="#p06">Vessel Image</a>.</td></tr>
+        <tr><td><a class="ref" href="#p01">CSS Ledger</a></td><td>Takes over execution from this point forward.</td></tr>
+        <tr><td><a class="ref" href="#p04">WebSocket IPC</a></td><td>Memory stream opens. Network boundary ceases to exist.</td></tr>
+      </table>
+      <p>Any existing web application is a valid bootstrapper. The entry point is a script tag and a WebSocket connection. What arrives after that replaces the execution model from underneath while existing infrastructure holds the door open.</p>
+    </div>
+  </details>
+
+  #####-- P-14 -->
+
+  <details id="p14">
+    <summary>
+      <span class="summary-tag">P-14</span>
+      <span class="summary-title">Emergent Encryption</span>
+      <span class="summary-hint">Superposition as security · coordinates without context are every state · the key never exists</span>
+    </summary>
+    <div class="section-body">
+      <h3>The application is defended by quantum superposition. The key that unlocks it never exists as a discrete artifact.</h3>
+      <p>Conventional encryption separates data from key. The key must be stored, transmitted, managed, and trusted. Every one of those moments is an attack surface. The entire PKI infrastructure exists because the key exchange has to happen across an adversarial network.</p>
+      <p>Exodus eliminates that surface not by making transit safer — but by ensuring the meaningful content <strong>never transits as a discrete artifact in the first place.</strong></p>
+
+
+  <h4>The Coordinate System as Security Model</h4>
+  <p>Every piece of application state in the <a class="ref" href="#p06">Vessel Image</a> exists at a coordinate in a multidimensional space. A coordinate without its exact context slice does not point to a specific state. It points to every possible state simultaneously — the full superposition of the enumerated state space. An attacker who obtains coordinates without the compression context has captured a position in a space that holds every possible application state at once. The coordinate is meaningless without the exact slice that collapses it.</p>
+
+  <table class="grid">
+    <tr><td>Coordinate alone</td><td>Points to superposition. Every valid state the application can occupy exists at that address simultaneously. No application-specific information is recoverable.</td></tr>
+    <tr><td>Compression context alone</td><td>Describes a camera position into a space. Meaningless without the Vessel to sample from.</td></tr>
+    <tr><td>Vessel alone</td><td>The complete enumerated state space. Contains everything and nothing — equivalent to possessing every possible version of the application simultaneously.</td></tr>
+    <tr><td>Coordinate + exact context</td><td>Collapses superposition to a single valid state. This is the only combination that produces meaningful content. It exists for exactly one session, derived once, then gone.</td></tr>
+  </table>
+
+  <h4>The Network Is Killed Before the Key Exists</h4>
+  <p>The <a class="ref" href="#p08">context extractor</a> derives the compression algorithm from the intersection of <a class="ref" href="#p04">@media conditions</a>, IPC state, session details, and <a class="ref" href="#p10">pod lineage</a>. This intersection is unrepeatable — no two sessions occupy the same viewport, connection quality, authentication state, and pod generation simultaneously. The compression algorithm that produces the <a class="ref" href="#p08">memstrap</a> is the encryption key. But the key is derived <em>locally</em>, after the <a class="ref" href="#p06">Vessel</a> has already arrived. The network carries generic potential. The meaningful, session-specific content materialises on the device, after the network has done its job and become irrelevant.</p>
+
+  <blockquote>The most secure data is data that only ever exists as an emergent derivation — never as a copyable object. The Vessel can be public. The slice is inherently private because it cannot be reproduced without the exact context that generated it, and that context is already gone.</blockquote>
+
+  <h4>Security Properties by Construction</h4>
+  <table class="grid">
+    <tr><td>No key to steal</td><td>The compression key is a one-time emergent property of a specific moment of context intersection. Used once, dissolved. Never stored. Cannot be intercepted — it did not exist during transit.</td></tr>
+    <tr><td>No secret to manage</td><td>The <a class="ref" href="#p06">Vessel Image</a> is not a secret. Possessing it reveals nothing about any specific session's valid state without the unrepeatable context that collapses it.</td></tr>
+    <tr><td>No attack surface in transit</td><td>A perfect interception of the Vessel yields the superposition of every possible application state. Equivalent to capturing a dictionary to intercept a specific word. The word was never on the wire.</td></tr>
+    <tr><td>Superposition as defence</td><td>The <a class="ref" href="#p11">quantum enumeration</a> layer that produces the Vessel is not incidentally related to the security model — it is the security model. The property that makes complete state space enumeration tractable is the same property that makes any individual state unrecoverable without context.</td></tr>
+  </table>
+
+  <h4>Relationship to Existing Security Infrastructure</h4>
+  <p>This is not a replacement for transport security, authentication, or the <a class="ref" href="#p09">Chungus</a> validation layer. It is a security property that emerges from the architecture without being designed in. TLS still secures the WebSocket. Authentication still governs session initiation. Chungus still gates database writes. What Emergent Encryption adds is a guarantee that even a fully compromised transport, a stolen Vessel, and a captured coordinate set yields nothing recoverable — because the collapse from superposition to specific state requires a context that existed once, was used once, and is gone.</p>
+
+  <p class="dim">The Vessel is public. The coordinates are public. The context is unrepeatable. The slice exists once. Security through the physics of the model — not through the addition of cryptographic infrastructure.</p>
+</div>
+
+
+  </details>
+
+  #####-- P-15 -->
+
+  <details id="p15">
+    <summary>
+      <span class="summary-tag">P-15</span>
+      <span class="summary-title">Multi-Runtime Composition</span>
+      <span class="summary-hint">Applications are not integrated · they are composed · the integration layer ceases to exist</span>
+    </summary>
+    <div class="section-body">
+      <h3>Multiple runtimes pack into one object. Integration is not a layer between systems — it is the geometry between regions of the same Vessel.</h3>
+
+
+  <p>Today software integration is additive. You build application A. You build application B. You write the integration layer between them. Three separate things that have to stay in sync as each evolves independently. Every integration is a bilateral contract negotiated across a network boundary — REST endpoints, webhooks, OAuth handshakes, schema mapping, version management, error handling. The boundary is structural. The friction is permanent.</p>
+
+  <p>In the Vessel model, that boundary does not exist. Integration is not a third thing you build. It is the geometry between two regions of the same space.</p>
+
+  <h4>The Fourth Axis</h4>
+  <p>The <a class="ref" href="#p06">Vessel Image</a> currently encodes state across three spatial axes. Add a fourth:</p>
+
+  <table class="grid">
+    <tr><td>X axis</td><td>State variable</td></tr>
+    <tr><td>Y axis</td><td>Valid values along each state dimension</td></tr>
+    <tr><td>Z axis</td><td>Relationship depth — parent, child, sibling context</td></tr>
+    <tr><td>W axis</td><td>Runtime identity — which application occupies this region</td></tr>
+  </table>
+
+  <p>A coordinate now describes a state within a specific runtime within the unified object. The geometry between runtimes — the space between different W-axis regions — encodes how they interact, what state can pass between them, and what the valid transition paths are across runtime boundaries.</p>
+
+  <h4>What Happens to the Integration Layer</h4>
+  <p>Two runtimes in the same Vessel do not have an API boundary. They have a geometric relationship. State that can pass from runtime A to runtime B exists as coordinates in the space between their W-axis regions. Valid integrations are geometrically adjacent. Invalid integrations are geometrically absent — empty space. There is no API to call because there is no boundary to cross. There is a coordinate to move to.</p>
+
+  <table class="grid">
+    <tr><td>Integration bugs</td><td>Geometrically impossible states. They do not exist in the object. They cannot be reached.</td></tr>
+    <tr><td>Version mismatches</td><td>Coordinate drift. Detectable as geometric discontinuity in the Vessel diff — visible before deployment.</td></tr>
+    <tr><td>Schema changes</td><td>Region boundary shifts. The diff of two Vessel versions shows exactly what moved, what is now unreachable, and what new coordinates appeared.</td></tr>
+    <tr><td>API contract failures</td><td>Traversal into empty space. No execution surface exists at that coordinate. Nothing fires. The failure mode is structural absence, not runtime error.</td></tr>
+    <tr><td>Integration layer</td><td>Does not exist. Never existed. Was always a workaround for the absence of shared geometry.</td></tr>
+  </table>
+
+  <h4>Software Composition Becomes Geometric</h4>
+  <p>You do not describe every possible way two applications can interact. You define the shape of each application's state space and the valid transitions at their boundaries. The <a class="ref" href="#p11">quantum enumeration</a> layer produces a single <a class="ref" href="#p06">Vessel</a> that encodes both regions and the geometry between them simultaneously. The <a class="ref" href="#p08">context extractor</a> renders only the coordinates relevant to the current session — which may span both runtimes or neither.</p>
+
+  <blockquote>Applications are not integrated. They are composed. The difference is the difference between negotiating a treaty and sharing a coordinate system.</blockquote>
+
+  <h4>What This Means for Enterprise Software Suites</h4>
+  <p>Any product suite — creative tools, enterprise platforms, productivity applications — currently maintains integration layers between products that have accumulated years of friction, version drift, and schema mismatches. These layers exist because each product is a separate runtime with a separate state space and no shared geometry.</p>
+  <p>A composed Vessel encodes each product as a region on the W axis. Moving an asset, a document, a user record, or a workflow between products is not an export, an import, or an API call. It is a coordinate transition within the same object. The <a class="ref" href="#p08">context extractor</a> renders the slice relevant to whichever region the session is currently occupying. The <a class="ref" href="#p09">Chungus</a> validation layer ensures that transitions between regions respect the geometric constraints — that state arriving in one runtime from another is valid in its new coordinate context.</p>
+
+  <h4>The Deeper Structural Claim</h4>
+  <p>The reason multiple runtimes can pack into one object is the same reason the <a class="ref" href="#p06">Vessel Image</a> resolves <a class="ref" href="#p07">combinatorial explosion</a>. Geometry absorbs complexity that enumeration cannot. Two runtimes integrated via API require explicit enumeration of every possible interaction. Two runtimes integrated via geometry require only the definition of their regions — the space between them encodes the interactions implicitly, completely, and without a line of integration code.</p>
+
+  <p class="dim">The integration layer is not simplified. It is not abstracted. It does not become a managed service. It ceases to exist as a category. What replaced it was always there — it just had no name and no address until the coordinate system made it visible.</p>
+</div>
+
+
+  </details>
+
+  <hr class="part-divider">
+
+  #####-- 
+       PART II — CSSLEDGER REFERENCE IMPLEMENTATION
+   -->
+
+  <div class="part-header">
+    <div class="part-label">Part II — Subsystem</div>
+    <div class="part-title">CSSLedger</div>
+    <p class="part-desc">The reference implementation. Every mechanism maps explicitly to the principle it instantiates. This is the working proof that the Exodus execution model runs in a browser today.</p>
+  </div>
+
+  #####-- S-01 -->
+
+  <details id="s01">
+    <summary>
+      <span class="summary-tag">S-01</span>
+      <span class="summary-title">The Gate Mechanism</span>
+      <span class="summary-hint">Core primitive · CSS schedules JS</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-01 Role Assignment — JavaScript as memory bus, CSS as executor</div>
+      <h3>The browser's style engine schedules logic. Not developer code.</h3>
+      <p>A registered CSS custom property is assigned conditionally by a selector. When selector state changes, a zero-duration transition fires. <code>transitionend</code> delivers the signal to JavaScript. JS does not schedule itself — the <a class="ref" href="#p01">CSS Ledger</a> does.</p>
+      <pre><span class="k">@property</span> --gate-open {
+  syntax: <span class="s">'&lt;number&gt;'</span>;
+  initial-value: <span class="v">0</span>;
+  inherits: <span class="v">false</span>;
+}
+
+.order-node[data-items][data-address][data-payment] {
+–gate-open: <span class="v">1</span>;
+transition: –gate-open <span class="v">0s</span>;
+}
+
+node.addEventListener(<span class="s">‘transitionend’</span>, (e) => {
+<span class="k">if</span> (e.propertyName !== <span class="s">’–gate-open’</span>) <span class="k">return</span>;
+<span class="k">const</span> current = getComputedStyle(node)
+.getPropertyValue(<span class="s">’–gate-open’</span>).trim();
+<span class="k">const</span> prev = node.dataset.prevGateOpen;
+<span class="k">if</span> (current === prev) <span class="k">return</span>;
+node.dataset.prevGateOpen = current;
+<span class="c">// JS executes here. Precondition guaranteed by CSS.</span>
+});</pre>
+<h4>Implementation Rules</h4>
+<ul>
+<li><code>@property</code> registration is mandatory</li>
+<li><code>syntax</code> must be <code>’<number>’</code></li>
+<li><code>initial-value</code> must be <code>0</code></li>
+<li><code>inherits</code> must be <code>false</code></li>
+<li><code>transition</code> duration must be <code>0s</code></li>
+<li>Both <code>transitionend</code> and <code>webkitTransitionEnd</code> must be registered (Safari)</li>
+</ul>
+</div>
+
+  </details>
+
+  #####-- S-02 -->
+
+  <details id="s02">
+    <summary>
+      <span class="summary-tag">S-02</span>
+      <span class="summary-title">The DOM as State Store</span>
+      <span class="summary-hint">No other state store exists</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-01 Role Assignment — DOM as attested runtime</div>
+      <h3>The DOM stores all committed state. There is no other state store.</h3>
+      <pre><span class="p">&lt;</span><span class="k">div</span> class=<span class="s">"ledger-node order-node"</span>
+  data-id=<span class="s">"order-001"</span>
+  data-items=<span class="s">"3"</span>
+  data-address=<span class="s">"confirmed"</span>
+  data-payment=<span class="s">"card"</span>
+  data-prev-gate-open=<span class="s">"0"</span>
+<span class="p">&gt;&lt;/</span><span class="k">div</span><span class="p">&gt;</span></pre>
+      <h4>Attribute Categories</h4>
+      <table class="grid">
+        <tr><td>Identity</td><td><code>data-id</code> — never used in <a class="ref" href="#p01">CSS Ledger</a> selectors. Stable identifier only.</td></tr>
+        <tr><td>State</td><td><code>data-[key]</code> — present when value exists, absent when it does not. Written only via <a class="ref" href="#s06">Batch Write</a>.</td></tr>
+        <tr><td>Snapshots</td><td><code>data-prev-[gate]</code> — written only by JS reconciliation in the <a class="ref" href="#s04">Write Guard</a>.</td></tr>
+      </table>
+      <p>Absence of a value is <code>removeAttribute</code>, not empty string. <code>[data-amount]</code> matches presence. An attribute set to <code>""</code> also satisfies the selector. These are not equivalent — treat them as distinct.</p>
+    </div>
+  </details>
+
+  #####-- S-03 -->
+
+  <details id="s03">
+    <summary>
+      <span class="summary-tag">S-03</span>
+      <span class="summary-title">The Dual-Signal Model</span>
+      <span class="summary-hint">No gate change permanently missed · 16ms maximum latency</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-03 Resilience — implementation-layer reliability guarantee</div>
+      <h3>transitionend paired with a targeted rAF sweep.</h3>
+      <p><code>transitionend</code> is not guaranteed in all browser conditions. The dual-signal model ensures no gate change is ever permanently missed.</p>
+      <table class="grid">
+        <tr><td>Fast path</td><td><code>transitionend</code> fires immediately when the browser processes the gate change. Zero scheduling latency.</td></tr>
+        <tr><td>Fallback path</td><td>One-shot <code>requestAnimationFrame</code> armed on every <a class="ref" href="#s06">batch commit</a>. Fires once on the next frame. Not a polling loop.</td></tr>
+      </table>
+      <p>Both paths call the same <code>reconcile</code> function. The snapshot comparison inside <a class="ref" href="#s04">reconcile</a> makes it idempotent — if the fast path already ran, the fallback exits immediately. One execution per gate change regardless of how many signals fire.</p>
+      <p>Maximum latency on a missed <code>transitionend</code>: one frame (~16ms at 60fps).</p>
+    </div>
+  </details>
+
+  #####-- S-04 -->
+
+  <details id="s04">
+    <summary>
+      <span class="summary-tag">S-04</span>
+      <span class="summary-title">The Write Guard</span>
+      <span class="summary-hint">Preventing re-entrant reconciliation loops</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-01 Role Assignment — containing JS to its memory bus role</div>
+      <h3>Snapshot writes during reconciliation must not re-enter JS.</h3>
+      <p>When JS writes a snapshot attribute during reconciliation, that write triggers <a class="ref" href="#p01">CSS Ledger</a> re-evaluation, which may fire another transition, which re-enters JS. The write guard prevents this loop.</p>
+      <pre>#reconcile(propertyName) {
+  <span class="k">if</span> (<span class="k">this</span>.#flushing) <span class="k">return</span>;
+  <span class="k">this</span>.#flushing = <span class="v">true</span>;
+
+<span class="k">const</span> current = getComputedStyle(<span class="k">this</span>.node)
+.getPropertyValue(propertyName).trim();
+<span class="k">const</span> prev = <span class="k">this</span>.node.dataset[snapshotKey];
+
+<span class="k">if</span> (current !== prev) {
+<span class="k">this</span>.node.dataset[snapshotKey] = current;
+<span class="k">this</span>.#dispatch(propertyName, current, prev);
+}
+
+requestAnimationFrame(() => { <span class="k">this</span>.#flushing = <span class="v">false</span>; });
+}</pre>
+<p>Guard is set at reconciliation start, released at the next frame boundary. Re-entrant calls within that window are blocked. Events that arrive during the flush are caught by the <a class="ref" href="#s03">rAF fallback</a> on the following frame. Guard is per-node — separate nodes have independent flush states.</p>
+</div>
+
+  </details>
+
+  #####-- S-05 -->
+
+  <details id="s05">
+    <summary>
+      <span class="summary-tag">S-05</span>
+      <span class="summary-title">Data Normalization</span>
+      <span class="summary-hint">DOM never holds an unnormalised value · runtime enforcement of closed-world</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-02 Closed-World Assumption — runtime enforcement at write time</div>
+      <h3>All attribute values are normalised before they reach the DOM.</h3>
+      <p>This prevents comparison bugs, false deltas in reconciliation, and <a class="ref" href="#p01">CSS Ledger</a> selector inconsistencies. This is the runtime enforcement of what <a class="ref" href="#p01">@property</a> declarations define structurally — both layers constrain the same value space.</p>
+      <pre><span class="k">const</span> registry = {
+  amount:    { type: <span class="s">'float'</span>,  precision: <span class="v">2</span> },
+  recipient: { type: <span class="s">'string'</span>, transform: <span class="s">'lowercase'</span> },
+  method:    { type: <span class="s">'enum'</span>,   values: [<span class="s">'card'</span>, <span class="s">'cash'</span>, <span class="s">'crypto'</span>] },
+  quantity:  { type: <span class="s">'int'</span> },
+  active:    { type: <span class="s">'bool'</span> },
+};</pre>
+      <p>A <code>null</code> result removes the attribute. It does not set it to <code>""</code> or the string <code>"null"</code>. Normalization runs during <a class="ref" href="#s06">batch</a> <code>set()</code>, not during <code>commit()</code>.</p>
+      <table class="grid">
+        <tr><td>Without</td><td><code>'45.0' !== '45'</code> — false delta, false gate event, false execution.</td></tr>
+        <tr><td>With</td><td>Both become <code>'45.00'</code> — no false gate events.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  #####-- S-06 -->
+
+  <details id="s06">
+    <summary>
+      <span class="summary-tag">S-06</span>
+      <span class="summary-title">Batch Write System</span>
+      <span class="summary-hint">One recalculation per logical write · no micro-cascade storms</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-01 Role Assignment — atomic state transitions in the DOM</div>
+      <h3>Multiple attribute writes committed in one synchronous burst.</h3>
+      <p>Without batching, intermediate selector states may produce transition events for partial state — micro-cascade storms. The batch system prevents this by exploiting the browser's rendering model: a synchronous burst of <code>setAttribute</code> calls within a single task produces exactly one style recalculation.</p>
+      <pre>ledger.batch()
+  .set(<span class="s">'items'</span>, <span class="v">3</span>)
+  .set(<span class="s">'address'</span>, <span class="s">'confirmed'</span>)
+  .set(<span class="s">'payment'</span>, <span class="s">'card'</span>)
+  .commit();
+<span class="c">// One recalculation. One potential gate event.</span></pre>
+      <p>The <a class="ref" href="#s03">rAF fallback</a> is armed immediately after every <code>commit()</code>. Direct <code>setAttribute</code> calls on state attributes in application code are prohibited. All state writes must go through the batch interface.</p>
+    </div>
+  </details>
+
+  #####-- S-07 -->
+
+  <details id="s07">
+    <summary>
+      <span class="summary-tag">S-07</span>
+      <span class="summary-title">The Ledger Node Contract</span>
+      <span class="summary-hint">The complete unit of Exodus execution at component scale</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements All Principles — the atom of the CSSLedger system</div>
+      <h3>A ledger node is a purpose-built state carrier.</h3>
+      <p>It is the concrete instantiation of the Exodus execution model at component scale. A ledger node is not a UI component. It does not own rendering or manage children. Not every element in an application is a ledger node.</p>
+      <pre>LedgerNode.init(element, {
+  type: <span class="s">'order-node'</span>,
+  registry: {
+    items:   { type: <span class="s">'int'</span> },
+    address: { type: <span class="s">'enum'</span>, values: [<span class="s">'pending'</span>, <span class="s">'confirmed'</span>] },
+    payment: { type: <span class="s">'enum'</span>, values: [<span class="s">'card'</span>, <span class="s">'cash'</span>, <span class="s">'crypto'</span>] },
+  },
+  gates: [<span class="s">'--gate-open'</span>],
+  onGate: (propertyName, current, prev, node) => {
+    <span class="c">/* application logic lives here and only here */</span>
+  },
+});</pre>
+      <p>The <a class="ref" href="#s05">type registry</a> enforces the <a class="ref" href="#p02">closed-world</a> value constraint at write time. The gates list defines which <a class="ref" href="#p01">@property</a> registers this node monitors. <code>onGate</code> is the application's only valid entry point for logic.</p>
+    </div>
+  </details>
+
+  #####-- S-08 -->
+
+  <details id="s08">
+    <summary>
+      <span class="summary-tag">S-08</span>
+      <span class="summary-title">The Four Problem Spaces</span>
+      <span class="summary-hint">Structural advantage over conventional approaches · testable claims</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-02, P-03, P-04 — demonstrating where the model outperforms</div>
+      <h4>1. Layout-Dependent Logic</h4>
+      <p>Container queries resolve synchronously with style recalculation. <code>ResizeObserver</code> fires after layout. <a class="ref" href="#p01">CSSLedger</a> exposes container query resolution as a <a class="ref" href="#s01">gate signal</a>. More deterministic and earlier in the rendering pipeline than <code>ResizeObserver</code>-based approaches.</p>
+      <h4>2. Hydration State Mismatch</h4>
+      <p>State IS the <a class="ref" href="#s02">DOM</a>. Server renders attribute state. <a class="ref" href="#p01">CSS Ledger</a> evaluates gates from it on load. JS attaches and the system is live. No state recomputation pass. Hydration state recomputation is eliminated.</p>
+      <h4>3. Temporal State Without JS Timers</h4>
+      <p>CSS animations pause on backgrounded tabs, respect <code>prefers-reduced-motion</code>, do not drift, require no manual cleanup. <code>animationend</code> acts as a <a class="ref" href="#s01">gate signal</a>. Lifecycle-aligned timing that replaces most UI-layer timers.</p>
+      <h4>4. Pseudo-Class State as Application Signals</h4>
+      <p><code>:focus-within</code>, <code>:valid</code>, <code>:invalid</code>, <code>:hover</code> resolve synchronously inside the style engine. <a class="ref" href="#p01">CSSLedger</a> surfaces them as gate events. Zero-bookkeeping UI state signals with no event delegation or listener trees.</p>
+    </div>
+  </details>
+
+  #####-- S-09 -->
+
+  <details id="s09">
+    <summary>
+      <span class="summary-tag">S-09</span>
+      <span class="summary-title">The Ledger Graph</span>
+      <span class="summary-hint">Multi-node coordination · cycle detection · shared signals</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements P-05 Shared Memory — multi-node coordination model</div>
+      <h3>Nodes coordinate through defined relationship types.</h3>
+      <table class="grid">
+        <tr><td>Parent/child</td><td>Child writes a summary signal to parent's state attributes via <a class="ref" href="#s06">batch write</a>.</td></tr>
+        <tr><td>Peer dependency</td><td>One node's reconciliation writes to another node's state attributes.</td></tr>
+        <tr><td>Shared signal</td><td>Dedicated signal node holds application-level signals any <a class="ref" href="#s07">ledger node</a> may read from.</td></tr>
+      </table>
+      <h4>Cycle Detection</h4>
+      <p>Cycle detection is mandatory. A frame-scoped cascade log tracks which nodes have been written to in the current cascade. Any attempt to write to an already-written node is blocked and logged. Log clears at the frame boundary.</p>
+      <p>Cross-node writes must go through the <a class="ref" href="#s06">batch system</a>. Snapshot attributes on other nodes must never be written by outside nodes — only state attributes.</p>
+    </div>
+  </details>
+
+  #####-- S-10 -->
+
+  <details id="s10">
+    <summary>
+      <span class="summary-tag">S-10</span>
+      <span class="summary-title">Positioning and Claims Register</span>
+      <span class="summary-hint">Defensible claims · language to retire · challenge responses</span>
+    </summary>
+    <div class="section-body">
+      <div class="implements">Implements All Principles — authoritative record of what CSSLedger claims</div>
+      <blockquote>CSSLedger lets the browser tell your application when state is valid, instead of your application trying to figure that out after the fact.</blockquote>
+      <h4>Defensible Claims</h4>
+      <ul>
+        <li class="ok">The browser schedules logic, not developer code.</li>
+        <li class="ok"><a class="ref" href="#p01">CSS Ledger</a> gates execution. JavaScript computes. <a class="ref" href="#s02">DOM</a> stores.</li>
+        <li class="ok">No additional observation overhead beyond what the browser already performs.</li>
+        <li class="ok">Container query gates are more deterministic than <code>ResizeObserver</code>.</li>
+        <li class="ok">Hydration state recomputation is eliminated.</li>
+        <li class="ok">CSS animations provide lifecycle-aligned timing.</li>
+        <li class="ok">Pseudo-classes expose zero-bookkeeping signals.</li>
+      </ul>
+      <h4>Language to Retire</h4>
+      <ul>
+        <li class="warn">"Zero cost" → use "no additional observation overhead"</li>
+        <li class="warn">"Nobody has done this" → use "this formalises patterns not previously unified into a named architecture"</li>
+        <li class="warn">"CSS is the computation engine" → CSS is the execution gate</li>
+        <li class="warn">"No hydration problem" → the correct claim is narrower</li>
+      </ul>
+      <h4>Key Challenge Responses</h4>
+      <p><strong>"Just use Signals."</strong><br>Signals require developer-defined subscriptions. CSSLedger uses the browser's style engine as the scheduler. These are categorically different scheduling models.</p>
+      <p><strong>"getComputedStyle causes reflow."</strong><br>Called inside <code>transitionend</code>, style recalculation is already complete. No forced reflow. Forced reflow only occurs when reading before recalculation.</p>
+      <p><strong>"This won't scale."</strong><br>Honest gap. Single-node performance is verifiable now. Multi-node architecture is defined via the <a class="ref" href="#s09">Ledger Graph</a>. Scale testing is on the roadmap.</p>
+      <h4>Maturity Declaration</h4>
+      <p class="dim">Verified single-node mechanism. Defined multi-node model. Four problem spaces with testable claims. Not tested at scale. Ledger Node Contract defined, not yet published. Multi-node coordination specified, not yet demonstrated.</p>
+    </div>
+  </details>
+
+  <hr class="part-divider">
+
+  #####-- 
+       PART III — SYSTEM
+   -->
+
+  <div class="part-header">
+    <div class="part-label">Part III — System</div>
+    <div class="part-title">Complete Stack</div>
+    <p class="part-desc">Every component named. Every property stated. Every subsystem defined. The full picture of Exodus as a running system.</p>
+  </div>
+
+  #####-- COMPLETE STACK -->
+
+  <details id="stack" open>
+    <summary>
+      <span class="summary-tag">System</span>
+      <span class="summary-title">Complete Stack</span>
+      <span class="summary-hint">Every component named</span>
+    </summary>
+    <div class="section-body">
+      <table class="grid">
+        <tr><td><a class="ref" href="#p11">Quantum enumeration</a></td><td>Source — produces complete valid state space.</td></tr>
+        <tr><td><a class="ref" href="#p06">Vessel Image</a></td><td>Format — GPU-queryable, self-describing, offline-capable.</td></tr>
+        <tr><td><a class="ref" href="#p08">Context Extractor</a></td><td>Compressor — @media + IPC context renders the relevant slice.</td></tr>
+        <tr><td><a class="ref" href="#p08">Memstrap</a></td><td>Wire payload — rendered slice shipped to client at session start.</td></tr>
+        <tr><td><a class="ref" href="#p06">Client Vessel</a></td><td>Local DB — holds slice, IPC keeps current, offline holds last valid.</td></tr>
+        <tr><td><a class="ref" href="#p04">IPC Stream</a></td><td>Transport — WebSocket, async memory write stream, server to client.</td></tr>
+        <tr><td><a class="ref" href="#p04">@media</a></td><td>Protocol — continuous negotiation, replaces HTTP headers.</td></tr>
+        <tr><td><a class="ref" href="#p01">CSS Ledger</a></td><td>Execution — Chungus evaluators, cascade resolves quorum continuously.</td></tr>
+        <tr><td><a class="ref" href="#s02">DOM</a></td><td>Runtime — attested, inspectable, authoritative at all times.</td></tr>
+        <tr><td>JavaScript</td><td>Memory bus — commits stream writes to DOM, no logic permitted.</td></tr>
+        <tr><td><a class="ref" href="#p09">Chungus</a></td><td>Truth gate — state must be valid before DB write is structurally possible.</td></tr>
+        <tr><td><a class="ref" href="#p10">Quorum Seeder</a></td><td>Orchestrator — K8s manages validator pod lifecycle and lineage.</td></tr>
+        <tr><td>Database</td><td>Persistence — accepts only Vessel-proven, quorum-approved writes.</td></tr>
+        <tr><td><a class="ref" href="#p12">K8s</a></td><td>Infrastructure — pod per session, surge is a cold start problem.</td></tr>
+        <tr><td><a class="ref" href="#p13">Bootstrapper</a></td><td>Entry point — current web stack, executes once, hands off.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  #####-- EMERGENT PROPERTIES -->
+
+  <details id="properties">
+    <summary>
+      <span class="summary-tag">System</span>
+      <span class="summary-title">Emergent Properties</span>
+      <span class="summary-hint">What the architecture guarantees by construction</span>
+    </summary>
+    <div class="section-body">
+      <table class="grid">
+        <tr><td>Self-healing</td><td><a class="ref" href="#p03">Watchdog rule</a> always waiting to match. Resilience is structural, not implemented.</td></tr>
+        <tr><td>Inspectable</td><td><a class="ref" href="#s02">DOM</a> is always the complete true runtime state. No hidden execution.</td></tr>
+        <tr><td>Collaboration-native</td><td><a class="ref" href="#p05">Shared memory</a> is default. Isolation is the delta. Multiplayer costs nothing extra.</td></tr>
+        <tr><td>Surge-indifferent</td><td>Application logic does not re-execute under load. Spikes are <a class="ref" href="#p12">infrastructure events</a>.</td></tr>
+        <tr><td>Offline-capable</td><td><a class="ref" href="#p06">Vessel</a> holds last valid state. Native to the format. Not a feature you build.</td></tr>
+        <tr><td>Combinatorial-safe</td><td><a class="ref" href="#p07">Geometry</a> absorbs state combinations. Regions not enumerations. GPU handles sparse space.</td></tr>
+        <tr><td>Logic-attack-resistant</td><td><a class="ref" href="#p09">Chungus</a> gates every DB write. Application logic untrusted by default.</td></tr>
+        <tr><td>Formally auditable</td><td>Every write backed by <a class="ref" href="#p10">quorum</a> decision and evaluator lineage. Full replay.</td></tr>
+        <tr><td>Platform-agnostic</td><td>Any web-capable <a class="ref" href="#p13">bootstrapper</a> is sufficient. No infrastructure replacement required.</td></tr>
+        <tr><td>Superposition-secure</td><td><a class="ref" href="#p14">Emergent encryption</a> — the key never exists. Coordinates without context resolve to every possible state simultaneously. Nothing meaningful transits the wire.</td></tr>
+        <tr><td>Composition-native</td><td><a class="ref" href="#p15">Multiple runtimes</a> pack into one object. Integration is geometry between regions. The integration layer ceases to exist as a category.</td></tr>
+        <tr><td>Execute-once</td><td>Logic runs at enumeration time. Every subsequent session samples a static geometric object. Energy consumption for application logic approaches a floor independent of user count.</td></tr>
+        <tr><td>Backwards-compatible</td><td><a class="ref" href="#p06b">Every language, compiler, and algorithm</a> carries forward. The solution was always correct. Only the layer it targets changes.</td></tr>
+      </table>
+    </div>
+  </details>
+
+  #####-- IMPLEMENTATION STATUS -->
+
+  <details id="status">
+    <summary>
+      <span class="summary-tag">System</span>
+      <span class="summary-title">Implementation Status</span>
+    </summary>
+    <div class="section-body">
+      <h4>CSSLedger</h4>
+      <ul>
+        <li><span class="badge done">done</span> <a class="ref" href="#s01">Gate mechanism</a></li>
+        <li><span class="badge done">done</span> <a class="ref" href="#s02">DOM ledger</a></li>
+        <li><span class="badge done">done</span> <a class="ref" href="#s03">Dual-signal model</a></li>
+        <li><span class="badge done">done</span> <a class="ref" href="#s04">Write guard</a></li>
+        <li><span class="badge done">done</span> <a class="ref" href="#s05">Data normalization</a></li>
+        <li><span class="badge done">done</span> <a class="ref" href="#s06">Batch write system</a></li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#s07">Ledger Node Contract</a> — defined, not yet published</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#s09">Multi-node coordination</a> — specified, not yet demonstrated</li>
+        <li><span class="badge pending">pending</span> Scale testing — on roadmap</li>
+      </ul>
+      <h4>Exodus</h4>
+      <ul>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p08">Memstrap</a> wire format</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p01">CSS Ledger</a> schema and compiler</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p01">@property</a> register conventions</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p04">IPC stream</a> protocol</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p12">Pod lifecycle</a> bindings</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p13">Bootstrapper</a> contract</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p06">Vessel Image</a> format specification</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p08">Context extractor</a> / compressor</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p07">Coordinate execution</a> engine (WebGPU)</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p09">Chungus</a> validator implementation</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p10">Quorum Seeder</a> orchestration layer</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p14">Emergent Encryption</a> — context derivation algorithm and one-time compression key specification</li>
+        <li><span class="badge pending">pending</span> <a class="ref" href="#p15">Multi-Runtime Composition</a> — W-axis runtime identity encoding and cross-runtime coordinate transition validation</li>
+      </ul>
+    </div>
+  </details>
+
+  #####-- SUBSYSTEMS -->
+
+  <details id="subsystems">
+    <summary>
+      <span class="summary-tag">System</span>
+      <span class="summary-title">Subsystems Under Project Exodus</span>
+      <span class="summary-hint">CSSLedger · Chungus · Vessel Image · Quorum Seeder · Emergent Encryption · Multi-Runtime Composition</span>
+    </summary>
+    <div class="section-body">
+      <p>Exodus is the platform. The following are its named subsystems — each a distinct, self-contained component with a defined role in the full stack. None of them is Exodus. Together they instantiate it.</p>
+
+
+  <h4><a class="ref" href="#s01">CSSLedger</a></h4>
+  <p>The reference implementation of the <a class="ref" href="#p01">execution layer</a>. CSS as the translational bridge between GPU geometry and CPU output. Demonstrates speculative state definition, <a class="ref" href="#p03">watchdog recovery</a>, and JavaScript-as-memory-bus in a running browser today. The entry point for the project. The proof that the model works before anything else is built. Points home to Exodus.</p>
+
+  <h4><a class="ref" href="#p09">Chungus</a></h4>
+  <p>Pre-transaction execution attestation layer. Sits between application logic and the database. Application logic is untrusted by default. No write reaches the database unless a quorum of deterministic evaluators has already converged on its validity — amortised into the cascade evaluation cycle, not triggered by the write. Powered by <a class="ref" href="#p01">Exodus continuous cascade evaluation</a>.</p>
+
+  <h4><a class="ref" href="#p06">Vessel Image</a></h4>
+  <p>The geometric execution surface. A bounded metric space of application state — every valid state a coordinate, every invalid state an absence, every transition a measurable distance. GPU-queryable. Context-extractable. Self-describing. Serves simultaneously as local client database, wire format, security model, and the object that quantum enumeration produces. The Vessel is public. The slice is unrepeatable.</p>
+
+  <h4><a class="ref" href="#p10">Quorum Seeder</a></h4>
+  <p>Validator lifecycle orchestrator. <a class="ref" href="#p12">K8s</a>-native. Spawns and retires <a class="ref" href="#p09">Chungus</a> evaluator instances. Tracks evaluator ancestry via foreign keys in the application database — creating a fully auditable, replayable chain of every validation decision. Structural trust through rotating evaluators. Authority is distributed, never static.</p>
+
+  <h4><a class="ref" href="#p14">Emergent Encryption</a></h4>
+  <p>Security as a geometric property of the model. The compression algorithm that produces the <a class="ref" href="#p08">memstrap</a> is the encryption key — derived locally from unrepeatable context, used once, dissolved. The Vessel holds every possible application state in superposition. Without the exact context that collapses it, a coordinate resolves to every state simultaneously. The key never exists as a discrete artifact. There is nothing to steal.</p>
+
+  <h4><a class="ref" href="#p15">Multi-Runtime Composition</a></h4>
+  <p>Applications are not integrated. They are composed. Multiple runtimes pack into a single Vessel Image across the W axis. Integration is the geometry between runtime regions — not a layer between systems. Valid interactions are geometrically adjacent. Invalid interactions are geometrically absent. The integration layer ceases to exist as a category.</p>
+</div>
+
+
+  </details>
+
+  #####-- FOOTER -->
+
+  <div class="footer">
+    <div>PROJECT EXODUS — PLATFORM SPECIFICATION</div>
+    <div>Part I: Principles &nbsp;·&nbsp; Part II: CSSLedger &nbsp;·&nbsp; Part III: System</div>
+    <div style="margin-top:1rem; color: var(--dim2);">
+      The browser was a document viewer that learned to run applications.<br>
+      Exodus is what happens when you build the platform those applications actually needed.<br>
+      <span style="color: var(--dim2); font-size: 0.85em;">The law is called Sacrificial Purpose.</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Open targeted section and scroll to it
+  document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', e => {
+      const id = link.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      if (target.tagName === 'DETAILS') {
+        target.open = true;
+      }
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    });
+  });
+
+  // Highlight referenced section briefly on arrival
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting && location.hash) {
+        const el = document.querySelector(location.hash);
+        if (el === entry.target) {
+          el.style.transition = 'box-shadow 0.3s';
+          el.style.boxShadow = '0 0 0 1px var(--gold-dim)';
+          setTimeout(() => { el.style.boxShadow = ''; }, 1500);
+        }
+      }
+    });
+  });
+
+  document.querySelectorAll('details').forEach(d => observer.observe(d));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none';
+               style-src 'self' 'unsafe-inline';
+               script-src 'self' 'unsafe-inline';
+               img-src 'self' data:;
+               connect-src 'none';
+               base-uri 'none';
+               form-action 'none';
+               frame-ancestors 'none';">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EXODUS - Canonical Reference v1.0</title>
+
+<!--
+===============================================================================
+ EXODUS - Canonical Reference v1.0
+===============================================================================
+ Distilled from: exodus-minimal.html + skill references (cascade-engine,
+                 parallel-probes, server-patterns, vsf-spec).
+
+ Architecture:
+   SERVER : owns geometry, truth, delta; ships rules to client
+   IPC    : synchronous logged message bus
+   CLIENT : compiles rules -> CSS; probes via setAttribute/getComputedStyle
+   CSS    : the runtime; parallel constraint satisfier
+
+ Three axioms:
+   1. CSS is the client runtime
+   2. JS is I/O only
+   3. Server owns geometry and truth
+
+ Threat model and defenses (each enforced in code below):
+   T1 CSS injection via constraint string values
+      -> cssIdent() validator + cssString() escaper on every untrusted value
+   T2 HTML injection via resolved cascade outputs
+      -> textContent only for dynamic content; no innerHTML with dynamic data
+   T3 Prototype pollution via IPC messages
+      -> Object.create(null) maps; has() guard; reserved key rejection
+   T4 Source pollution (smart quotes, en-dashes, the VSFGenerator bug)
+      -> ASCII-only source file; runtime self-check on load
+   T5 Replay/tampering of committed rows
+      -> SHA-256 content addressing; Merkle root exposed on COMMIT_ACK
+   T6 Unbounded resource consumption
+      -> frozen config; server-owned bounds; probe-array cap
+   T7 Arbitrary code execution
+      -> no eval/Function/setTimeout(string); CSP meta above
+
+ Canonical identifiers (fixed, never recomputed):
+   Probe container : #V-probe-container  (parallel probe array lives here)
+   Single probe    : #V-probe             (current-navState probe)
+   Cascade style   : #cascade-rules       (the injected runtime)
+===============================================================================
+-->
+
+<style>
+/* -----------------------------------------------------------------------------
+ * Application chrome. This stylesheet styles the UI only.
+ * It is NOT the runtime. The runtime is #cascade-rules, injected at boot.
+ * ---------------------------------------------------------------------------*/
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box }
+html,body { background:#08080a; color:#888;
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, Menlo, Consolas, monospace;
+  font-size:11px; line-height:1.5; }
+body { display:grid; grid-template-columns: 1fr 360px; gap:16px; padding:16px;
+  min-height:100vh; }
+
+/* ---- The probe substrate. Off-screen but IN layout; styles resolve. ----
+ * display:none MUST NOT be used here: custom properties may not resolve on
+ * detached / display:none nodes in all engines. Position off-screen instead.
+ */
+#V-probe,
+#V-probe-container,
+#V-probe-container > div {
+  position:absolute; left:-9999px; top:-9999px;
+  width:0; height:0; overflow:hidden; pointer-events:none;
+  contain: style; /* limit style recalc scope */
+}
+
+main, aside { display:flex; flex-direction:column; gap:12px; min-width:0; }
+
+h1 { font-size:10px; letter-spacing:3px; color:#666; font-weight:700 }
+h2 { font-size:9px;  letter-spacing:3px; color:#444; margin-bottom:8px; font-weight:700 }
+.sub { font-size:8px; letter-spacing:1px; color:#2a2a30; }
+
+.box { border:1px solid #151518; border-radius:3px; padding:12px; background:#0a0a0d; }
+.row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; align-items:center; }
+.lbl { width:90px; font-size:8px; letter-spacing:1px; color:#666; text-transform:uppercase; }
+
+.btn { padding:6px 10px; border-radius:3px;
+  font:700 9px/1 ui-monospace, monospace; letter-spacing:1px; cursor:pointer;
+  border:1px solid #222; background:#0e0e11; color:#555; transition: all .1s; }
+.btn:hover      { color:#aaa; border-color:#333 }
+.btn:focus-visible { outline: 1px solid #3a6; outline-offset:1px }
+.btn.on         { background: hsla(210,50%,18%,.45); border-color: hsl(210,50%,40%); color: hsl(210,70%,75%); }
+.btn.act        { border-color:#3a5; color:#9d6; }
+.btn.act:hover  { color:#beb; }
+
+.res { font-size:12px; font-weight:700; letter-spacing:1px; padding:12px;
+  border:1px solid #151518; border-radius:3px; background:#060608; line-height:1.7; white-space:pre-wrap; word-break:break-all; }
+.allowed { color: hsl(160,60%,55%) }
+.denied  { color: hsl(  0,55%,55%) }
+
+/* delta meter */
+.dmeter { height:6px; background:#101014; border-radius:3px; overflow:hidden; position:relative; }
+.dfill  { height:100%; background: linear-gradient(90deg, hsl(160,60%,45%), hsl(45,70%,50%), hsl(0,55%,50%)); transition: width .15s; }
+.dlabel { display:flex; justify-content:space-between; font-size:8px; letter-spacing:1px; color:#666; margin-bottom:4px; text-transform:uppercase; }
+
+/* prob input */
+#prob-display { font:700 13px/1.3 ui-monospace, monospace; letter-spacing:2px; color:#aec; min-height:18px; padding:6px 0; }
+.slot { display:inline-block; width:11px; text-align:center; color:#2a2a30; }
+.slot.f { color:#8f7; }
+
+.klist { display:grid; grid-template-columns: repeat(10, 1fr); gap:3px; }
+.key   { padding:5px 0; text-align:center; }
+
+/* ipc log */
+#ipc-log { font-size:8px; line-height:1.5; max-height:220px; overflow-y:auto;
+  background:#060608; padding:8px; border-radius:3px; border:1px solid #151518; }
+.ipc-in  { color: hsl(210,60%,65%) }
+.ipc-out { color: hsl(160,60%,55%) }
+.ipc-mut { color: hsl( 45,70%,55%) }
+.ipc-obs { color: hsl(280,55%,70%) }
+.ipc-err { color: hsl(  0,65%,60%) }
+
+pre.src { font-size:7px; line-height:1.5; color:#2a2a30;
+  max-height:220px; overflow:auto; white-space:pre; }
+
+table.rows { width:100%; font-size:8px; border-collapse:collapse; }
+table.rows th, table.rows td { padding:3px 6px; border-bottom:1px solid #101014; text-align:left; }
+table.rows th { color:#555; letter-spacing:1px; }
+
+.stats { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; font-size:9px; }
+.stat  { background:#060608; border:1px solid #151518; border-radius:3px; padding:8px; text-align:center; }
+.stat b { font-size:16px; color:#aea; display:block; }
+
+.warn { color: hsl(0,65%,60%); padding:4px 8px; border-left:2px solid hsl(0,65%,50%); background: hsla(0,50%,15%,.3); font-size:9px; }
+
+@media (max-width: 900px) { body { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     PROBE SUBSTRATE (off-screen, in layout)
+     JS only touches these via setAttribute + getComputedStyle.
+     ============================================================ -->
+<div id="V-probe"></div>
+<div id="V-probe-container"></div>
+
+
+<!-- ============================================================
+     UI SKELETON (static. buildUI() fills it from server data.)
+     ============================================================ -->
+<main>
+
+  <div>
+    <h1>EXODUS - CANONICAL REFERENCE v1.0</h1>
+    <div class="sub">CSS IS THE RUNTIME &middot; JS IS I/O ONLY &middot; SERVER OWNS TRUTH</div>
+  </div>
+
+  <div id="boot-warn"></div>
+
+  <div class="box" id="nav-box">
+    <h2>DETERMINISTIC DIMENSIONS</h2>
+    <div id="nav-controls"></div>
+  </div>
+
+  <div class="box">
+    <h2>PROBABILISTIC INPUT (contributes to delta)</h2>
+    <div class="dlabel"><span id="prob-label">NAME</span><span id="prob-counter">0 / 30</span></div>
+    <div id="prob-display"></div>
+    <div class="row" style="margin-top:8px;">
+      <div class="klist" id="prob-keys"></div>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn"   id="btn-space">SPACE</button>
+      <button class="btn"   id="btn-back">BACKSPACE</button>
+      <button class="btn"   id="btn-clear">CLEAR</button>
+      <button class="btn act" id="btn-commit">COMMIT</button>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>CASCADE RESULT (at current nav coordinate)</h2>
+    <div id="cascade-result" class="res">--</div>
+    <div class="dlabel" style="margin-top:10px;"><span>DELTA (OBSERVATION NOISE)</span><span id="delta-value">1.0000</span></div>
+    <div class="dmeter"><div class="dfill" id="delta-fill" style="width:100%"></div></div>
+  </div>
+
+  <div class="box">
+    <h2>FULL-SPACE RESOLUTION (parallel probe array)</h2>
+    <div class="stats" id="space-stats">
+      <div class="stat"><b id="stat-total">--</b>TOTAL</div>
+      <div class="stat"><b id="stat-valid" class="allowed">--</b>VALID</div>
+      <div class="stat"><b id="stat-denied" class="denied">--</b>DENIED</div>
+    </div>
+    <div class="row" style="margin-top:10px; font-size:8px; color:#555;">
+      <span id="resolve-perf"></span>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>CHANNEL FIDELITY METER</h2>
+    <div class="stats">
+      <div class="stat"><b id="dsc-val">1.000000</b>delta(S-&gt;C)</div>
+      <div class="stat"><b id="dcs-val">1.000000</b>delta(C-&gt;S)</div>
+      <div class="stat"><b id="dipc-val">1.000000</b>weighted composite</div>
+    </div>
+    <div class="row" style="margin-top:8px; font-size:8px; color:#666; justify-content:space-between;">
+      <span id="dsc-ratio">--</span>
+      <span id="dcs-ratio">--</span>
+      <span id="dipc-mode">alpha=0.80 (server-authoritative)</span>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn" id="btn-scan">SCAN FULL SPACE  (collapse delta S-&gt;C)</button>
+    </div>
+    <div class="row" style="font-size:8px; color:#555; margin-top:4px;">
+      <span>observed/expected per direction. expected sets and composition are definitional, not derived.</span>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>COMMITTED ROWS (content-addressed)</h2>
+    <div id="rows-wrap" style="max-height:200px; overflow:auto;">
+      <table class="rows" id="rows-table"><thead><tr>
+        <th>#</th><th>NAV</th><th>PROB</th><th>SDF</th><th>DELTA</th><th>RT</th><th>DOC</th><th>HASH</th>
+      </tr></thead><tbody id="rows-body"></tbody></table>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn" id="btn-export">EXPORT .VSF</button>
+      <button class="btn" id="btn-import">IMPORT .VSF</button>
+      <span class="sub" id="merkle-root" style="margin-left:auto;">merkle: --</span>
+    </div>
+  </div>
+
+</main>
+
+<aside>
+  <div class="box">
+    <h2>IPC CHANNEL (synchronous, logged)</h2>
+    <div id="ipc-log"></div>
+  </div>
+
+  <div class="box">
+    <h2>INJECTED CSS (the client runtime, inspectable)</h2>
+    <pre class="src" id="css-src"></pre>
+  </div>
+</aside>
+
+
+<script>
+/* ============================================================================
+ * EXODUS Canonical v1.0
+ * All source below is strict-mode ASCII-only. No external deps. No eval.
+ * ==========================================================================*/
+(function () {
+"use strict";
+
+/* ==========================================================================
+ * MODULE 0 - Guards and primitives
+ * Ordering: this module is defined first so every subsequent module can use
+ * its helpers. These helpers are the load-bearing defense surface.
+ * ==========================================================================*/
+var Guards = (function () {
+
+  /* ---- ASCII-only source self-check ---------------------------------------
+   * The outer <script> tag body was authored as ASCII only. We verify this
+   * at boot by checking this IIFE's own source text. Any non-ASCII byte in
+   * source indicates pollution (smart quotes, en-dashes, editor injection).
+   */
+  function asciiOnlySelfCheck() {
+    try {
+      var src = asciiOnlySelfCheck.toString();
+      for (var i = 0; i < src.length; i++) {
+        if (src.charCodeAt(i) > 0x7E) {
+          return { ok: false, at: i, code: src.charCodeAt(i).toString(16) };
+        }
+      }
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+
+  /* ---- CSS identifier validator (dim names, enum values without quoting) --
+   * Grammar: starts with [A-Za-z_], continues with [A-Za-z0-9_-].
+   * This is stricter than the CSS spec but safe for generated selectors.
+   * Maximum length prevents pathological inputs.
+   */
+  var IDENT_RE = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
+  function isCssIdent(s) {
+    return typeof s === "string" && IDENT_RE.test(s);
+  }
+  function requireCssIdent(s, where) {
+    if (!isCssIdent(s)) {
+      throw new Error("Invalid CSS identifier at " + where + ": " +
+        JSON.stringify(String(s).slice(0, 32)));
+    }
+    return s;
+  }
+
+  /* ---- CSS string escaper (for values that must be quoted) ----------------
+   * Produces a safe double-quoted CSS string from arbitrary UTF-16 input.
+   * Escapes: " \ and any code point < 0x20 or > 0x7E (non-printable / non-ASCII).
+   * Hex escape requires trailing space when followed by a hex digit or space;
+   * we always emit 6-digit hex + space, which is unambiguous per CSS 2.1 sec 4.1.3.
+   */
+  function cssEscapeString(raw) {
+    if (typeof raw !== "string") raw = String(raw);
+    if (raw.length > 512) raw = raw.slice(0, 512); /* bound length */
+    var out = '"';
+    for (var i = 0; i < raw.length; i++) {
+      var c = raw.charCodeAt(i);
+      if (c === 0x22) { out += '\\22 '; continue; }         /* " */
+      if (c === 0x5C) { out += '\\5C '; continue; }         /* \ */
+      if (c < 0x20 || c > 0x7E) {
+        out += '\\' + c.toString(16).toUpperCase() + ' ';
+        continue;
+      }
+      out += raw.charAt(i);
+    }
+    out += '"';
+    return out;
+  }
+
+  /* ---- Attribute-value validator for use inside [data-x="VALUE"] selectors
+   * Attribute selector VALUE is a CSS string. We could escape it, but it is
+   * far safer to restrict to a narrow character set. Any value containing
+   * characters outside this set must be rejected as a constraint key.
+   */
+  var ATTR_VALUE_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+  function isSafeAttrValue(s) {
+    return typeof s === "string" && ATTR_VALUE_RE.test(s);
+  }
+  function requireSafeAttrValue(s, where) {
+    if (!isSafeAttrValue(s)) {
+      throw new Error("Unsafe attribute value at " + where + ": " +
+        JSON.stringify(String(s).slice(0, 32)));
+    }
+    return s;
+  }
+
+  /* ---- Numeric validator --------------------------------------------------
+   * Accepts finite numbers only. Rejects NaN, Infinity, non-numbers.
+   */
+  function isFiniteNumber(n) {
+    return typeof n === "number" && isFinite(n);
+  }
+  function requireFiniteNumber(n, where) {
+    if (!isFiniteNumber(n)) {
+      throw new Error("Non-finite number at " + where + ": " + String(n));
+    }
+    return n;
+  }
+
+  /* ---- Integer validator in bounded range --------------------------------*/
+  function requireIntInRange(n, min, max, where) {
+    if (typeof n !== "number" || (n | 0) !== n || n < min || n > max) {
+      throw new Error("Integer out of range at " + where + ": " + String(n));
+    }
+    return n;
+  }
+
+  /* ---- Reserved-key rejection for message / record sanitization ----------
+   * Rejects any prototype-pollution vector. Use this before Object.assign or
+   * when iterating own properties of an untrusted object.
+   *
+   * Note: object-literal syntax "{ __proto__: 1 }" SETS the prototype rather
+   * than creating an own property, so we must build the reject set on a
+   * null-prototype object and check keys by direct indexing.
+   */
+  function isReservedKey(k) {
+    return k === "__proto__" || k === "constructor" || k === "prototype";
+  }
+  function hasOwn(o, k) {
+    return !isReservedKey(k) &&
+           Object.prototype.hasOwnProperty.call(o, k);
+  }
+  /* Own-key iterator that skips reserved keys. */
+  function ownKeys(o) {
+    var out = [];
+    if (o === null || typeof o !== "object") return out;
+    var ks = Object.keys(o);
+    for (var i = 0; i < ks.length; i++) {
+      if (!isReservedKey(ks[i])) out.push(ks[i]);
+    }
+    return out;
+  }
+
+  /* ---- SHA-256 hasher via SubtleCrypto -----------------------------------
+   * Content-addressing primitive. Async (subtle crypto is promise-based).
+   * Returns lowercase hex string of the digest.
+   */
+  function sha256Hex(text) {
+    var enc = new TextEncoder();
+    return crypto.subtle.digest("SHA-256", enc.encode(String(text)))
+      .then(function (buf) {
+        var arr = new Uint8Array(buf);
+        var hex = "";
+        for (var i = 0; i < arr.length; i++) {
+          var h = arr[i].toString(16);
+          if (h.length < 2) h = "0" + h;
+          hex += h;
+        }
+        return hex;
+      });
+  }
+
+  /* Note on sync fallback: earlier drafts carried a 32-bit FNV-1a as a
+   * potential fallback for environments without crypto.subtle. That was
+   * removed: FNV-1a produces 8 hex chars while the SET_HASH validator
+   * requires 64 (SHA-256 length), so it could not substitute without
+   * weakening the content-addressing contract. SubtleCrypto is universal
+   * in browsers since 2014; no fallback needed. */
+
+  return {
+    asciiOnlySelfCheck: asciiOnlySelfCheck,
+    isCssIdent: isCssIdent,
+    requireCssIdent: requireCssIdent,
+    cssEscapeString: cssEscapeString,
+    isSafeAttrValue: isSafeAttrValue,
+    requireSafeAttrValue: requireSafeAttrValue,
+    isFiniteNumber: isFiniteNumber,
+    requireFiniteNumber: requireFiniteNumber,
+    requireIntInRange: requireIntInRange,
+    hasOwn: hasOwn,
+    ownKeys: ownKeys,
+    sha256Hex: sha256Hex
+  };
+})();
+
+
+/* ==========================================================================
+ * MODULE 1 - SERVER
+ * Owns: dimensions, constraints, nav state, prob state, committed rows.
+ * Computes: delta via observe(). Never reads the cascade.
+ * ==========================================================================*/
+var Server = (function () {
+
+  /* ---- Domain definition (loan eligibility - canonical reference domain) */
+  var dims = Object.freeze([
+    Object.freeze({ name: "credit",     values: Object.freeze(["prime","near-prime","sub-prime"]) }),
+    Object.freeze({ name: "product",    values: Object.freeze(["mortgage","personal","auto","business-line"]) }),
+    Object.freeze({ name: "applicant",  values: Object.freeze(["individual","joint","business","trust"]) }),
+    Object.freeze({ name: "residency",  values: Object.freeze(["domestic","foreign","diplomatic"]) }),
+    Object.freeze({ name: "income",     values: Object.freeze(["under50","50to100","100to250","over250"]) }),
+    Object.freeze({ name: "employment", values: Object.freeze(["employed","self-employed","retired","student","unemployed"]) })
+  ]);
+
+  var probConfig = Object.freeze({
+    maxPositions: 30,
+    alphabet: "abcdefghijklmnopqrstuvwxyz",
+    spaceMin: 2,
+    spaceMax: 15,
+    spaceCode: 26
+  });
+
+  /* ---- Constraints: WHEN -> THEN rules ------------------------------------
+   * Every dim name must be a known dim name.
+   * Every value must appear in that dim's values list.
+   * rt, doc, reg are plain CSS idents; deny is an arbitrary string (escaped).
+   * sdf is -1 (inside valid) or 1 (denied).
+   */
+  var constraints = Object.freeze([
+    /* Credit tier defaults */
+    { when: { credit: "prime"      }, then: { rt: "A-PREFERRED", rth: 160, doc: "BASIC" } },
+    { when: { credit: "near-prime" }, then: { rt: "B-STANDARD",  rth: 130, doc: "ENHANCED" } },
+    { when: { credit: "sub-prime"  }, then: { rt: "C-ELEVATED",  rth:  95, doc: "ENHANCED" } },
+
+    /* Residency uplifts */
+    { when: { residency: "foreign"     }, then: { doc: "ENHANCED" } },
+    { when: { residency: "diplomatic"  }, then: { doc: "MAXIMUM"  } },
+
+    /* Denials */
+    { when: { credit: "sub-prime", product: "business-line" },
+      then: { sdf: 1, deny: "SubPrime cannot hold BusinessLine" } },
+    { when: { residency: "foreign", product: "mortgage", credit: "sub-prime" },
+      then: { sdf: 1, deny: "Foreign SubPrime Mortgage not underwriteable" } },
+    { when: { employment: "unemployed", product: "mortgage" },
+      then: { sdf: 1, deny: "Mortgage requires income source" } },
+    { when: { employment: "student", product: "business-line" },
+      then: { sdf: 1, deny: "Student cannot hold BusinessLine" } },
+    { when: { applicant: "trust", product: "personal" },
+      then: { sdf: 1, deny: "Trust cannot hold Personal" } },
+    { when: { income: "under50", product: "mortgage" },
+      then: { sdf: 1, deny: "Mortgage requires minimum qualifying income" } }
+  ].map(Object.freeze));
+
+  /* ---- Mutable state (server-owned) ---------------------------------------*/
+  var navState = dims.map(function () { return 0; });
+  var probChars = [];
+  var committedRows = [];       /* VSF row strings */
+  var committedHashes = [];     /* parallel array, hex SHA-256 of each row */
+  var merkleRoot = "";          /* hex */
+  var version = 0;
+
+  /* ---- Delta (observation layer) ------------------------------------------
+   * delta = unresolved_probabilistic_positions / total_dims
+   * Deterministic dims always resolve (CSS always resolves). They contribute 0.
+   * On seal (commit), the prob field collapses to its actual length -> delta = 0.
+   */
+  function observe(probResolvedCount, sealed) {
+    var detDims = dims.length;
+    var probDims = sealed ? probResolvedCount : probConfig.maxPositions;
+    var totalDims = detDims + probDims;
+    var unresolvedProb = probDims - probResolvedCount;
+    var delta = totalDims === 0 ? 0
+      : +((unresolvedProb) / totalDims).toFixed(4);
+    return Object.freeze({
+      detDims: detDims,
+      probDims: probDims,
+      totalDims: totalDims,
+      resolvedProb: probResolvedCount,
+      unresolvedProb: unresolvedProb,
+      delta: delta,
+      confidence: +(1 - delta).toFixed(4),
+      sealed: !!sealed
+    });
+  }
+
+  /* ---- Row / header helpers ----------------------------------------------*/
+  function probCharsToString(chars) {
+    var alpha = probConfig.alphabet;
+    var out = "";
+    for (var i = 0; i < chars.length; i++) {
+      var c = chars[i];
+      out += (c === probConfig.spaceCode) ? " " : alpha.charAt(c);
+    }
+    return out;
+  }
+
+  /* Sanitize a field for VSF row output. Commas break the format; strip them.
+   * Pipes break the delimiter; strip them. Newlines break line-oriented format.
+   * Length-bounded.
+   */
+  function sanitizeField(raw) {
+    if (raw === null || raw === undefined) return "";
+    var s = String(raw).replace(/[,\r\n|]/g, " ").trim();
+    if (s.length > 256) s = s.slice(0, 256);
+    return s;
+  }
+
+  function buildRow(cascadeResult, obs) {
+    /* cascadeResult is untrusted (came from the client probe). Sanitize. */
+    var sdf  = (cascadeResult && (cascadeResult.sdf === "1" || cascadeResult.sdf === 1)) ? 1 : -1;
+    var rt   = sanitizeField(cascadeResult && cascadeResult.rt);
+    var doc  = sanitizeField(cascadeResult && cascadeResult.doc);
+    var deny = sanitizeField(cascadeResult && cascadeResult.deny);
+    var reg  = sanitizeField(cascadeResult && cascadeResult.reg);
+    var positions = probChars.slice();
+    return [
+      navState.join(","),                 /* det coords (single field) */
+      positions.join(","),                /* prob coords (single field) */
+      String(sdf),
+      obs.delta.toFixed(4),
+      rt, doc, deny, reg,
+      sanitizeField(probCharsToString(positions))
+    ].join("|");                          /* pipe as inter-field separator */
+  }
+
+  /* VSF body rows are pipe-delimited (unambiguous). Det and prob coords
+   * internally use commas. Header triads are ' | ' (space-pipe-space)
+   * separated - different from the body pipe - matching vsf-spec.md. */
+  function buildHeaderTriads() {
+    return dims.map(function (dim) {
+      var maps = dim.values.map(function (v, i) { return v + "=" + i; }).join(",");
+      return dim.name + ":" + maps + "|0|" + (dim.values.length - 1);
+    });
+  }
+  function buildProbTriads() {
+    var cfg = probConfig;
+    var triads = [];
+    for (var p = 0; p < cfg.maxPositions; p++) {
+      var alpha = cfg.alphabet.split("");
+      var maps = alpha.map(function (c, i) { return c + "=" + i; });
+      var maxVal = 25;
+      if (p >= cfg.spaceMin && p <= cfg.spaceMax) {
+        maps.push("_=" + cfg.spaceCode);
+        maxVal = cfg.spaceCode;
+      }
+      triads.push("pos" + p + ":" + maps.join(",") + "|0|" + maxVal);
+    }
+    return triads;
+  }
+
+  /* ---- Message handler ---------------------------------------------------*/
+  function handleMessage(msg) {
+    if (!msg || typeof msg !== "object") return mkError("No message");
+    if (typeof msg.type !== "string")    return mkError("No type");
+
+    switch (msg.type) {
+
+      case "CONNECT":
+        return {
+          type: "CONNECTED",
+          version: version,
+          dims: dims,
+          probConfig: probConfig,
+          constraints: constraints,
+          headerTriads: buildHeaderTriads(),
+          probTriads: buildProbTriads(),
+          navState: navState.slice(),
+          probChars: probChars.slice(),
+          rows: committedRows.slice(),
+          hashes: committedHashes.slice(),
+          merkleRoot: merkleRoot
+        };
+
+      case "NAV_SET":
+        try {
+          var di = Guards.requireIntInRange(msg.dim, 0, dims.length - 1, "NAV_SET.dim");
+          var vi = Guards.requireIntInRange(msg.val, 0, dims[di].values.length - 1, "NAV_SET.val");
+          navState[di] = vi;
+          return {
+            type: "NAV_ACK",
+            navState: navState.slice(),
+            observation: observe(probChars.length, false)
+          };
+        } catch (e) { return mkError(e.message); }
+
+      case "PROB_INPUT":
+        try {
+          var code = Guards.requireIntInRange(msg.code, 0, probConfig.spaceCode, "PROB_INPUT.code");
+          if (probChars.length >= probConfig.maxPositions) return mkError("Input full");
+          if (code === probConfig.spaceCode) {
+            var pos = probChars.length;
+            if (pos < probConfig.spaceMin || pos > probConfig.spaceMax)
+              return mkError("Space not allowed at position " + pos);
+          }
+          probChars.push(code);
+          return {
+            type: "PROB_ACK",
+            probChars: probChars.slice(),
+            observation: observe(probChars.length, false)
+          };
+        } catch (e) { return mkError(e.message); }
+
+      case "PROB_BACKSPACE":
+        if (probChars.length > 0) probChars.pop();
+        return {
+          type: "PROB_ACK",
+          probChars: probChars.slice(),
+          observation: observe(probChars.length, false)
+        };
+
+      case "PROB_CLEAR":
+        probChars = [];
+        return {
+          type: "PROB_ACK",
+          probChars: [],
+          observation: observe(0, false)
+        };
+
+      case "OBSERVE":
+        return {
+          type: "OBSERVATION",
+          observation: observe(probChars.length, !!msg.sealed)
+        };
+
+      case "COMMIT":
+        if (probChars.length === 0) return mkError("Probabilistic input required");
+        /* msg.cascadeResult is untrusted - buildRow sanitizes it. */
+        var finalObs = observe(probChars.length, true);
+        var row = buildRow(msg.cascadeResult, finalObs);
+        /* Content-addressable: the row's identity is its hash.
+         * We return a pending ACK and the hash is filled asynchronously.
+         * For simplicity, we push the row synchronously and attach hash after. */
+        var idx = committedRows.length;
+        committedRows.push(row);
+        committedHashes.push(""); /* placeholder, filled async by caller */
+        var sealedLen = probChars.length;
+        var displayStr = probCharsToString(probChars);
+        probChars = [];
+        return {
+          type: "COMMIT_ACK",
+          index: idx,
+          row: row,
+          totalRows: committedRows.length,
+          delta: finalObs.delta,
+          observation: finalObs,
+          sealedLength: sealedLen,
+          navState: navState.slice(),
+          probChars: [],
+          displayStr: displayStr
+        };
+
+      case "SET_HASH":
+        /* Internal: IPC layer computes hash asynchronously then sends this. */
+        try {
+          var i = Guards.requireIntInRange(msg.index, 0, committedRows.length - 1, "SET_HASH.index");
+          if (typeof msg.hash !== "string" || !/^[0-9a-f]{64}$/.test(msg.hash))
+            return mkError("SET_HASH.hash invalid");
+          committedHashes[i] = msg.hash;
+          return { type: "HASH_ACK", index: i, hash: msg.hash };
+        } catch (e) { return mkError(e.message); }
+
+      case "SET_MERKLE":
+        if (typeof msg.root !== "string" || !/^[0-9a-f]{64}$/.test(msg.root))
+          return mkError("SET_MERKLE.root invalid");
+        merkleRoot = msg.root;
+        return { type: "MERKLE_ACK", root: merkleRoot };
+
+      case "INJECT_ROWS":
+        if (!Array.isArray(msg.rows)) return mkError("INJECT_ROWS.rows must be array");
+        if (msg.rows.length > 10000) return mkError("INJECT_ROWS bounded at 10000");
+        var existing = Object.create(null);
+        for (var k = 0; k < committedRows.length; k++) existing[committedRows[k]] = 1;
+        var injected = 0, dupes = 0, newRows = [];
+        for (var j = 0; j < msg.rows.length; j++) {
+          var r = msg.rows[j];
+          if (typeof r !== "string") continue;
+          /* Reject rows with newlines (format violation) */
+          if (/[\r\n]/.test(r)) continue;
+          if (r.length > 4096) continue;
+          if (existing[r]) { dupes++; continue; }
+          existing[r] = 1;
+          committedRows.push(r);
+          committedHashes.push(""); /* hashed async */
+          newRows.push({ index: committedRows.length - 1, row: r });
+          injected++;
+        }
+        return {
+          type: "INJECT_ACK",
+          injected: injected,
+          duplicates: dupes,
+          totalRows: committedRows.length,
+          newRows: newRows
+        };
+
+      case "SCAN_SPACE":
+        /* Client reports parallel probe array results. Server accepts an
+         * array of {coord: [i0..iN], cascadeResult: {...}} and validates
+         * each. This is the architecturally clean way for the server to
+         * close its S->C observation gap - the server learns what its own
+         * constraint geometry actually resolves to at each point, through
+         * the client's measurement. */
+        if (!Array.isArray(msg.results)) return mkError("SCAN_SPACE.results must be array");
+        /* Bound: state space is small for PoC; cap at 50k to match probe cap. */
+        if (msg.results.length > 50000) return mkError("SCAN_SPACE bounded at 50000");
+        var accepted = [];
+        var rejected = 0;
+        for (var s = 0; s < msg.results.length; s++) {
+          var entry = msg.results[s];
+          if (!entry || typeof entry !== "object") { rejected++; continue; }
+          if (!Array.isArray(entry.coord) || entry.coord.length !== dims.length) { rejected++; continue; }
+          /* Validate coord bounds */
+          var ok = true;
+          for (var ci = 0; ci < dims.length; ci++) {
+            var v = entry.coord[ci];
+            if (typeof v !== "number" || (v | 0) !== v ||
+                v < 0 || v >= dims[ci].values.length) { ok = false; break; }
+          }
+          if (!ok) { rejected++; continue; }
+          accepted.push(entry.coord.join(","));
+        }
+        return {
+          type: "SCAN_ACK",
+          accepted: accepted,
+          rejected: rejected,
+          stateSpaceSize: stateSpaceSize()
+        };
+
+      default:
+        return mkError("Unknown type: " + String(msg.type).slice(0, 32));
+    }
+  }
+
+  function mkError(m) { return { type: "ERROR", msg: String(m).slice(0, 128) }; }
+
+  /* Total size of the deterministic state space (product of dim cardinalities).
+   * Used by the Observer to size the S->C expected set. */
+  function stateSpaceSize() {
+    var n = 1;
+    for (var i = 0; i < dims.length; i++) n *= dims[i].values.length;
+    return n;
+  }
+
+  return {
+    handleMessage: handleMessage,
+    /* accessor for UI display only; returns a snapshot */
+    snapshot: function () {
+      return {
+        navState: navState.slice(),
+        probChars: probChars.slice(),
+        committedRows: committedRows.slice(),
+        committedHashes: committedHashes.slice(),
+        merkleRoot: merkleRoot
+      };
+    },
+    stateSpaceSize: stateSpaceSize
+  };
+})();
+
+
+/* ==========================================================================
+ * MODULE 2 - OBSERVER (channel fidelity meter)
+ *
+ * What this module IS: a dashboard that tracks, per direction, what the
+ * channel has confirmed vs. what it could in principle confirm. The two
+ * ratios (observed/expected, per direction) are reported live, plus two
+ * composed scalars for convenience.
+ *
+ * What this module is NOT: a derivation of channel asymmetry from first
+ * principles. The map's framing around "delta(A->B) != delta(B->A)" is
+ * true here, but trivially so - it falls out of the expected-set
+ * definitions we chose, not from anything deeper. Anyone who picks
+ * different expected sets gets different asymmetry. Read this as a
+ * concrete, useful instance of an observability pattern; not as proof
+ * of a formal property.
+ *
+ * Expected-set choices (these are definitions, not derivations):
+ *
+ *   S->C  expected = every coordinate in the deterministic state space.
+ *         confirmed = coord appears in a cascadeResult the server has
+ *         received. Rationale: the server ships constraints but never
+ *         reads the cascade; until measurement flows back, it has not
+ *         observed what its own geometry resolves to at that point.
+ *         Alternative defensible choices: only "reachable" coords,
+ *         only "committed" coords, etc.
+ *
+ *   C->S  expected = {rowcount, version, merkle}. confirmed by ACK types
+ *         that carry each. rowcount/version are refreshed by any state
+ *         change; merkle is invalidated by COMMIT_ACK and re-confirmed
+ *         only by SET_MERKLE. This is what makes the async-hash window
+ *         visible in the UI - a deliberate pedagogical choice.
+ *
+ * Composition choices (these are definitions, not derivations):
+ *
+ *   weighted (default, shown in UI): alpha*delta(S->C) + (1-alpha)*delta(C->S)
+ *     with alpha = 0.8 (server-authoritative). Linear combination. Has
+ *     the correct monotonicity for a fidelity metric: if either direction
+ *     has residual uncertainty, the composite does too.
+ *
+ *   geometric (computed, not displayed): sqrt(delta(S->C) * delta(C->S)).
+ *     DO NOT USE as a fidelity metric. Pathology: if either direction
+ *     reaches 0, the composite collapses to 0 regardless of the other
+ *     direction - reports "channel fully certain" even when one side is
+ *     fully uncertain. Kept in state() for diagnostic inspection and in
+ *     case downstream code wants a "both-sides" indicator where the
+ *     collapse behavior is actually what's wanted (e.g., a gate that
+ *     opens only when both directions are fully observed).
+ *
+ * Scaling note: registerStateSpace enumerates the full cartesian product
+ * of dim values. O(|state space|) in time and memory. For this reference
+ * (2,880 coords) that's a 2880-entry null-proto map - trivial. For state
+ * spaces above ~10^6 coords this enumeration itself is a bottleneck and
+ * should be replaced with a sparse representation (observed set only,
+ * with expected count computed arithmetically).
+ * ==========================================================================*/
+var Observer = (function () {
+
+  /* Expected / observed sets per direction. Both are plain null-proto
+   * maps-as-sets: keys are confirmed, absent keys are not. */
+  var SC_expected = Object.create(null);
+  var SC_observed = Object.create(null);
+  var CS_expected = Object.create(null);
+  var CS_observed = Object.create(null);
+
+  var SC_expected_count = 0;
+  var SC_observed_count = 0;
+  var CS_expected_count = 0;
+  var CS_observed_count = 0;
+
+  /* Weight for the weighted composite (server-authoritative PoC). */
+  var alpha = 0.8;
+
+  /* Listeners that want to be notified when delta changes. */
+  var listeners = [];
+
+  /* --- Helpers ------------------------------------------------------------*/
+  function addExpected(bucket, key, counters) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") return;
+    if (!bucket[key]) { bucket[key] = 1; counters.inc(); }
+  }
+  function markObserved(bucketExp, bucketObs, key, counters) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") return;
+    if (!bucketExp[key]) return;          /* not an expected observation */
+    if (bucketObs[key]) return;            /* already counted */
+    bucketObs[key] = 1;
+    counters.inc();
+  }
+  function unmarkObserved(bucketObs, key, counters) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") return;
+    if (!bucketObs[key]) return;
+    delete bucketObs[key];
+    counters.dec();
+  }
+
+  /* Counter closures to avoid mutating scalars across functions. */
+  var SCexpCtr = { inc: function () { SC_expected_count++; }, dec: function () { SC_expected_count--; } };
+  var SCobsCtr = { inc: function () { SC_observed_count++; }, dec: function () { SC_observed_count--; } };
+  var CSexpCtr = { inc: function () { CS_expected_count++; }, dec: function () { CS_expected_count--; } };
+  var CSobsCtr = { inc: function () { CS_observed_count++; }, dec: function () { CS_observed_count--; } };
+
+  /* --- Expectation registration ------------------------------------------*/
+
+  /* Populate S->C with every coord in the state space. Called on CONNECT
+   * after dims are known. Uses the same enumeration as ProbeArray. */
+  function registerStateSpace(dims) {
+    function recur(prefix, di) {
+      if (di === dims.length) {
+        addExpected(SC_expected, prefix.join(","), SCexpCtr);
+        return;
+      }
+      for (var v = 0; v < dims[di].values.length; v++) {
+        prefix.push(v);
+        recur(prefix, di + 1);
+        prefix.pop();
+      }
+    }
+    recur([], 0);
+  }
+
+  /* Register the three server-owned quantities the client expects to track. */
+  function registerClientExpectations() {
+    addExpected(CS_expected, "rowcount", CSexpCtr);
+    addExpected(CS_expected, "version",  CSexpCtr);
+    addExpected(CS_expected, "merkle",   CSexpCtr);
+  }
+
+  /* Reset. Used on CONNECT to start fresh. */
+  function reset() {
+    SC_expected = Object.create(null);
+    SC_observed = Object.create(null);
+    CS_expected = Object.create(null);
+    CS_observed = Object.create(null);
+    SC_expected_count = 0;
+    SC_observed_count = 0;
+    CS_expected_count = 0;
+    CS_observed_count = 0;
+  }
+
+  /* --- Post-dispatch hook: called by IPC after every response ------------*/
+  function onResponse(request, response) {
+    if (!response || response.type === "ERROR") { notify(); return; }
+
+    /* C->S confirmations: any ACK that carries server state refreshes our
+     * view of rowcount/version. merkle is ONLY confirmed by MERKLE_ACK. */
+    switch (response.type) {
+      case "CONNECTED":
+        /* Full sync: rowcount, version always present; merkle present
+         * (may be empty string if nothing committed yet). */
+        markObserved(CS_expected, CS_observed, "rowcount", CSobsCtr);
+        markObserved(CS_expected, CS_observed, "version",  CSobsCtr);
+        markObserved(CS_expected, CS_observed, "merkle",   CSobsCtr);
+        break;
+      case "NAV_ACK":
+      case "PROB_ACK":
+      case "OBSERVATION":
+      case "HASH_ACK":
+        /* Client's view of server's rowcount/version is still fresh (no
+         * commit occurred). Nothing to mark - they remain observed. */
+        break;
+      case "COMMIT_ACK":
+        /* rowcount refreshed. But merkle is now stale - it will be
+         * recomputed asynchronously. Invalidate it until SET_MERKLE lands. */
+        markObserved(CS_expected, CS_observed, "rowcount", CSobsCtr);
+        unmarkObserved(CS_observed, "merkle", CSobsCtr);
+        /* S->C: server has now observed one cascadeResult at current nav.
+         * The request carried cascadeResult; derive the coord from navState. */
+        if (request && request.type === "COMMIT" && response.navState) {
+          var key = response.navState.join(",");
+          markObserved(SC_expected, SC_observed, key, SCobsCtr);
+        }
+        break;
+      case "INJECT_ACK":
+        markObserved(CS_expected, CS_observed, "rowcount", CSobsCtr);
+        unmarkObserved(CS_observed, "merkle", CSobsCtr);
+        break;
+      case "MERKLE_ACK":
+        /* The async merkle-recompute ACK has landed. Client's merkle view
+         * is now fresh again. */
+        markObserved(CS_expected, CS_observed, "merkle", CSobsCtr);
+        break;
+      case "SCAN_ACK":
+        /* Batch S->C confirmations for every accepted coord. */
+        if (Array.isArray(response.accepted)) {
+          for (var i = 0; i < response.accepted.length; i++) {
+            markObserved(SC_expected, SC_observed, response.accepted[i], SCobsCtr);
+          }
+        }
+        break;
+      default:
+        /* Unknown response types do not affect the observer. */
+        break;
+    }
+    notify();
+  }
+
+  /* --- Query interface ---------------------------------------------------*/
+  function ratio(obs, exp) {
+    if (exp === 0) return 0;               /* no expectations = no uncertainty */
+    return (exp - obs) / exp;
+  }
+
+  function state() {
+    var deltaSC = +ratio(SC_observed_count, SC_expected_count).toFixed(6);
+    var deltaCS = +ratio(CS_observed_count, CS_expected_count).toFixed(6);
+    var geo = +Math.sqrt(deltaSC * deltaCS).toFixed(6);
+    var weighted = +(alpha * deltaSC + (1 - alpha) * deltaCS).toFixed(6);
+    return Object.freeze({
+      SC: Object.freeze({ expected: SC_expected_count, observed: SC_observed_count, delta: deltaSC }),
+      CS: Object.freeze({ expected: CS_expected_count, observed: CS_observed_count, delta: deltaCS }),
+      alpha: alpha,
+      deltaIPC_geometric: geo,
+      deltaIPC_weighted: weighted
+    });
+  }
+
+  function onChange(fn) { if (typeof fn === "function") listeners.push(fn); }
+  function notify() {
+    var s = state();
+    for (var i = 0; i < listeners.length; i++) {
+      try { listeners[i](s); } catch (e) { /* swallow */ }
+    }
+  }
+
+  return {
+    registerStateSpace: registerStateSpace,
+    registerClientExpectations: registerClientExpectations,
+    reset: reset,
+    onResponse: onResponse,
+    state: state,
+    onChange: onChange
+  };
+})();
+
+
+/* ==========================================================================
+ * MODULE 3 - IPC
+ * Synchronous. Logs every IN/OUT. Owns async post-commit hashing. Notifies
+ * the Observer on every response so delta_IPC stays live.
+ * ==========================================================================*/
+var IPC = (function () {
+  var logEl = null;
+  var postCommitListeners = [];
+
+  function init() { logEl = document.getElementById("ipc-log"); }
+
+  function line(cls, text) {
+    if (!logEl) return;
+    var d = document.createElement("div");
+    d.className = cls;
+    d.textContent = text;   /* textContent - never innerHTML with dynamic data */
+    logEl.appendChild(d);
+    /* Cap log length */
+    while (logEl.childNodes.length > 500) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function ts() { return new Date().toISOString().substring(11, 23); }
+
+  function send(msg) {
+    line("ipc-in",  ts() + " -> SRV  " + (msg && msg.type));
+    var response;
+    try {
+      response = Server.handleMessage(msg);
+    } catch (e) {
+      response = { type: "ERROR", msg: "Server threw: " + e.message };
+    }
+    line(response.type === "ERROR" ? "ipc-err" : "ipc-out",
+         ts() + " <- CLI  " + response.type +
+         (response.type === "ERROR" ? "  " + response.msg : ""));
+
+    /* Observer notification: every response updates the measurement surface.
+     * This is the single point where delta_IPC is kept live. */
+    Observer.onResponse(msg, response);
+
+    /* Post-commit content-addressing hook. Any COMMIT_ACK or INJECT_ACK
+     * triggers async hashing of the newly added rows, then merkle recompute.
+     * This is the only async in the codebase. */
+    if (response.type === "COMMIT_ACK" && typeof response.row === "string") {
+      hashAndCommit(response.index, response.row);
+    } else if (response.type === "INJECT_ACK" && Array.isArray(response.newRows)) {
+      var newRows = response.newRows;
+      for (var i = 0; i < newRows.length; i++) {
+        hashAndCommit(newRows[i].index, newRows[i].row);
+      }
+    }
+    return response;
+  }
+
+  /* Serialization queue for hashAndCommit.
+   *
+   * Bug this fixes: recomputeMerkle filters empty hashes from the tail. If
+   * commit B finishes hashing while A is still pending, recomputeMerkle
+   * would see [hash(A)=empty, hash(B)=filled] and return a root over just
+   * [B] - a root that excludes an earlier row. A consumer who exported in
+   * that window would get a root that a later recompute over the same
+   * rows would not match.
+   *
+   * Fix: all hash+merkle work runs in strict commit order through a single
+   * promise chain. At any moment when merkle is recomputed, the filled
+   * hash prefix is exactly [0..k] for some k - never a non-contiguous set.
+   * Intermediate Merkle roots are therefore a deterministic function of
+   * {committed-rows, k} and nothing else. */
+  var hashQueue = Promise.resolve();
+
+  function hashAndCommit(index, row) {
+    hashQueue = hashQueue.then(function () {
+      return Guards.sha256Hex(row).then(function (hash) {
+        var resp = Server.handleMessage({ type: "SET_HASH", index: index, hash: hash });
+        Observer.onResponse({ type: "SET_HASH", index: index, hash: hash }, resp);
+        return recomputeMerkle();
+      }).then(function (root) {
+        if (root) {
+          var resp = Server.handleMessage({ type: "SET_MERKLE", root: root });
+          /* This re-confirms the client's 'merkle' observation - closing
+           * the gap that COMMIT_ACK opened. */
+          Observer.onResponse({ type: "SET_MERKLE", root: root }, resp);
+        }
+        for (var i = 0; i < postCommitListeners.length; i++) {
+          try { postCommitListeners[i](index, row); } catch (e) { /* swallow */ }
+        }
+        line("ipc-mut", ts() + " *  row[" + index + "] hashed");
+      });
+    }).catch(function (e) {
+      line("ipc-err", ts() + " *  hash failed: " + e.message);
+      /* Swallow so subsequent queued items still run. Returning undefined
+       * restores the chain to a resolved state. */
+      return undefined;
+    });
+  }
+
+  /* Merkle over the sorted hash list. Standard binary Merkle construction,
+   * duplicating last node on odd counts. Root is hex SHA-256. */
+  function recomputeMerkle() {
+    var snap = Server.snapshot();
+    var hashes = snap.committedHashes.filter(function (h) { return h; });
+    if (hashes.length === 0) return Promise.resolve("");
+    var level = hashes.slice();
+    function reduce() {
+      if (level.length === 1) return Promise.resolve(level[0]);
+      var next = [];
+      var pending = [];
+      for (var i = 0; i < level.length; i += 2) {
+        var a = level[i];
+        var b = (i + 1 < level.length) ? level[i + 1] : level[i];
+        pending.push(Guards.sha256Hex(a + b));
+      }
+      return Promise.all(pending).then(function (reduced) {
+        level = reduced;
+        return reduce();
+      });
+    }
+    return reduce();
+  }
+
+  function onPostCommit(fn) {
+    if (typeof fn === "function") postCommitListeners.push(fn);
+  }
+
+  function logEvent(cls, text) { line(cls, ts() + " " + text); }
+
+  return { init: init, send: send, onPostCommit: onPostCommit, logEvent: logEvent };
+})();
+
+
+/* ==========================================================================
+ * MODULE 3 - CLIENT
+ * Compiles constraints -> CSS. Probes via setAttribute / getComputedStyle.
+ * Never branches on resolved values.
+ * ==========================================================================*/
+var Client = (function () {
+
+  var dims = [];
+  var constraints = [];
+  var probeEl = null;
+  var probeContainerEl = null;
+  var cssStyleEl = null;
+  var RESOLVED_PROPS = ["sdf","rt","rth","doc","deny","reg"];
+
+  function connect() {
+    /* Observer setup: reset, then register C->S expectations BEFORE the
+     * CONNECT send, so the CONNECTED response can confirm them. S->C
+     * expectations are registered after dims are known from the response. */
+    Observer.reset();
+    Observer.registerClientExpectations();
+
+    var res = IPC.send({ type: "CONNECT" });
+    if (res.type !== "CONNECTED") throw new Error("CONNECT failed");
+    dims = res.dims;
+    constraints = res.constraints;
+    probeEl = document.getElementById("V-probe");
+    probeContainerEl = document.getElementById("V-probe-container");
+
+    /* Size the S->C expected set to the full state space. After this,
+     * delta(S->C) starts at 1.0 and drops as probe results flow back. */
+    Observer.registerStateSpace(dims);
+
+    rebuildCascade();
+    UI.buildAll(res);
+    applyNavToProbe(res.navState);
+    UI.refreshCascadeResult(probe());
+    ProbeArray.build(dims);
+    ProbeArray.resolveIntoStats();
+  }
+
+  /* Ship all probe-array results to the server as a batch observation.
+   * After this returns, the server has received a cascadeResult for every
+   * coordinate in the space, and delta(S->C) collapses to 0. This is the
+   * architecturally clean demonstration of full-space observation. */
+  function scanSpace() {
+    var r = ProbeArray.resolveAll();
+    /* Transform into [{coord, cascadeResult}]. Server validates each entry. */
+    var payload = new Array(r.results.length);
+    for (var i = 0; i < r.results.length; i++) {
+      payload[i] = {
+        coord: r.results[i].coord,
+        cascadeResult: r.results[i].resolved
+      };
+    }
+    var ack = IPC.send({ type: "SCAN_SPACE", results: payload });
+    return { ack: ack, ms: r.ms };
+  }
+
+  /* ---- Cascade compilation (defended against injection T1) --------------*/
+  function rebuildCascade() {
+    var css = "";
+    var PROBE = "#V-probe, #V-probe-container > div";
+
+    /* Validate all dim names and values once up front. Bail on any violation. */
+    for (var i = 0; i < dims.length; i++) {
+      Guards.requireCssIdent(dims[i].name, "dims[" + i + "].name");
+      for (var j = 0; j < dims[i].values.length; j++) {
+        Guards.requireSafeAttrValue(dims[i].values[j],
+          "dims[" + i + "].values[" + j + "]");
+      }
+    }
+
+    /* Base rule: all default output properties. */
+    css += PROBE + " {\n";
+    css += "  --sdf: -1;\n";
+    css += "  --deny: " + Guards.cssEscapeString("") + ";\n";
+    css += "  --reg: VALID;\n";
+    css += "  --rt: UNCLASSIFIED;\n";
+    css += "  --rth: 0;\n";
+    css += "  --doc: BASIC;\n";
+    css += "}\n\n";
+
+    /* Each constraint -> selector + declarations. */
+    for (var c = 0; c < constraints.length; c++) {
+      css += compileConstraint(constraints[c]);
+    }
+
+    /* Teardown-before-inject. Known ID only. */
+    if (cssStyleEl && cssStyleEl.parentNode) {
+      cssStyleEl.parentNode.removeChild(cssStyleEl);
+    }
+    var style = document.createElement("style");
+    style.id = "cascade-rules";
+    style.textContent = css;              /* textContent, not innerHTML */
+    document.head.appendChild(style);
+    cssStyleEl = style;
+
+    /* Inspectable source display */
+    var srcEl = document.getElementById("css-src");
+    if (srcEl) srcEl.textContent = css;
+  }
+
+  function compileConstraint(c) {
+    if (!c || typeof c !== "object") return "";
+    var selector = "#V-probe, #V-probe-container > div";
+    /* Build the attribute-selector tail */
+    var whenKeys = Guards.ownKeys(c.when);
+    if (whenKeys.length === 0) return "";
+    var tail = "";
+    for (var k = 0; k < whenKeys.length; k++) {
+      var dim = whenKeys[k];
+      Guards.requireCssIdent(dim, "constraint.when key");
+      var val = c.when[dim];
+      Guards.requireSafeAttrValue(val, "constraint.when[" + dim + "]");
+      tail += '[data-' + dim + '="' + val + '"]';
+    }
+    /* selector must attach the tail to each selector */
+    selector = "#V-probe" + tail + ", #V-probe-container > div" + tail;
+
+    var decls = [];
+    var then = c.then || {};
+    if (Guards.hasOwn(then, "sdf")) {
+      var sdf = (then.sdf === 1) ? 1 : -1;
+      decls.push("--sdf: " + sdf);
+    }
+    if (Guards.hasOwn(then, "deny")) {
+      decls.push("--deny: " + Guards.cssEscapeString(then.deny));
+    }
+    if (Guards.hasOwn(then, "rt")) {
+      decls.push("--rt: " + cssSafeToken(then.rt));
+    }
+    if (Guards.hasOwn(then, "rth")) {
+      decls.push("--rth: " + Guards.requireFiniteNumber(then.rth, "constraint.then.rth"));
+    }
+    if (Guards.hasOwn(then, "doc")) {
+      decls.push("--doc: " + cssSafeToken(then.doc));
+    }
+    if (Guards.hasOwn(then, "reg")) {
+      decls.push("--reg: " + cssSafeToken(then.reg));
+    }
+    /* Auto-derived: sdf:1 implies DENIED region and zeroed rth */
+    if (Guards.hasOwn(then, "sdf") && then.sdf === 1) {
+      decls.push("--reg: DENIED");
+      decls.push("--rth: 0");
+    }
+
+    if (decls.length === 0) return "";
+    return selector + " {\n  " + decls.join(";\n  ") + ";\n}\n";
+  }
+
+  /* For tokens that must not be quoted (rt, doc, reg). Must be a CSS ident. */
+  function cssSafeToken(v) {
+    if (typeof v !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(v))
+      throw new Error("Unsafe CSS token: " + JSON.stringify(String(v).slice(0, 32)));
+    return v;
+  }
+
+  /* ---- Probe (single, at current nav coordinate) -------------------------*/
+  function applyNavToProbe(navState) {
+    for (var i = 0; i < dims.length; i++) {
+      var val = dims[i].values[navState[i]];
+      probeEl.setAttribute("data-" + dims[i].name, val);
+    }
+  }
+
+  function probe() {
+    var cs = getComputedStyle(probeEl);
+    return readOutputs(cs);
+  }
+
+  function readOutputs(cs) {
+    return {
+      sdf:  cs.getPropertyValue("--sdf").trim(),
+      rt:   stripQuotes(cs.getPropertyValue("--rt").trim()),
+      rth:  cs.getPropertyValue("--rth").trim(),
+      doc:  stripQuotes(cs.getPropertyValue("--doc").trim()),
+      deny: stripQuotes(cs.getPropertyValue("--deny").trim()),
+      reg:  stripQuotes(cs.getPropertyValue("--reg").trim())
+    };
+  }
+  function stripQuotes(s) {
+    if (!s) return "";
+    if ((s.charAt(0) === '"' && s.charAt(s.length-1) === '"') ||
+        (s.charAt(0) === "'" && s.charAt(s.length-1) === "'"))
+      return s.slice(1, -1);
+    return s;
+  }
+
+  return {
+    connect: connect,
+    rebuildCascade: rebuildCascade,
+    applyNavToProbe: applyNavToProbe,
+    probe: probe,
+    readOutputs: readOutputs,
+    scanSpace: scanSpace,
+    getDims: function () { return dims; }
+  };
+})();
+
+
+/* ==========================================================================
+ * MODULE 4 - PROBE ARRAY (full-space parallel resolution)
+ * Build N hidden probes, one per coordinate. One style recalc resolves all.
+ * ==========================================================================*/
+var ProbeArray = (function () {
+
+  var probes = [];
+  var coords = [];
+  /* Cap on probe elements. Enforced by enumerateAll.
+   *
+   * Scaling footnote: the "parallel constraint satisfier" pitch holds for
+   * this reference (2,880 coords, ~5 ms style recalc). Browser style recalc
+   * scales roughly with elements x matching-rules, so doubling the state
+   * space roughly doubles the recalc cost. For state spaces above ~50,000
+   * coords, DOM construction time and memory both become serious concerns
+   * and the approach stops being competitive with a tight vectorized
+   * implementation. This cap is not a theoretical limit of the technique -
+   * it's where this technique stops being the right tool. The WebGPU
+   * compute-shader path (TODO #4) is the intended answer for larger spaces;
+   * this CSS-cascade path is the existence proof, not the production
+   * pipeline. */
+  var MAX_PROBES = 50000;
+
+  function enumerateAll(dims) {
+    var acc = [[]];
+    for (var d = 0; d < dims.length; d++) {
+      var next = [];
+      for (var i = 0; i < acc.length; i++) {
+        for (var v = 0; v < dims[d].values.length; v++) {
+          next.push(acc[i].concat([v]));
+        }
+      }
+      acc = next;
+      if (acc.length > MAX_PROBES) {
+        throw new Error("Probe array would exceed cap of " + MAX_PROBES);
+      }
+    }
+    return acc;
+  }
+
+  function build(dims) {
+    var container = document.getElementById("V-probe-container");
+    /* Teardown (known container only). We never innerHTML user data here. */
+    while (container.firstChild) container.removeChild(container.firstChild);
+    probes = [];
+    coords = enumerateAll(dims);
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < coords.length; i++) {
+      var el = document.createElement("div");
+      for (var d = 0; d < dims.length; d++) {
+        el.setAttribute("data-" + dims[d].name, dims[d].values[coords[i][d]]);
+      }
+      frag.appendChild(el);
+      probes.push(el);
+    }
+    container.appendChild(frag); /* one layout pass */
+  }
+
+  /* resolveAll returns {results, ms} where ms is wall-clock for the
+   * complete parallel resolution (one style recalc pass). */
+  function resolveAll() {
+    var t0 = performance.now();
+    /* Force a single style recalc by reading one element's style first. */
+    if (probes.length === 0) return { results: [], ms: 0 };
+    var _warm = getComputedStyle(probes[0]).getPropertyValue("--sdf");
+    void _warm;
+    var out = [];
+    for (var i = 0; i < probes.length; i++) {
+      out.push({
+        coord: coords[i].slice(),
+        resolved: Client.readOutputs(getComputedStyle(probes[i]))
+      });
+    }
+    return { results: out, ms: +(performance.now() - t0).toFixed(2) };
+  }
+
+  function resolveIntoStats() {
+    var r = resolveAll();
+    var total = r.results.length, valid = 0, denied = 0;
+    for (var i = 0; i < total; i++) {
+      var s = r.results[i].resolved.sdf;
+      if (s === "-1") valid++; else denied++;
+    }
+    UI.refreshSpaceStats(total, valid, denied, r.ms);
+  }
+
+  return { build: build, resolveAll: resolveAll, resolveIntoStats: resolveIntoStats };
+})();
+
+
+/* ==========================================================================
+ * MODULE 5 - VSF CODEC (export / import)
+ * Normalized delimiters:
+ *   header triads  : ' | ' (space-pipe-space) between triads
+ *   body fields    : '|'   (pipe) between fields
+ *   intra-field    : ','   (comma) within det/prob coord fields only
+ * This resolves the VSF_Format ambiguity where commas were both field and
+ * inner separators.
+ * ==========================================================================*/
+var VSFCodec = (function () {
+
+  /* Greek delta U+03B4 emitted via escape - source stays ASCII. */
+  var DELTA_SYMBOL = "\u03B4";
+
+  function exportVSF() {
+    var conn = IPC.send({ type: "CONNECT" });
+    var headerTriads = conn.headerTriads.slice();
+    var probTriads   = conn.probTriads.slice();
+    var deltaTriad   = DELTA_SYMBOL + ":noise=continuous|0.0|1.0";
+
+    /* Trim prob triads to max prob length actually used. */
+    var maxProbLen = 0;
+    for (var i = 0; i < conn.rows.length; i++) {
+      var fields = conn.rows[i].split("|");
+      /* fields: [det, prob, sdf, delta, rt, doc, deny, reg, display] */
+      if (fields.length >= 2) {
+        var prob = fields[1];
+        var probLen = prob === "" ? 0 : prob.split(",").length;
+        if (probLen > maxProbLen) maxProbLen = probLen;
+      }
+    }
+    var trimmedProb = probTriads.slice(0, maxProbLen);
+    var header = headerTriads.concat(trimmedProb).concat([deltaTriad]).join(" | ");
+
+    /* Prepend a metadata comment line with merkle root for auditability.
+     * Consumer may ignore if not present; our parser accepts '# ' prefix. */
+    var meta = "# exodus-canonical v1.0 merkle=" + (conn.merkleRoot || "pending") +
+               " rows=" + conn.rows.length;
+    return meta + "\n" + header + "\n" + conn.rows.join("\n");
+  }
+
+  function parseVSF(text) {
+    if (typeof text !== "string") throw new Error("VSF must be string");
+    if (text.length > 4 * 1024 * 1024) throw new Error("VSF over 4MB limit");
+    var lines = text.replace(/\r/g, "").split("\n");
+    var header = null;
+    var rows = [];
+    var meta = null;
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      if (ln.length === 0) continue;
+      if (ln.charAt(0) === "#") { if (!meta) meta = ln; continue; }
+      if (header === null) { header = ln; continue; }
+      rows.push(ln);
+    }
+    if (header === null) throw new Error("VSF missing header");
+    return { meta: meta, header: header, rows: rows };
+  }
+
+  function download(text, filename) {
+    var blob = new Blob([text], { type: "application/vnd.vessel.state+csv" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function promptImport() {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".vsf,.csv,.txt,text/*";
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (!f) return;
+      if (f.size > 4 * 1024 * 1024) {
+        IPC.logEvent("ipc-err", "import rejected: file > 4MB");
+        return;
+      }
+      var r = new FileReader();
+      r.onload = function () {
+        try {
+          var parsed = parseVSF(String(r.result));
+          var ack = IPC.send({ type: "INJECT_ROWS", rows: parsed.rows });
+          IPC.logEvent("ipc-mut",
+            "imported: " + ack.injected + " new, " + ack.duplicates + " dup");
+          UI.refreshRows();
+        } catch (e) { IPC.logEvent("ipc-err", "import failed: " + e.message); }
+      };
+      r.readAsText(f);
+    });
+    input.click();
+  }
+
+  return { exportVSF: exportVSF, parseVSF: parseVSF, download: download, promptImport: promptImport };
+})();
+
+
+/* ==========================================================================
+ * MODULE 6 - UI
+ * The ONLY module that touches visible DOM. Uses textContent exclusively
+ * for dynamic content. Never interpolates user/server strings into innerHTML.
+ * ==========================================================================*/
+var UI = (function () {
+
+  function buildAll(connectResponse) {
+    buildNavControls(connectResponse.dims, connectResponse.navState);
+    buildProbKeys(connectResponse.probConfig);
+    bindButtons();
+    refreshProbDisplay(connectResponse.probChars, connectResponse.probConfig);
+    refreshDelta(0, connectResponse.probChars.length,
+      connectResponse.probConfig.maxPositions + connectResponse.dims.length);
+    refreshRows();
+  }
+
+  function buildNavControls(dims, navState) {
+    var root = document.getElementById("nav-controls");
+    while (root.firstChild) root.removeChild(root.firstChild);
+    for (var d = 0; d < dims.length; d++) {
+      (function (di) {
+        var dim = dims[di];
+        var row = document.createElement("div");
+        row.className = "row";
+        var lbl = document.createElement("span");
+        lbl.className = "lbl";
+        lbl.textContent = dim.name;
+        row.appendChild(lbl);
+        for (var v = 0; v < dim.values.length; v++) {
+          (function (vi) {
+            var btn = document.createElement("button");
+            btn.className = "btn" + (vi === navState[di] ? " on" : "");
+            btn.textContent = dim.values[vi];
+            btn.addEventListener("click", function () { onNavClick(di, vi); });
+            row.appendChild(btn);
+          })(v);
+        }
+        root.appendChild(row);
+      })(d);
+    }
+  }
+
+  function buildProbKeys(cfg) {
+    var root = document.getElementById("prob-keys");
+    while (root.firstChild) root.removeChild(root.firstChild);
+    for (var i = 0; i < cfg.alphabet.length; i++) {
+      (function (code) {
+        var ch = cfg.alphabet.charAt(code);
+        var b = document.createElement("button");
+        b.className = "btn key";
+        b.textContent = ch;
+        b.addEventListener("click", function () { onProbChar(code); });
+        root.appendChild(b);
+      })(i);
+    }
+  }
+
+  function bindButtons() {
+    document.getElementById("btn-space").addEventListener("click", function () {
+      onProbChar(26);
+    });
+    document.getElementById("btn-back").addEventListener("click", function () {
+      var ack = IPC.send({ type: "PROB_BACKSPACE" });
+      applyProbAck(ack);
+    });
+    document.getElementById("btn-clear").addEventListener("click", function () {
+      var ack = IPC.send({ type: "PROB_CLEAR" });
+      applyProbAck(ack);
+    });
+    document.getElementById("btn-commit").addEventListener("click", function () {
+      var res = Client.probe();
+      var ack = IPC.send({ type: "COMMIT", cascadeResult: res });
+      if (ack.type === "ERROR") return;
+      applyProbAck({ type: "PROB_ACK", probChars: [], observation: ack.observation });
+      refreshRows();
+    });
+    document.getElementById("btn-export").addEventListener("click", function () {
+      var text = VSFCodec.exportVSF();
+      VSFCodec.download(text, "state-" + Date.now() + ".vsf");
+      IPC.logEvent("ipc-mut", "exported");
+    });
+    document.getElementById("btn-import").addEventListener("click", function () {
+      VSFCodec.promptImport();
+    });
+
+    /* Observer: SCAN ships every probe result as one batch, collapsing
+     * delta(S->C) to 0. */
+    document.getElementById("btn-scan").addEventListener("click", function () {
+      var r = Client.scanSpace();
+      if (r.ack && r.ack.type === "SCAN_ACK") {
+        IPC.logEvent("ipc-obs",
+          "scan: " + r.ack.accepted.length + " confirmed, " +
+          r.ack.rejected + " rejected, " + r.ms + "ms");
+      }
+    });
+
+    /* Subscribe: every Observer state change refreshes the panel. This is
+     * the only hot path that keeps the channel fidelity display live. */
+    Observer.onChange(refreshObserver);
+
+    IPC.onPostCommit(function () { refreshRows(); });
+  }
+
+  function refreshObserver(s) {
+    if (!s) return;
+    var fmt = function (n) { return Number(n).toFixed(6); };
+    document.getElementById("dsc-val").textContent  = fmt(s.SC.delta);
+    document.getElementById("dcs-val").textContent  = fmt(s.CS.delta);
+    /* Weighted is the canonical display. Geometric is computed in state()
+     * for diagnostic access but not shown - see Observer module comment
+     * for why geometric mean is a bad fidelity metric. */
+    document.getElementById("dipc-val").textContent = fmt(s.deltaIPC_weighted);
+    document.getElementById("dsc-ratio").textContent =
+      "S->C obs " + s.SC.observed + " / " + s.SC.expected;
+    document.getElementById("dcs-ratio").textContent =
+      "C->S obs " + s.CS.observed + " / " + s.CS.expected;
+  }
+
+  function onNavClick(di, vi) {
+    var ack = IPC.send({ type: "NAV_SET", dim: di, val: vi });
+    if (ack.type === "ERROR") return;
+    Client.applyNavToProbe(ack.navState);
+    /* Refresh the nav row's button 'on' class. */
+    var rows = document.getElementById("nav-controls").children;
+    if (rows[di]) {
+      var kids = rows[di].children;
+      for (var k = 1; k < kids.length; k++) { /* [0] is label */
+        kids[k].classList.toggle("on", (k - 1) === vi);
+      }
+    }
+    refreshCascadeResult(Client.probe());
+    refreshDeltaFromObs(ack.observation);
+  }
+
+  function onProbChar(code) {
+    var ack = IPC.send({ type: "PROB_INPUT", code: code });
+    applyProbAck(ack);
+  }
+
+  function applyProbAck(ack) {
+    if (!ack || ack.type === "ERROR") return;
+    var probCfg = { maxPositions: 30, alphabet: "abcdefghijklmnopqrstuvwxyz" };
+    refreshProbDisplay(ack.probChars, probCfg);
+    refreshDeltaFromObs(ack.observation);
+  }
+
+  function refreshProbDisplay(chars, cfg) {
+    var el = document.getElementById("prob-display");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    for (var i = 0; i < cfg.maxPositions; i++) {
+      var s = document.createElement("span");
+      s.className = "slot" + (i < chars.length ? " f" : "");
+      if (i < chars.length) {
+        s.textContent = chars[i] === 26 ? "_" : cfg.alphabet.charAt(chars[i]);
+      } else {
+        s.textContent = ".";
+      }
+      el.appendChild(s);
+    }
+    document.getElementById("prob-counter").textContent =
+      chars.length + " / " + cfg.maxPositions;
+  }
+
+  function refreshDeltaFromObs(obs) {
+    if (!obs) return;
+    document.getElementById("delta-value").textContent = obs.delta.toFixed(4);
+    document.getElementById("delta-fill").style.width = Math.max(0, Math.min(100, obs.delta * 100)) + "%";
+  }
+
+  function refreshDelta(delta, resolvedProb, total) {
+    document.getElementById("delta-value").textContent = delta.toFixed(4);
+    document.getElementById("delta-fill").style.width = (delta * 100) + "%";
+  }
+
+  function refreshCascadeResult(r) {
+    var el = document.getElementById("cascade-result");
+    var allowed = r.sdf === "-1";
+    el.className = "res " + (allowed ? "allowed" : "denied");
+    var lines = [
+      "  SDF     " + r.sdf + "  (" + (allowed ? "inside valid region" : "outside - denied") + ")",
+      "  REG     " + r.reg,
+      "  RT      " + r.rt + "  (rth=" + r.rth + ")",
+      "  DOC     " + r.doc,
+      "  DENY    " + (r.deny || "(none)")
+    ];
+    el.textContent = lines.join("\n");
+  }
+
+  function refreshSpaceStats(total, valid, denied, ms) {
+    document.getElementById("stat-total").textContent  = String(total);
+    document.getElementById("stat-valid").textContent  = String(valid);
+    document.getElementById("stat-denied").textContent = String(denied);
+    document.getElementById("resolve-perf").textContent =
+      "parallel style-recalc resolved " + total + " coordinates in " + ms + " ms";
+  }
+
+  function refreshRows() {
+    var snap = Server.snapshot();
+    var tbody = document.getElementById("rows-body");
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    for (var i = 0; i < snap.committedRows.length; i++) {
+      var r = snap.committedRows[i];
+      var parts = r.split("|");  /* [det, prob, sdf, delta, rt, doc, deny, reg, display] */
+      var tr = document.createElement("tr");
+      addTd(tr, String(i));
+      addTd(tr, parts[0] || "");
+      addTd(tr, parts[8] || "");
+      addTd(tr, parts[2] || "");
+      addTd(tr, parts[3] || "");
+      addTd(tr, parts[4] || "");
+      addTd(tr, parts[5] || "");
+      addTd(tr, (snap.committedHashes[i] || "").slice(0, 10));
+      tbody.appendChild(tr);
+    }
+    document.getElementById("merkle-root").textContent =
+      "merkle: " + (snap.merkleRoot ? snap.merkleRoot.slice(0, 16) + "..." : "pending");
+  }
+  function addTd(tr, text) {
+    var td = document.createElement("td");
+    td.textContent = text;
+    tr.appendChild(td);
+  }
+
+  return {
+    buildAll: buildAll,
+    refreshCascadeResult: refreshCascadeResult,
+    refreshSpaceStats: refreshSpaceStats,
+    refreshRows: refreshRows
+  };
+})();
+
+
+/* ==========================================================================
+ * BOOT
+ * ==========================================================================*/
+function boot() {
+  /* ASCII source self-check (T4). Fail closed on violation. */
+  var ok = Guards.asciiOnlySelfCheck();
+  if (!ok.ok) {
+    var warn = document.getElementById("boot-warn");
+    warn.className = "warn";
+    warn.textContent = "SOURCE POLLUTION DETECTED at offset " + ok.at +
+      " (code 0x" + (ok.code || "?") + "). Refusing to boot.";
+    return;
+  }
+  IPC.init();
+  IPC.logEvent("ipc-mut", "boot: ASCII source OK");
+  try {
+    Client.connect();
+    IPC.logEvent("ipc-mut", "boot: cascade live");
+  } catch (e) {
+    var w = document.getElementById("boot-warn");
+    w.className = "warn";
+    w.textContent = "Boot failed: " + e.message;
+    IPC.logEvent("ipc-err", "boot failed: " + e.message);
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+
+})();
+</script>
+</body>
+</html>

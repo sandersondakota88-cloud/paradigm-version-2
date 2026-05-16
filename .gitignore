@@ -1,0 +1,81 @@
+# ============================================================================
+# .gitignore for paradigm-version-2
+# ============================================================================
+# Patterns listed here are excluded from git tracking. Files matching these
+# patterns are still usable locally; they just never get committed.
+# ============================================================================
+
+# --- Generated test fixtures ------------------------------------------------
+# gpu-fixtures.json is produced by running generate-gpu-fixtures.js. Anyone
+# with the generator script can recreate it; 722 KB of generated data
+# doesn't belong in version control.
+exodus/canonical-implementation/tests/gpu-fixtures.json
+
+# --- Logs and runtime output ------------------------------------------------
+*.log
+logs/
+
+# --- OS metadata ------------------------------------------------------------
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+# macOS (in case the repo is cloned there)
+.DS_Store
+.AppleDouble
+.LSOverride
+# Linux
+*~
+
+# --- Editor / IDE artifacts -------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~.nib
+.project
+.settings/
+.classpath
+
+# --- Node ecosystem (defensive; not currently used) -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+.npm/
+.yarn/
+
+# --- Python ecosystem (defensive) -------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Build outputs ----------------------------------------------------------
+dist/
+build/
+out/
+*.o
+*.obj
+
+# --- Local environment / secrets --------------------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+
+# --- Temporary / scratch ----------------------------------------------------
+tmp/
+temp/
+.cache/
+*.tmp
+
+# --- Claude Code session artifacts (if any) ---------------------------------
+.claude/
