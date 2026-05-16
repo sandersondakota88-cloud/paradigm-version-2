@@ -68,6 +68,7 @@ in any faithful implementation.
 | [canon/INVARIANTS.md](canon/INVARIANTS.md) | Twenty-five named structural commitments; checklist for any implementation |
 | [canon/algorithm/](canon/algorithm/) | The numbered algorithm catalog (00-INDEX through 22). Each entry specifies one mechanism. |
 | [canon/specification/](canon/specification/) | Spec extensions SE-01 through SE-11. Each names a structural property the formalism supports |
+| [canon/UTF/](canon/UTF/) | Universal Type Format specification (in progress). The protocol layer below the kernel. Foundation: [01-foundations.md](canon/UTF/01-foundations.md) establishes UTF is WHEN:THEN, not KEY:VALUE; the [survey](canon/UTF/research/key-value-formats-survey.md) demonstrates by exclusion that CSS is the only deployed format with the right shape. |
 
 **Reading order within canon (per [meta/MANIFEST.md](meta/MANIFEST.md) §"Reading order"):**
 DEFINITION (with §0.5) → INVARIANTS → KERNEL → algorithm/00-INDEX
@@ -229,17 +230,26 @@ Three pieces of specification work and one piece of implementation
 work are now load-bearing. Listed in the order their dependencies
 require:
 
-### Priority 1 — Specify the universal type format
-**Document to write:** `canon/universal-type-format.md` (or
-equivalent location)
+### Priority 1 — Specify the universal type format (IN PROGRESS)
+**Documents being written:** [canon/UTF/](canon/UTF/) directory
 **Closes:** [ARCHITECTURE.md proof gap §6.1](ARCHITECTURE.md)
 **Why first:** Every other layer depends on this. Adapters speak it,
 the kernel routes it, applications are made of it. Without a written
 schema, the architecture exists as recognition but not as
 specification.
-**Sources to cite:** algorithms 09, 10, 11, 13 (binary form pieces);
-the implicit shape in `constraints.mjs`; the Phase 5.7.7 persistence
-format.
+**Status as of 2026-05-15:**
+- [canon/UTF/00-INDEX.md](canon/UTF/00-INDEX.md) — entry point and reading order, complete
+- [canon/UTF/01-foundations.md](canon/UTF/01-foundations.md) — the structural argument (WHEN:THEN vs KEY:VALUE), complete
+- [canon/UTF/research/key-value-formats-survey.md](canon/UTF/research/key-value-formats-survey.md) — exhaustive survey establishing the exclusion, complete
+- `02-kind-vocabulary.md` — closed set of node kinds, planned
+- `03-attribute-schema.md` — required/optional attributes per kind, planned
+- `04-identity-and-content-addressing.md` — algorithm 13 made operational, planned
+- `05-canonical-encodings.md` — stylesheet form, JSON form, XML form, VSF binary, planned
+- `06-versioning.md` — UTF evolution discipline, planned
+**Sources cited so far:** algorithm 13 (content addressing), CSS as
+the only deployed WHEN:THEN format, the agent-produced key:value
+formats survey. Algorithms 09, 10, 11 (VSF binary form) to be
+incorporated in `05-canonical-encodings.md`.
 
 ### Priority 2 — Specify the adapter protocol
 **Document to write:** `canon/adapter-protocol.md`
@@ -319,6 +329,8 @@ agent) should follow them.
 | Date (yyyy-mm-dd) | Event |
 |---|---|
 | 2026-05-15 | PROJECT-PLAN.md created. ARCHITECTURE.md created naming the kernel/adapter structure. RESEARCH-AGAINST-PREFACE.md previously established. The four preface objections, the empirical record (Phase A/B + NOT-1 + NOT-2 + 4a + 4b), and the architecture's structural naming are now coherent at the project-root level. |
+| 2026-05-15 | Repository made live on GitHub (private) at `paradigm-version-2`. Initial commit captures the full state including PREFACE, ARCHITECTURE, RESEARCH-AGAINST-PREFACE, PROJECT-PLAN, canon, implementations, and exodus. |
+| 2026-05-15 | Priority 1 (UTF specification) begun. [canon/UTF/](canon/UTF/) directory created. Foundation document [01-foundations.md](canon/UTF/01-foundations.md) establishes UTF is WHEN:THEN, not KEY:VALUE; the structural argument is supported by an exhaustive survey of key:value formats demonstrating that CSS is the only deployed format with the right shape. Kind vocabulary, attribute schema, identity discipline, encodings, and versioning to follow in subsequent documents. |
 
 Updates appended as canonical specification work proceeds, the
 kernel is built, substrate relocation is demonstrated, or other
