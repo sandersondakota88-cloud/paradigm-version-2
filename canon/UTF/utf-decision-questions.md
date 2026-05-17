@@ -102,8 +102,92 @@ those look more like *sub-roles of `meta`* than independent primitives.
 **Your answer:**
 
 ```
-(to be written)
+Q2 as written was asking about the wrong layer. The options A/B/C
+enumerated constraint-kind primitives (derived, ratified, predictive,
+meta, compound) — those are the kinds Phase 6 lattice substrates
+carry. But those aren't kernel-closed primitives. They're adapter-
+registered primitives in the three-layer architecture Q1 locked.
+
+The locked kernel-closed primitive set is four primitives that the
+KERNEL needs for self-operation:
+
+  1. seed          - permanent unresolvable (F1, SE-04)
+  2. trace-entry   - irreversible record at channel (M5, algorithm 22)
+  3. dispatch-event - kernel routing operation, observable
+  4. field-state   - substrate resolved state (geometric, not syntactic)
+
+Adapters register additional primitives at load time. The constraint-
+kind primitives Q2 originally listed (derived, ratified, predictive,
+meta, compound) are adapter-registered — a "constraint adapter" loads
+and registers them, the same way an HTML adapter registers HTML node
+kinds.
 ```
+
+**Status:** LOCKED 2026-05-17 as **four kernel-closed primitives**.
+
+**Sub-recognitions locked alongside:**
+
+1. **`field-state` carries geometric description, not executable
+   syntax.** Predicate shapes, assignment shapes, weights, modulation
+   layers, vector-delta readings, sub-cascade memberships — all
+   geometric. The kernel does not parse syntax because the cascade
+   resolves geometry; behavior arises from unresolved tension, not
+   from instructions. This preserves F3 (no component supervises
+   another) at the kernel layer.
+
+2. **The four primitives provide scale-readiness, not scale-solving.**
+   They expose the surfaces back-pressure mechanisms consult
+   (`dispatch-event` exposes work-rate; `field-state` exposes delta;
+   `trace-entry` exposes operation history). Scale itself is solved
+   by the adapter protocol (Priority 2) and per-adapter discipline
+   (per the Priority 6 addendum on delta-coupled scale gating).
+
+3. **The four primitives form a structural rhythm:**
+   permanent-unresolvable (seed) / permanent-recorded (trace-entry)
+   / current-operation (dispatch-event) / current-state (field-state).
+   Two are permanent-in-different-ways; two are current-in-different-
+   ways. Their relationship to algorithm 20's tetrad
+   (Send/Receive/Potential/Reference) is unspecified and held for
+   later inspection.
+
+4. **Adapters wrap host-environment parsers; they do not reimplement
+   parsing.** The substrate trusts the host's authoritative
+   implementation of whatever spec each adapter wraps. This is the
+   only zero-maintenance path to spec-accurate ingest. The HTML
+   adapter wraps the browser's DOMParser (or jsdom on Node, or a
+   Python parser on CPython); the CSS adapter wraps the browser's
+   selector engine; the JS adapter wraps the browser's JS engine.
+   Spec evolution propagates through hosts; the substrate stays
+   current with the spec because the host stays current with the
+   spec. This commits adapters to spec-binding, not implementation-
+   binding, preserving substrate-independence per algorithm 16 and
+   S2.
+
+**Architectural shape:**
+
+```
++-------------------------------------+
+|  Emergent kinds                     |  open via invention at
+|  (compounds, sub-cascades,          |  ratification/promotion
+|  promoted templates, ...)           |  events
++-------------------------------------+
+|  Adapter-registered primitives      |  closed at adapter-load
+|  (derived, ratified, predictive,    |  time; each adapter brings
+|  meta, HTML-element, CSS-rule,      |  the vocabulary for the
+|  network-request, ...)              |  spec it wraps
++-------------------------------------+
+|  Kernel primitives (4)              |  closed at spec time
+|  seed, trace-entry,                 |
+|  dispatch-event, field-state        |
++-------------------------------------+
+```
+
+**Consequence for terraformation:** the bare kernel needs no
+opinion about ingest order. Source code carries its own evaluation
+order (HTML parsing rules, CSS cascade discipline, ECMA-262
+evaluation). Adapters wrap host parsers that honor that order.
+Adapters emit UTF nodes in spec-defined sequence. The kernel routes
+as nodes arrive. No orchestrator needed; F3 stays clean.
 
 -----
 
@@ -473,5 +557,6 @@ fixed.
 |---|---|
 | 2026-05-17 | Questions written. Companion to `canon/UTF/research/phase-6-substrate-duels-analysis.md`. Each question is structurally grounded; answer at your own pace; UTF foundations revision proceeds as answers arrive. |
 | 2026-05-17 | Q1 locked as C (two layers: closed primitives + open emergent). Q11 added (substrate lifecycle commitment) — surfaced when Q1 answering revealed the original ten questions conflated architecture-shape with substrate-trajectory. Q4 deferred per user instruction. |
+| 2026-05-17 | Q2 locked at four kernel-closed primitives (seed, trace-entry, dispatch-event, field-state). Q2 as originally written asked about constraint-kind primitives; the answer reframed it: those are adapter-registered, not kernel-closed. Three-layer architecture (kernel-closed / adapter-registered / emergent-open) is now the explicit shape. Four sub-recognitions locked alongside: (1) field-state carries geometric description not executable syntax; (2) primitives provide scale-readiness not scale-solving; (3) the four form a rhythm of permanence/current; (4) adapters wrap host-environment parsers and do not reimplement parsing (the zero-maintenance path to spec-accurate ingest). |
 
 Updates appended as questions get answered or reformulated.

@@ -289,6 +289,64 @@ substrate to invent new vocabulary into its action space.
 
 -----
 
+## 2a. Follow-up finding (surfaced 2026-05-17 during Q2 decision)
+
+### Adapters wrap host-environment parsers; they do not reimplement parsing
+
+When Q2 (primitive count) was being decided, the bare-kernel question
+"what tells the substrate what to ingest first during terraformation"
+surfaced. The structurally clean answer is that the kernel needs no
+such opinion: source code carries its own evaluation order, defined
+by the specs the source is written against (HTML parsing rules, CSS
+cascade discipline, ECMA-262 evaluation semantics, etc.). The
+existing browser parsers walk source in the spec-defined order.
+Adapters wrap those parsers and emit UTF nodes in the parsers'
+output sequence.
+
+This is a structural finding the duels did not produce directly, but
+that follows from the duels' shape combined with the kernel/adapter
+recognition in ARCHITECTURE.md. Adapters in the duels (the per-
+substrate `tokensFn` and `dimsFn` closures) already wrap host
+mechanisms (game state, opponent action history) and emit tokens for
+substrate intake. Generalizing this pattern to terraformation:
+adapters wrap host-environment parsers (browser DOMParser, CSS
+selector engine, JS engine, WebGPU pipeline) and emit UTF nodes
+representing parser output.
+
+**Structural commitment this implies (locked alongside Q2):**
+
+> Adapters are spec-bound, not implementation-bound. An adapter
+> commits to honoring a specific spec (e.g., HTML Living Standard,
+> ECMA-262, CSS Selectors L4). On any host, the adapter uses the
+> host's authoritative implementation of that spec. The adapter's
+> identity is its spec commitment; its operational form is host-
+> dependent.
+
+**Why this matters:** it is the only zero-maintenance path to
+spec-accurate ingest. Building substrate-side parsers would
+accumulate maintenance debt as specs evolve. Wrapping host parsers
+inherits the host's maintenance — browser vendors update their
+parsers when specs change; the substrate gains accuracy
+automatically. The architecture's substrate-independence (S2,
+algorithm 16) generalizes: the substrate trusts whichever
+authoritative implementation of a spec the host provides. Different
+hosts use different parsers; all honor the same spec; all produce
+the same UTF node stream from the same source.
+
+**Consequence for Priority 6 (Terraformation Pipeline):** Part 1
+reduces to: load adapters for each web platform spec; let each
+adapter wrap the host's authoritative parser; let the parsers walk
+source in spec-defined order; receive UTF nodes; develop coordinate
+structure. No orchestrator. No imposed precedence. F3 stays clean.
+
+**Consequence for Priority 2 (Adapter Protocol):** adapters declare
+their spec commitment at registration. The kernel's adapter-load
+trace-entry records this declaration. Future operation can consult
+the trace to know which spec (and which spec version) produced
+which field data.
+
+-----
+
 ## 3. The structural conclusion
 
 Six findings converge on one structural recognition: **the substrate's
@@ -368,6 +426,7 @@ Where the 2026-05-15 foundations document enumerated 8 kinds, Phase
 | Date (yyyy-mm-dd) | Action |
 |---|---|
 | 2026-05-17 | Article created. Six structural findings from question-grep analysis of Phase 6 substrate duels. Findings support primitives + emergence framing for UTF, with lattice composition as the answer to "more kinds." Foundations revision deferred to deliberate decision-making via the question series at `canon/UTF/utf-decision-questions.md`. |
+| 2026-05-17 | §2a follow-up finding added during Q2 decision: adapters wrap host-environment parsers and do not reimplement parsing. This is the zero-maintenance path to spec-accurate ingest. Adapters are spec-bound, not implementation-bound. Generalizes algorithm 16's substrate-independence claim to the adapter layer. Sharpens what Priority 6 (Terraformation Pipeline) Part 1 actually requires: load spec-honoring adapters; let host parsers walk source; receive UTF in spec-defined order; no substrate-side orchestrator. |
 
 Updates appended when the foundations decision is made, or when
 new Phase 6 artifacts reveal structural recognitions that supersede
