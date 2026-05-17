@@ -50,8 +50,24 @@ readings of what's already there.
 **Your answer:**
 
 ```
-(to be written)
+I believe C is our best effort for incoming input (as is relates to the universe after terraformation and deposition). but the terraformation pipelines requres more thought as to how this will work. because both A and B will be necessary but require some cleaver timing or order. So the general operation C is the mark. The goal is nothing static, everything dynamic, healthy and field dependant.
+
 ```
+
+**Status:** LOCKED 2026-05-17 as C (two layers).
+
+**Architectural commitment:** UTF has two vocabulary layers. The
+primitive layer is closed at spec time (what the kernel routes). The
+emergent layer is open through operation (compound kinds form via
+composition, invention fires at ratification/promotion events).
+
+**Surfaced during answering:** Q1 as written conflated two
+structural questions — *the architecture's shape* (steady-state)
+and *any given substrate instance's trajectory* (lifecycle from t=0
+through terraformation through settled operation). The answer
+correctly separated them: C is the architecture; "clever timing or
+order" between A-flavored and B-flavored regimes is the lifecycle.
+Lifecycle is captured separately as Q11.
 
 -----
 
@@ -355,22 +371,99 @@ primitive removed, encoding format updated). How is this handled?
 
 -----
 
+## Lifecycle questions (surfaced during Q1 answering)
+
+### Q11. Does UTF commit to a substrate lifecycle, or only to a steady-state architecture?
+
+**Surfaced during Q1 answering.** Q1 asked about vocabulary closure
+as if UTF describes a static architecture. The Q1 answer correctly
+noted that any given substrate instance has a *trajectory* from t=0
+through terraformation through settled operation, and that the
+"clever timing or order" between closed-vocabulary and emergent-
+vocabulary regimes is a real structural concern. Q11 asks whether
+UTF should commit to that trajectory.
+
+**Three answer shapes:**
+
+- **A. UTF specifies steady-state only.** UTF describes the
+  substrate's architecture (closed primitives + open emergent layer
+  per Q1=C). How any specific substrate instance gets *to* steady
+  state is an implementation concern. Bootstrap, terraformation,
+  and settled operation are implementation modes; UTF is silent on
+  the transitions.
+
+- **B. UTF specifies the lifecycle.** UTF commits to a lifecycle
+  with named regimes (bootstrap, terraformation, settled operation)
+  and the structural conditions for transitions between them. The
+  Q1 answer's "clever timing or order" becomes a UTF commitment.
+
+- **C. UTF specifies the lifecycle structurally but not procedurally.**
+  UTF names the regimes as structural positions (a substrate is *in*
+  one regime at a time) without specifying the transition criteria.
+  Implementations choose when transitions fire; UTF specifies that
+  regimes are distinguishable and that a substrate's behavior
+  differs by regime.
+
+- **D. Defer.** Lifecycle is downstream of Q4 (where vocabulary
+  growth lives) and possibly Q5 (lattice composition). Answer those
+  first; Q11 sharpens after.
+
+**Structural ground.** The substrate exhibits at least three
+operationally distinct regimes that the existing spec touches but
+does not name as lifecycle:
+
+- *Bootstrap (t=0):* Seed and primitive layer exist (closed at spec
+  time per Q1=C); no operation has occurred; emergent layer is empty.
+  F1 (seed permanent) and X1 (every configuration includes the seed)
+  hold at t=0 by construction.
+
+- *Terraformation:* Substrate ingests universe content. Both
+  primitive-content population (A-flavored) and emergent-kind
+  invention (B-flavored) happen, possibly concurrently. The "clever
+  timing or order" surfaced in Q1 is about how these compose during
+  ingest.
+
+- *Settled operation:* Universe is populated. Applications deposit
+  into terraformed substrate. Invention fires at ratification/
+  promotion events. C-mode is the architectural fact.
+
+The Phase 6 melting-pot runs all three within a single browser
+session (bootstrap at page load, terraformation via seed abilities +
+centroid setup, settled operation during the 10-round duel with
+ongoing invention). The lifecycle is empirically present in the
+existing implementations; whether UTF commits to it as structural
+is the question.
+
+**Your answer:**
+
+```
+(to be written)
+```
+
+-----
+
 ## How the scaffolding will work
 
 Each question's answer determines a section of the UTF specification.
 After you answer Q1, I scaffold `02-kind-vocabulary.md` accordingly.
 After Q2, I narrow `02-kind-vocabulary.md` to the specific primitive
-set. Continuing through Q10 produces a complete UTF specification
-deliberately, in pieces small enough to consider on their own.
+set. Continuing through the question series produces a complete UTF
+specification deliberately, in pieces small enough to consider on
+their own.
 
-The order isn't strictly enforced. If you want to answer Q5 before Q2,
-the scaffolding adapts. Q1 is the only one that has to come first
-because everything downstream depends on the closure-vs-emergence
-choice.
+The order isn't strictly enforced. If you want to answer Q5 before
+Q2, the scaffolding adapts. Q1 is the only one that has to come
+first because everything downstream depends on the closure-vs-
+emergence choice.
 
-**Pacing note.** Don't feel obligated to answer all ten in one
-sitting. The questions wait. The empirical record (Phases A/B, NOT,
-4a/4b, 5.7, 6) doesn't change while you decide.
+**Pacing note.** Don't feel obligated to answer all questions in
+one sitting. The questions wait. The empirical record (Phases A/B,
+NOT, 4a/4b, 5.7, 6) doesn't change while you decide.
+
+**Question series may grow.** Q11 was added after Q1's answer
+surfaced a structural axis the original ten didn't cover. Future
+answers may surface additional axes. The series is live, not
+fixed.
 
 -----
 
@@ -379,5 +472,6 @@ sitting. The questions wait. The empirical record (Phases A/B, NOT,
 | Date (yyyy-mm-dd) | Action |
 |---|---|
 | 2026-05-17 | Questions written. Companion to `canon/UTF/research/phase-6-substrate-duels-analysis.md`. Each question is structurally grounded; answer at your own pace; UTF foundations revision proceeds as answers arrive. |
+| 2026-05-17 | Q1 locked as C (two layers: closed primitives + open emergent). Q11 added (substrate lifecycle commitment) — surfaced when Q1 answering revealed the original ten questions conflated architecture-shape with substrate-trajectory. Q4 deferred per user instruction. |
 
 Updates appended as questions get answered or reformulated.
