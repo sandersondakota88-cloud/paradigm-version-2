@@ -449,6 +449,93 @@ on. Run it.
   terraformed platform grammar, the engineering core has answered
   the preface's question by demonstration.
 
+#### Addendum: scale mechanism (delta-coupled work-rate gating)
+
+Recognized 2026-05-16 during the discussion of structural-event
+handling. The expected outcome at Terraformation Pipeline scale,
+which the loan-program scale never stressed.
+
+The substrate's existing harnesses operate at scales where the
+kernel can handle every field-generated event immediately and
+adapters can push input without producing congestion. The loan
+program is ~11 rules over 2,880 coordinates. Phase A/B generated
+~2,602 constraint sets total. Phase 5.7.5 ingested ~184 bytes
+across three WASM modules. None of these stressed the kernel's
+work-rate or the adapter intake rate.
+
+The Terraformation Pipeline operates at a scale roughly 500,000×
+larger (~80-100 MB spec corpus). At this scale, the kernel cannot
+handle every field-generated event immediately, and adapters
+pushing intake without throttling would flood the substrate.
+Something has to gate work-rate.
+
+**The expected commitment:** the kernel uses delta as the scale
+signal that gates its own work-rate, and the adapter protocol
+specifies delta-coupled back-pressure that adapters honor for
+their intake. Both commitments are structurally derivable from
+existing spec without requiring new architectural mechanism:
+
+- **Kernel work-rate gating by delta** derives from F2 (delta is
+  one formula at every scope), F3 (no component supervises another
+  — the kernel reads delta from its position rather than being
+  supervised), SE-03 (modulation operates at two timescales —
+  kernel can read fast or slow), and algorithm 22 (delta-trace as
+  coupled signal — the temporal signal is already present at the
+  channel).
+- **Adapter back-pressure by delta** derives from S1 (substrate is
+  shared, owned by neither — adapters flooding while the substrate
+  cannot absorb violates the spirit), I3 (bounded everything —
+  unbounded adapter intake violates implicitly), and SE-02
+  metabolism (flow discipline at the four positions including
+  adapter intake — "rates determine persistence" is precisely
+  back-pressure language).
+
+**The scale mechanism is per-position, not global.** Each adapter
+reads its delta from its own reflexive scope (SE-01); the kernel
+reads its delta from its position. Distributed readings, not a
+single field-wide signal. Disagreement between positional readings
+during transition states IS the substrate's coupling signal (S3),
+not a defect to coordinate away. This is consistent with the
+substrate's existing reflexive-scope discipline.
+
+**What remains open:** the specific back-pressure mechanism. Four
+structurally legitimate possibilities exist:
+- Adapter polls delta and self-throttles (purest F3-consistent)
+- Kernel emits a delta-derived pressure signal adapters consume
+  (slightly less F3-pure but more efficient)
+- Adapters expose capacity signal to kernel for routing-by-load
+  (most F3-compromising; flagged for resistance)
+- Implicit back-pressure through trace-rate observation (no new
+  mechanism but requires adapters designed to self-throttle when
+  their trace-rate exceeds a bound)
+
+The choice between these requires empirical input. Likely the
+right move is to specify the structural commitment (delta-coupled
+back-pressure exists and is per-position) in Priority 2's adapter
+protocol document, defer the specific mechanism to Priority 3's
+Adapter Library implementation, and verify the choice empirically
+at Pipeline Part 1 scale.
+
+**Why this is recorded here rather than elsewhere:** the scale
+mechanism is *more or less invisible* at every scale prior to the
+Terraformation Pipeline. Loan-program scale never produced enough
+field events or adapter intake to surface the need. The kernel
+artifact (Priority 4) built without this commitment would work
+fine for canonical demonstrations and fail at Pipeline scale.
+Recording the commitment here ensures the kernel is built with
+delta-coupled scale gating from the start, so Pipeline scaling
+doesn't require kernel revision after the fact.
+
+**Cross-references for when the structural commitment gets
+written into the adapter protocol (Priority 2):**
+- F2, F3, S1, S3, I3 (foundational invariants the commitment
+  derives from)
+- SE-02 (metabolism flow discipline at the adapter position)
+- SE-03 (modulation as the substrate's existing dual-timescale
+  mechanism the scale signal can read from)
+- Algorithm 22 (delta-trace at the channel as the coupled signal)
+- SE-01 (reflexive scope — the per-position delta reading)
+
 -----
 
 ## 9. The four objections and their current status
@@ -500,6 +587,7 @@ agent) should follow them.
 | 2026-05-15 | Priority 1 (UTF specification) begun. [canon/UTF/](canon/UTF/) directory created. Foundation document [01-foundations.md](canon/UTF/01-foundations.md) establishes UTF is WHEN:THEN, not KEY:VALUE; the structural argument is supported by an exhaustive survey of key:value formats demonstrating that CSS is the only deployed format with the right shape. Kind vocabulary, attribute schema, identity discipline, encodings, and versioning to follow in subsequent documents. |
 | 2026-05-16 | SE-12 and SE-13 drafts created. [canon/specification/SE-12-cross-substrate-compounds.md](canon/specification/SE-12-cross-substrate-compounds.md) and [canon/specification/SE-13-storage-as-substrate-recall.md](canon/specification/SE-13-storage-as-substrate-recall.md). Both are AI-produced drafts written from existing Phase 4b/4c code; structural content anchored, voice to be replaced per HAND_REWRITE_LIST.md Tier 4. Closes the D2 gap that HAND_REWRITE_LIST.md identifies as "the only D2 violation in the audit." Twelve new invariants introduced (M6-M12) for incorporation into INVARIANTS.md v1.4. The slot-number contradiction with KERNEL_RUNTIME_CONTRACT.md §10 (which tentatively claimed SE-12/13 for different reduced candidates) is resolved in favor of compounds/recall and noted in HAND_REWRITE_LIST.md. SE-12's "let delta decide" commitment is flagged as a candidate generalization that may reduce several algorithm 16 boundary findings under continuous-SDF delta-tiebreaker semantics; empirical confirmation is open work. |
 | 2026-05-16 | PROJECT-PLAN §8 (Open work) expanded from four priorities to six. Adapter Library (P3) added as distinct from Adapter Protocol (P2): the protocol is the *contract*, the library is the *built drivers*. Terraformation Pipeline (P6) added as the largest and final priority — the work of dynamically ingesting the web platform's full specification corpus (ECMA-262, HTML Living Standard, CSS specs, WebIDL, DOM, Web APIs, MDN reference) into a state space as the substrate's coordinate-space declaration (Part 1), and a source-code buffer mechanism for adapters to deposit applications into the terraformed substrate (Part 2). The pipeline's finish line is loading the entirety of CSS/JS/HTML specification material into a state space and observing what coordinate structure the substrate produces — the experiment the threshold-crossing claim actually pivots on. |
+| 2026-05-16 | Priority 6 addendum added: delta-coupled scale mechanism for the kernel and back-pressure discipline for adapters. Recognized during discussion of structural-event handling (field-generated promotions, evictions, recalls). The expected commitment at Pipeline scale: the kernel uses delta as its work-rate gating signal; adapters honor delta-coupled back-pressure for intake. Both derive from existing spec (F2, F3, SE-01, SE-02, SE-03, S1, S3, I3, algorithm 22) without requiring new architectural mechanism. The mechanism is per-position (per SE-01 reflexive scope), not global. Recorded against Priority 6 rather than as standalone work because the scale mechanism is invisible at every scale prior to Terraformation; recording it here ensures the kernel artifact (P4) and adapter protocol (P2) are built with the commitment in place from the start. Specific back-pressure mechanism (polling vs. signal vs. capacity-routing vs. trace-rate) deferred to empirical input at Pipeline Part 1 scale. |
 
 Updates appended as canonical specification work proceeds, the
 kernel is built, substrate relocation is demonstrated, or other
