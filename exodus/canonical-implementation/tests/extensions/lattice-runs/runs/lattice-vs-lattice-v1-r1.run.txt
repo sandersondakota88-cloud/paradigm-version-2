@@ -1,0 +1,433 @@
+# LATTICE vs LATTICE · FAST HEAT UP VS SLOW BURN
+
+Generated: 2026-05-18T01:56:10.619Z
+Score: A=2 · B=9
+
+## Round metrics
+round	winner	turns	a	b
+0	B	454	135 / 88 / 8	53 / 1 / 3
+1	B	527	135 / 88 / 9	53 / 1 / 3
+2	B	500	135 / 88 / 9	53 / 1 / 3
+3	B	560	135 / 88 / 9	53 / 1 / 3
+4	B	1341	135 / 88 / 9	53 / 1 / 3
+5	A	259	135 / 88 / 9	53 / 1 / 3
+6	B	447	135 / 88 / 9	53 / 1 / 3
+7	B	1331	135 / 88 / 9	53 / 1 / 3
+8	B	2248	135 / 88 / 9	53 / 1 / 3
+9	A	582	135 / 88 / 9	53 / 1 / 3
+10	B	1736	135 / 88 / 9	53 / 1 / 3
+
+## Substrate end-state
+### Player A
+pres: cons=31 rat=20 sub=3 delta=0.000 lastOut=pres-urgent
+threat: cons=31 rat=20 sub=3 delta=0.000 lastOut=threat-losing-bad
+dbecon: cons=37 rat=25 sub=1 delta=0.000 lastOut=db-bad
+exploit: cons=36 rat=23 sub=2 delta=0.000 lastOut=exploit-preempt-attack
+### Player B
+pres: cons=11 rat=0 sub=1 delta=0.000 lastOut=pres-urgent
+threat: cons=12 rat=0 sub=0 delta=0.000 lastOut=threat-winning-bad
+dbecon: cons=16 rat=1 sub=1 delta=0.000 lastOut=db-bad
+exploit: cons=14 rat=0 sub=1 delta=0.000 lastOut=exploit-preempt-attack
+
+## Combat log
+
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 9 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 7 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 11 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +16 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 9 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +18 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 9 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 8 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 9 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 8 dmg
+◂ B · decides hl [pres-pull]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 11 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 8 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 10 dmg
+◂ B · decides hl [pres-pull]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 12 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · CRIT for 16
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · CRIT for 14
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 9 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 12 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +15 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 12 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 7 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +20 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 8 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 11 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +20 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 9 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 11 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 8 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +18 hp (cd 3t)
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 10 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 9 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 12 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 8 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 12 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +16 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 12 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 9 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 9 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 13 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 12 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 11 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +18 hp (cd 3t)
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 9 dmg
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 9 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 11 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +15 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 13 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 9 dmg
+◂ B · decides hl [pres-pull]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 7 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 7 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 13 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 12 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides hl [pres-pull]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 9 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 7 dmg
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-pull-failing]
+▸ A · attack — 12 dmg
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +20 hp (cd 3t)
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 10 dmg
+◂ B · decides hl [pres-pull]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack missed
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack — 13 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-urgent-veto]
+▸ A · attack missed
+◂ B · decides atk [winning-bad-press]
+◂ B · attack — 11 dmg
+▸ A · decides db [pres-pull-failing]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [pres-urgent-veto]
+◂ B · attack — 13 dmg
+· ═ Round 10 ended after 1736 turns · B wins ═
+· ═══════ SIMULATION COMPLETE ═══════
+· final · A 2 — B 9   B WINS (slow-burn)

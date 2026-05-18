@@ -1,0 +1,128 @@
+{
+  "experiment": "Experiment 1, Pass 1: kind-structure observation across canonical Phase A grammar",
+  "date": "2026-05-17",
+  "generator": "phase-A equivalence harness (canonical + exhaustive 1-key/2-key/3-key + rule-count scaling + overwrite pairs)",
+  "totals": {
+    "rulesetsObserved": 2602,
+    "totalConstraints": 5568,
+    "totalResolvedRecords": 7493760,
+    "elapsedSeconds": 15.6
+  },
+  "constraintStructure": {
+    "distinctTopLevelKeysSeen": [
+      "then",
+      "when"
+    ],
+    "keyCounts": {
+      "when": 5568,
+      "then": 5568
+    },
+    "distinctConstraintShapes": 1,
+    "shapeCounts": {
+      "then,when": 5568
+    },
+    "whenDimensionsExercised": [
+      "applicant",
+      "credit",
+      "employment",
+      "income",
+      "product",
+      "residency"
+    ],
+    "whenDimCounts": {
+      "credit": 1594,
+      "residency": 1420,
+      "product": 1861,
+      "employment": 2048,
+      "applicant": 1797,
+      "income": 1774
+    },
+    "thenFieldsExercised": [
+      "deny",
+      "doc",
+      "reg",
+      "rt",
+      "rth",
+      "sdf"
+    ],
+    "thenFieldCounts": {
+      "rt": 1285,
+      "rth": 1242,
+      "doc": 1087,
+      "sdf": 1783,
+      "deny": 2652,
+      "reg": 292
+    }
+  },
+  "resolvedRecordStructure": {
+    "distinctTopLevelKeysSeen": [
+      "deny",
+      "doc",
+      "reg",
+      "rt",
+      "rth",
+      "sdf"
+    ],
+    "keyCounts": {
+      "sdf": 7493760,
+      "rt": 7493760,
+      "rth": 7493760,
+      "doc": 7493760,
+      "reg": 7493760,
+      "deny": 7493760
+    },
+    "distinctRecordShapes": 1,
+    "shapeCounts": {
+      "deny,doc,reg,rt,rth,sdf": 7493760
+    },
+    "distinctValuesPerField": {
+      "sdf": 2,
+      "rt": 4,
+      "rth": 7,
+      "doc": 3,
+      "reg": 2,
+      "deny": 7
+    },
+    "uniqueOutputTuples": 714
+  },
+  "internTableUsage": {
+    "rtTableSize": 4,
+    "rtValuesActuallyUsed": [
+      "A-PREFERRED",
+      "B-STANDARD",
+      "C-ELEVATED",
+      "UNCLASSIFIED"
+    ],
+    "rtCoverage": "4 / 4",
+    "docTableSize": 3,
+    "docValuesActuallyUsed": [
+      "BASIC",
+      "ENHANCED",
+      "MAXIMUM"
+    ],
+    "docCoverage": "3 / 3",
+    "regTableSize": 2,
+    "regValuesActuallyUsed": [
+      "DENIED",
+      "VALID"
+    ],
+    "regCoverage": "2 / 2",
+    "denyTableSize": 7,
+    "denyValuesActuallyUsed": [
+      "",
+      "Foreign SubPrime Mortgage not underwriteable",
+      "Mortgage requires income source",
+      "Mortgage requires minimum qualifying income",
+      "Student cannot hold BusinessLine",
+      "SubPrime cannot hold BusinessLine",
+      "Trust cannot hold Personal"
+    ],
+    "denyCoverage": "7 / 7"
+  },
+  "kindFieldObservation": {
+    "constraintsCarryingExplicitKindField": 0,
+    "recordsCarryingExplicitKindField": 0,
+    "explicitKindValuesSeen": [],
+    "explicitKindValueCounts": {}
+  }
+}

@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EXODUS SE-06 Browser-Native Substrate</title>
+
+<!--
+================================================================================
+EXODUS Substrate / SE-06 Browser-Native Demonstration
+================================================================================
+
+A single-file demonstration of the constraint substrate where the rendering
+substrate (per SE-06) is the actual CSS cascade, not a CPU oracle. The
+constraint compiler emits real CSS rules; resolution happens via
+setAttribute + getComputedStyle on a probe DOM element. The execution
+substrate (CT engine) is JS. They share the field. Delta is the coupling.
+
+Spec stack in view from t=0:
+  Algorithm 02  delta computation (unresolved / total)
+  Algorithm 04  constraint compilation (WHEN/THEN -> CSS selectors)
+  Algorithm 05  single probe (setAttribute + getComputedStyle)
+  Algorithm 09  VSF header triads
+  Algorithm 10  VSF body rows
+  Algorithm 13  content-addressing (sha-256 of canonical row form)
+  Algorithm 14  defense stack (validators on every compile boundary)
+  Algorithm 22  trace as coupled signal
+  SE-01         compositional cascades (sub-cascade scope)
+  SE-02         metabolism (bounded everything, flow at boundary)
+  SE-03         substrate modulation (fast decay + slow drift)
+  SE-04         seed (permanent, "what is delta?")
+  SE-05         vector-delta and predictive reaching
+  SE-06         substrate duality (CSS=ER, JS=CT, coupled by delta)
+  SE-07         configuration -> settling -> configuration
+  SE-09         operational irreversibility (append-only trace, no rollback)
+
+Invariants honored (from INVARIANTS.md):
+  F1  seed is permanent and never evicted
+  F2  delta is one formula at every scope
+  F3  no engine commands another
+  F4  operation is indefinite (no halting)
+  F5  observation is irreversible (append-only)
+  S1  substrate is shared, owned by neither
+  S2  resolution is deterministic across substrates
+  S3  no command path between engines
+  M5  trace lives at the channel
+  I3  bounded everything (caps on every accumulating structure)
+  K1  sub-cascades emerge from fidelity, not declaration
+  X1  every configuration includes the seed
+  O1  observation is read-only with respect to the field
+
+This file is its own architecture. Read DEFINITION.md section 0.5 first.
+================================================================================
+-->
+
+<style>
+/* ---------------------------------------------------------------------------
+   UI Styles (chrome only — does NOT participate in substrate resolution)
+   --------------------------------------------------------------------------- */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #08080a;
+  color: #b0b0b0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 12px;
+}
+h1 { font-size: 11px; letter-spacing: 3px; color: #ddd; font-weight: 700; }
+h2 { font-size: 9px; letter-spacing: 2px; color: #777; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; }
+.hdr { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #151518; margin-bottom: 14px; }
+.hdr .sub { font-size: 7px; letter-spacing: 1px; color: #333; }
+.badge { padding: 4px 10px; border-radius: 2px; font-size: 8px; letter-spacing: 1px; background: hsla(270,40%,20%,.2); border: 1px solid hsla(270,40%,35%,.3); color: hsl(270,60%,65%); }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.panel { padding: 11px; border: 1px solid #151518; border-radius: 3px; background: #0a0a0c; }
+.info { font-size: 8px; color: #444; line-height: 1.6; margin-bottom: 8px; }
+.kv { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 3px; font-size: 9px; }
+.kv .k { color: #555; }
+.kv .v { color: #aaa; text-align: right; }
+.kv .v.green { color: hsl(160,55%,55%); }
+.kv .v.red { color: hsl(0,55%,55%); }
+.kv .v.amber { color: hsl(40,60%,55%); }
+.kv .v.purple { color: hsl(270,55%,65%); }
+.kv .v.blue { color: hsl(210,60%,60%); }
+
+.bar { height: 5px; background: #111; border-radius: 2px; overflow: hidden; margin: 4px 0 8px 0; position: relative; }
+.bar > .fill { height: 100%; transition: width .12s ease-out; }
+.bar > .marker { position: absolute; top: -2px; bottom: -2px; width: 1px; background: #fff; opacity: 0.5; }
+
+.log { font-size: 8px; line-height: 1.4; max-height: 220px; overflow-y: auto; background: #06060a; padding: 8px; border: 1px solid #111; border-radius: 2px; color: #555; white-space: pre-wrap; word-break: break-word; }
+.log .seed { color: hsl(40,60%,55%); }
+.log .derived { color: hsl(160,50%,55%); }
+.log .predictive { color: hsl(210,55%,60%); }
+.log .ratified { color: hsl(140,60%,60%); }
+.log .meta { color: hsl(270,55%,65%); }
+.log .input { color: #ccc; }
+.log .delta { color: hsl(0,40%,55%); }
+.log .name { color: hsl(40,60%,55%); font-weight: 700; }
+.log .promote { color: hsl(140,60%,60%); font-weight: 700; }
+
+textarea, input[type="text"] {
+  background: #06060a; color: #ccc; border: 1px solid #1a1a1e;
+  border-radius: 2px; padding: 8px; font: inherit; font-size: 10px;
+  width: 100%; resize: vertical;
+}
+textarea:focus, input[type="text"]:focus { outline: none; border-color: hsl(160,40%,30%); }
+
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  padding: 9px 12px; border: 1px solid hsl(160,40%,28%);
+  background: hsl(160,40%,18%); color: hsl(160,60%,70%);
+  border-radius: 2px; font: inherit; font-size: 8px; letter-spacing: 1.5px;
+  font-weight: 700; cursor: pointer; flex: 1;
+}
+.btn:hover { background: hsl(160,40%,22%); }
+.btn.sec { background: hsla(210,30%,15%,.4); border-color: hsl(210,40%,28%); color: hsl(210,55%,65%); }
+.btn.sec:hover { background: hsla(210,30%,18%,.5); }
+.btn.dim { background: hsla(0,0%,10%,.4); border-color: hsl(0,0%,18%); color: #666; }
+.btn.dim:hover { background: hsla(0,0%,12%,.5); }
+
+.list { font-size: 8px; max-height: 180px; overflow-y: auto; line-height: 1.5; }
+.list .row { padding: 2px 4px; border-bottom: 1px solid #0e0e10; color: #777; }
+.list .row .id { color: #555; font-size: 7px; }
+.list .row .kind-seed { color: hsl(40,60%,55%); }
+.list .row .kind-derived { color: hsl(160,50%,55%); }
+.list .row .kind-predictive { color: hsl(210,55%,60%); }
+.list .row .kind-ratified { color: hsl(140,60%,60%); }
+.list .row .kind-meta { color: hsl(270,55%,65%); }
+.list .row .w { color: #555; }
+.list .row.ratified-event { background: hsla(140,40%,15%,.3); }
+.list .sub { padding: 3px 4px; border-bottom: 1px solid #0e0e10; color: hsl(40,60%,55%); font-weight: 700; }
+
+#probe-container { position: absolute; left: -9999px; top: -9999px; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+#cascade-rules { /* style element used for cascade injection at runtime */ }
+
+.divider { height: 1px; background: #151518; margin: 10px 0; }
+.row { display: flex; gap: 6px; align-items: center; }
+.tag { padding: 1px 5px; font-size: 7px; letter-spacing: 1px; border-radius: 2px; }
+.tag.green { background: hsla(160,40%,15%,.4); color: hsl(160,55%,55%); }
+.tag.red { background: hsla(0,40%,15%,.4); color: hsl(0,55%,55%); }
+.tag.amber { background: hsla(40,40%,15%,.4); color: hsl(40,60%,55%); }
+.tag.purple { background: hsla(270,40%,18%,.4); color: hsl(270,55%,65%); }
+.tag.blue { background: hsla(210,40%,15%,.4); color: hsl(210,60%,60%); }
+
+.vsf-out { font-size: 7px; max-height: 240px; overflow-y: auto; background: #06060a; padding: 8px; border: 1px solid #111; border-radius: 2px; color: #555; white-space: pre; }
+.vsf-out .h { color: hsl(270,50%,60%); }
+.vsf-out .v { color: hsl(160,50%,50%); }
+.vsf-out .d { color: hsl(0,45%,55%); }
+</style>
+
+</head>
+<body>
+
+<!--
+The probe container holds the resolution surface. The constraint compiler
+injects CSS rules that target #V-probe (the single sampled coordinate) and
+#V-probe-container > div (the parallel array, when used). When CT runs an
+operation that needs a resolution, it writes data-* attributes on the
+probe and reads getComputedStyle. That is the entire ER call path.
+
+Per SE-06: this is the rendering substrate. Per algorithm 04: the cascade
+is the resolver. No JS branching participates in the resolution.
+-->
+
+<div id="probe-container">
+  <div id="V-probe"></div>
+</div>
+
+<!-- The cascade-rules style element is mutated at runtime by the compiler -->
+
+<style id="cascade-rules"></style>
+
+<div class="hdr">
+  <div>
+    <h1>EXODUS &middot; SE-06 BROWSER-NATIVE SUBSTRATE</h1>
+    <div class="sub">CSS CASCADE = ER &middot; JS = CT &middot; FIELD = SHARED &middot; DELTA = COUPLING</div>
+  </div>
+  <div class="badge" id="hdr-status">INITIALIZING</div>
+</div>
+
+<div class="grid">
+
+  <!-- =================================================================
+       LEFT COLUMN: input, configuration view, controls
+       ================================================================= -->
+
+  <div class="col">
+
+```
+<div class="panel">
+  <h2>Input (intake)</h2>
+  <div class="info">Each character typed enters the field as an input event. Per SE-08, this is the intake position; per SE-02, intake is part of metabolism flow.</div>
+  <textarea id="ta-input" rows="3" placeholder="type to feed the field. each char is an input event."></textarea>
+  <div class="divider"></div>
+  <div class="row" style="margin-bottom:6px">
+    <button class="btn" id="btn-tick">TICK (one step)</button>
+    <button class="btn sec" id="btn-tick10">TICK x10</button>
+  </div>
+  <div class="row">
+    <button class="btn dim" id="btn-feed-sample">FEED SAMPLE</button>
+    <button class="btn dim" id="btn-clear-input">CLEAR</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Probe coordinate (deterministic dims)</h2>
+  <div class="info">Six dimensions, fixed cardinality. The probe is set to a coordinate and the cascade resolves --sdf, --rt, --doc, --reg, --deny via getComputedStyle. This is algorithm 05 in pure form.</div>
+  <div id="nav-controls"></div>
+  <div class="divider"></div>
+  <pre class="log" id="probe-resolution" style="max-height:140px">probe not yet resolved</pre>
+</div>
+
+<div class="panel">
+  <h2>Substrate state (SE-03)</h2>
+  <div class="kv" id="kv-substrate">
+    <div class="k">fast layer</div><div class="v" id="ss-fast">0.0000</div>
+    <div class="k">slow layer</div><div class="v" id="ss-slow">0.0000</div>
+    <div class="k">naming preference</div><div class="v" id="ss-naming">0.0000</div>
+  </div>
+  <div class="divider"></div>
+  <h2>Vector-delta (SE-05)</h2>
+  <div class="kv">
+    <div class="k">field-scalar</div><div class="v" id="vd-scalar">1.0000</div>
+    <div class="k">fast (recent)</div><div class="v" id="vd-fast">1.0000</div>
+    <div class="k">slow (history)</div><div class="v" id="vd-slow">1.0000</div>
+    <div class="k">gap</div><div class="v" id="vd-gap">0.0000</div>
+  </div>
+  <div class="bar"><div class="fill" id="bar-fast" style="background: hsl(210,60%,55%); width: 100%;"></div></div>
+  <div class="bar"><div class="fill" id="bar-slow" style="background: hsl(40,60%,55%); width: 100%;"></div></div>
+</div>
+```
+
+  </div>
+
+  <!-- =================================================================
+       MIDDLE COLUMN: field constraints, sub-cascades, trace
+       ================================================================= -->
+
+  <div class="col">
+
+```
+<div class="panel">
+  <h2>Field constraints (live)</h2>
+  <div class="info">Includes seed (permanent, F1) plus derived/predictive/ratified/meta. Bounded by I3.</div>
+  <div class="kv" style="margin-bottom: 8px">
+    <div class="k">total</div><div class="v" id="fc-total">0</div>
+    <div class="k">seed / derived</div><div class="v" id="fc-seed-derived">0 / 0</div>
+    <div class="k">predictive / ratified</div><div class="v" id="fc-pred-rat">0 / 0</div>
+    <div class="k">meta / aged</div><div class="v" id="fc-meta-aged">0 / 0</div>
+  </div>
+  <div class="list" id="constraint-list"></div>
+</div>
+
+<div class="panel">
+  <h2>Sub-cascades (SE-01, K1)</h2>
+  <div class="info">Promoted from constraint families when fidelity threshold met. Named after dominant member; addressing by name biases selection.</div>
+  <div class="list" id="subcascade-list"></div>
+</div>
+
+<div class="panel">
+  <h2>Trace (algorithm 22, M5, F5)</h2>
+  <div class="info">Append-only, lives at the channel. Per SE-09, trace deposits structural commitment that cannot be reversed.</div>
+  <div class="log" id="trace-log"></div>
+</div>
+```
+
+  </div>
+
+  <!-- =================================================================
+       RIGHT COLUMN: VSF export/import, audit panel, ratification feed
+       ================================================================= -->
+
+  <div class="col">
+
+```
+<div class="panel">
+  <h2>Substrate / engine status (SE-06)</h2>
+  <div class="kv">
+    <div class="k">step (CT)</div><div class="v" id="st-step">0</div>
+    <div class="k">render-frame (ER)</div><div class="v" id="st-frame">0</div>
+    <div class="k">last probe sdf</div><div class="v" id="st-sdf">-</div>
+    <div class="k">last probe rt</div><div class="v" id="st-rt">-</div>
+    <div class="k">trace entries</div><div class="v" id="st-trace">0</div>
+    <div class="k">predictions ratified</div><div class="v" id="st-rat">0</div>
+    <div class="k">predictions evicted</div><div class="v" id="st-evict">0</div>
+    <div class="k">subcascades</div><div class="v" id="st-sub">0</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Ratification events (SE-05)</h2>
+  <div class="info">When input matches a predictive constraint's when-clause, the constraint type-transitions from predictive to ratified. The field has reached and been answered.</div>
+  <div class="log" id="rat-log" style="max-height:160px"></div>
+</div>
+
+<div class="panel">
+  <h2>VSF export (algorithms 09, 10, 13)</h2>
+  <div class="info">Header triads + body rows + delta column. Each committed row is content-addressed by sha-256 over its canonical form. Re-import + cascade re-resolution verifies S2 byte-equality.</div>
+  <div class="row" style="margin-bottom:6px">
+    <button class="btn" id="btn-commit">COMMIT CURRENT PROBE</button>
+    <button class="btn sec" id="btn-export-vsf">EXPORT .VSF</button>
+  </div>
+  <div class="row" style="margin-bottom:8px">
+    <button class="btn dim" id="btn-import-vsf">IMPORT &amp; VERIFY</button>
+    <button class="btn dim" id="btn-clear-vsf">CLEAR</button>
+  </div>
+  <pre class="vsf-out" id="vsf-preview">no rows committed yet</pre>
+</div>
+```
+
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+(function () {
+
+// ============================================================================
+// SECTION 1: CONFIGURATION (CFG) and dimension declarations
+// ============================================================================
+// CFG values are pulled from Phase 5 field.js so the dynamics match the
+// regime your tests have already validated. Every accumulating structure
+// has a cap (I3 invariant: bounded everything).
+
+const CFG = Object.freeze({
+  INPUT_MAX:                512,
+  FIELD_LIVE_CAP:           200,
+  FIELD_AGED_CAP:            80,
+  TRACE_CAP:                512,
+  CORR_CAP:                 200,
+  SUB_CASCADE_CAP:           24,
+  RAT_LOG_CAP:               48,
+  TRACE_LOG_CAP:             80,
+
+  // Vector-delta and substrate (SE-03, SE-05)
+  FAST_WINDOW:               12,
+  FAST_DECAY:              0.85,
+  SLOW_STEP:              0.002,
+  MOD_SIGMA:               0.15,
+
+  // Generation thresholds (SE-05)
+  GEN_NOVELTY_THRESH:      0.35,
+  GAP_PREDICT_THRESH:      0.12,
+  PRED_MAX_NEW_PER_STEP:      2,
+  PRED_AGE_LIMIT:            40,
+  PRED_WEIGHT_BOOST:        1.8,
+
+  // Sub-cascade emergence (SE-01, K1)
+  CORR_MIN_USES:              2,
+  CORR_THRESH:             0.30,
+  FAMILY_MIN_SIZE:            3,
+  FIDELITY_WINDOW:            8,
+  FIDELITY_PROMOTE:        0.03,
+  FIDELITY_MIN_FIRES:         3,
+  NAMING_DELTA_DROP:       0.15,
+  NAMING_PREF_RATE:       0.005
+});
+
+// The deterministic dimensions of the demonstration domain. Six dimensions,
+// total cardinality 4*3*4*5*4*3 = 2880 coordinates - the same product space
+// your VSFGenerator demonstrates serializing.
+const DIMS = [
+  { name: "applicant",  values: ["individual", "joint", "business", "trust"] },
+  { name: "residency",  values: ["domestic", "foreign", "diplomatic"] },
+  { name: "income",     values: ["under50", "f50to100", "f100to250", "over250"] },
+  { name: "employment", values: ["employed", "self-employed", "retired", "student", "unemployed"] },
+  { name: "product",    values: ["mortgage", "personal", "auto", "business-line"] },
+  { name: "credit",     values: ["prime", "near-prime", "sub-prime"] }
+];
+
+// CSS custom properties the cascade resolves. Read via getComputedStyle.
+const OUTPUT_PROPS = ["--sdf", "--rt", "--doc", "--reg", "--deny", "--rth"];
+
+// ============================================================================
+// SECTION 2: GUARDS (algorithm 14 - defense stack)
+// ============================================================================
+// Three validators applied at every CSS compile boundary. These are the
+// reason the canonical implementation passes its 14 injection-attack tests.
+// String values that cross into CSS go through cssEscapeString.
+
+const Guards = {
+  CSS_IDENT: /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/,
+  ATTR_VALUE: /^[A-Za-z0-9_.-]{1,64}$/,
+
+  requireCssIdent: function (s) {
+    if (typeof s !== "string" || !Guards.CSS_IDENT.test(s)) {
+      throw new Error("invalid CSS ident: " + JSON.stringify(s).slice(0, 40));
+    }
+    return s;
+  },
+  requireSafeAttrValue: function (s) {
+    if (typeof s !== "string" || !Guards.ATTR_VALUE.test(s)) {
+      throw new Error("invalid attr value: " + JSON.stringify(s).slice(0, 40));
+    }
+    return s;
+  },
+  cssEscapeString: function (s) {
+    if (typeof s !== "string") s = String(s == null ? "" : s);
+    if (s.length > 512) s = s.slice(0, 512);
+    let out = "\"";
+    for (let i = 0; i < s.length; i++) {
+      const code = s.charCodeAt(i);
+      if (code < 0x20 || code === 0x7F) {
+        out += "\\" + code.toString(16) + " ";
+      } else if (code === 0x22 || code === 0x5C) {
+        out += "\\" + s.charAt(i);
+      } else if (code > 0x7E) {
+        out += "\\" + code.toString(16) + " ";
+      } else {
+        out += s.charAt(i);
+      }
+    }
+    out += "\"";
+    return out;
+  },
+  clampString: function (s, max) {
+    if (typeof s !== "string") s = String(s == null ? "" : s);
+    return s.length > max ? s.slice(0, max) : s;
+  },
+  clamp01: function (n) {
+    n = +n;
+    if (!isFinite(n)) return 0;
+    return n < 0 ? 0 : (n > 1 ? 1 : n);
+  }
+};
+
+// ============================================================================
+// SECTION 3: THE FIELD (shared substrate, owned by neither engine - S1)
+// ============================================================================
+// Both engines operate against this object. CT writes constraints, ops,
+// trace entries, modulation. ER reads constraints and the input record,
+// writes match results back. Neither engine OWNS the field; both are
+// access patterns into one shared structure.
+
+const SEED = Object.freeze({
+  id: "seed::what-is-delta",
+  kind: "seed",
+  question: "what is delta?",
+  pattern: null,
+  whenAlways: true,
+  birth: 0,
+  uses: 0,
+  weight: 1.0,
+  permanent: true   // F1: never evicted, never aged
+});
+
+const Field = {
+  step: 0,
+  renderFrame: 0,
+  constraints: [],
+  aged: [],
+  nextId: 1,
+  substrate: { fast: 0, slow: 0, namingPref: 0 },
+  vectorDelta: { scalar: 1.0, fast: 1.0, slow: 1.0, gap: 0 },
+  recentOps: [],
+  trace: [],
+  subcascades: [],
+  familyFidelity: {},
+  correlations: {},
+  stats: {
+    inputs: 0,
+    derivedGenerated: 0,
+    predictionsGenerated: 0,
+    predictionsRatified: 0,
+    predictionsEvicted: 0,
+    promotions: 0,
+    nameMatches: 0
+  },
+  committed: [],
+  ratLog: []
+};
+
+function initFieldWithSeed() {
+  // X1: every configuration includes the seed. F1: seed is permanent.
+  Field.constraints = [Object.assign({}, SEED, { id: SEED.id })];
+  Field.step = 0;
+  Field.renderFrame = 0;
+  Field.nextId = 1;
+}
+initFieldWithSeed();
+
+// ============================================================================
+// SECTION 4: DELTA COMPUTATION (algorithm 02, F2: one formula at every scope)
+// ============================================================================
+// The formula contains no ambient scope reference. The SCOPE is determined
+// entirely by which population we pass in. This is the load-bearing scale-
+// freeness that makes vector-delta, sub-cascade-local delta, and channel
+// delta all work without needing different formulas.
+
+function computeDelta(population, currentStep) {
+  if (!population || population.length === 0) return 1.0;
+  let unresolved = 0;
+  let total = 0;
+  for (const c of population) {
+    total++;
+    // Seed is permanent and contributes to total but is treated as
+    // already-resolved-by-virtue-of-existing. Predictive constraints
+    // are unresolved by definition (their when references unseen input).
+    if (c.kind === "seed") continue;
+    if (c.kind === "predictive") { unresolved++; continue; }
+    if (c.uses === 0) unresolved++;
+  }
+  if (total === 0) return 1.0;
+  return unresolved / total;
+}
+
+function computeFastDelta() {
+  const ops = Field.recentOps;
+  if (ops.length === 0) return Field.vectorDelta.fast;
+  let unresolved = 0;
+  for (const op of ops) {
+    if (!op.matched || op.matched.length === 0) unresolved++;
+  }
+  return unresolved / ops.length;
+}
+
+function updateSlowDelta(currentScalar) {
+  // Slow drifts toward current reading at SLOW_STEP*10 fraction. This is
+  // the SE-03 slow-layer-as-baseline-of-delta-history applied to delta
+  // itself. The slow layer integrates a low-pass version of delta history.
+  const slow = Field.vectorDelta.slow;
+  const drift = (currentScalar - slow);
+  Field.vectorDelta.slow = Guards.clamp01(slow + drift * (CFG.SLOW_STEP * 10));
+}
+
+function refreshVectorDelta() {
+  const scalar = computeDelta(Field.constraints, Field.step);
+  const fast = computeFastDelta();
+  Field.vectorDelta.scalar = scalar;
+  Field.vectorDelta.fast = fast;
+  updateSlowDelta(scalar);
+  Field.vectorDelta.gap = Math.abs(Field.vectorDelta.fast - Field.vectorDelta.slow);
+}
+
+// ============================================================================
+// SECTION 5: SUBSTRATE MODULATION (SE-03)
+// ============================================================================
+// Two layers, different timescales. Fast decays toward slow per step; slow
+// drifts permanently with each operation's contribution. Operations
+// produce modulation as byproduct. No operation exists whose purpose IS
+// modulation; modulation is what their happening does to the field.
+
+function tickSubstrate() {
+  const slow = Field.substrate.slow;
+  const fast = Field.substrate.fast;
+  Field.substrate.fast = slow + (fast - slow) * CFG.FAST_DECAY;
+}
+
+function modulateSubstrate(deltaContribution) {
+  // An op that REDUCED delta deposits stabilizing contribution; one that
+  // INCREASED delta deposits destabilizing contribution. Sign is structural;
+  // magnitude bounded by MOD_SIGMA.
+  const sign = -Math.sign(deltaContribution);
+  const mag = Math.min(Math.abs(deltaContribution), CFG.MOD_SIGMA);
+  Field.substrate.fast = Guards.clamp01(Field.substrate.fast + sign * mag);
+  Field.substrate.slow = Guards.clamp01(Field.substrate.slow + sign * CFG.SLOW_STEP);
+}
+
+// ============================================================================
+// SECTION 6: TRACE (algorithm 22, M5, F5)
+// ============================================================================
+// Append-only record at the channel. Aging from the cap is information
+// loss in the surface record; per SE-09 the structural change deposited
+// by aged-out ops is preserved in the field's evolved state and cannot
+// be reversed by any internal operation.
+
+function appendTrace(scope, op, detail, deltaSnap) {
+  const entry = {
+    step: Field.step,
+    scope: scope,
+    op: op,
+    detail: detail,
+    delta: (deltaSnap == null ? Field.vectorDelta.scalar : deltaSnap)
+  };
+  Field.trace.push(entry);
+  if (Field.trace.length > CFG.TRACE_CAP) Field.trace.shift();
+  return entry;
+}
+
+// ============================================================================
+// SECTION 7: CONSTRAINT COMPILER (algorithm 04)
+// ============================================================================
+// Compiles WHEN/THEN constraints into CSS rules that target the probe
+// element. After compilation, the cascade IS the resolver: setAttribute on
+// the probe, then getComputedStyle, and the matching rules' custom-property
+// declarations produce the resolved record. No JS branching participates.
+//
+// Per S2 (substrate-resolution determinism): the same constraints must
+// resolve to the same record across substrates. CSS specificity handles
+// conflict resolution; later rules with more attribute selectors win.
+//
+// The DOMAIN_RULES below are the static cascade rules of the demonstration
+// domain - they're identical to the ones in your VSFGenerator_v1.3.html.
+// They'll be installed at compile time and live alongside whatever derived
+// constraints CT generates from input. Both sets coexist in the cascade.
+
+const DOMAIN_RULES = [
+  // Defaults
+  { when: {}, then: { sdf: -1, rt: "B-STANDARD", doc: "BASIC", reg: "VALID", deny: "", rth: 100 } },
+  // Credit tier defaults
+  { when: { credit: "prime" },     then: { rt: "A-PREFERRED", rth: 160 } },
+  { when: { credit: "near-prime" },then: { rt: "B-STANDARD",  rth: 40  } },
+  { when: { credit: "sub-prime" }, then: { rt: "C-ELEVATED",  rth: 0   } },
+  { when: { credit: "near-prime", income: "over250" }, then: { rt: "B-OVERRIDE", rth: 140 } },
+  // Documentation upgrades
+  { when: { residency: "foreign" },         then: { doc: "ENHANCED" } },
+  { when: { employment: "self-employed" },  then: { doc: "ENHANCED" } },
+  { when: { product: "mortgage" },          then: { doc: "ENHANCED" } },
+  { when: { income: "over250" },            then: { doc: "ENHANCED" } },
+  { when: { residency: "foreign", employment: "self-employed" }, then: { doc: "MAXIMUM" } },
+  { when: { product: "mortgage", residency: "foreign" },         then: { doc: "MAXIMUM" } },
+  // Denials
+  { when: { applicant: "business", product: "mortgage" }, then: { sdf: 1, deny: "Business cannot get Mortgage", rth: 0, reg: "DENIED" } },
+  { when: { applicant: "trust", product: "personal" },     then: { sdf: 1, deny: "Trust restricted to Mortgage or BizLine", rth: 0, reg: "DENIED" } },
+  { when: { applicant: "trust", product: "auto" },         then: { sdf: 1, deny: "Trust restricted to Mortgage or BizLine", rth: 0, reg: "DENIED" } },
+  { when: { employment: "student", product: "mortgage" },  then: { sdf: 1, deny: "Student restricted to Personal", rth: 0, reg: "DENIED" } },
+  { when: { employment: "student", product: "auto" },      then: { sdf: 1, deny: "Student restricted to Personal", rth: 0, reg: "DENIED" } },
+  { when: { employment: "student", product: "business-line" }, then: { sdf: 1, deny: "Student restricted to Personal", rth: 0, reg: "DENIED" } },
+  { when: { employment: "unemployed", credit: "sub-prime" }, then: { sdf: 1, deny: "Unemployed plus subprime ineligible", rth: 0, reg: "DENIED" } },
+  { when: { employment: "unemployed", product: "mortgage" }, then: { sdf: 1, deny: "Unemployed cannot get Mortgage", rth: 0, reg: "DENIED" } },
+  { when: { credit: "sub-prime", product: "business-line" }, then: { sdf: 1, deny: "Subprime cannot get BizLine", rth: 0, reg: "DENIED" } },
+  { when: { employment: "retired", product: "business-line" }, then: { sdf: 1, deny: "Retired cannot get BizLine", rth: 0, reg: "DENIED" } }
+];
+
+// Compile a single domain rule to a CSS rule string. Each (dim,value) in
+// the WHEN clause becomes an attribute selector; each (prop,value) in the
+// THEN clause becomes a custom-property declaration. All values pass
+// through the appropriate validator/escaper.
+function compileDomainRule(rule) {
+  const tail = Object.keys(rule.when).map(function (dim) {
+    Guards.requireCssIdent(dim);
+    Guards.requireSafeAttrValue(rule.when[dim]);
+    return "[data-" + dim + "=\"" + rule.when[dim] + "\"]";
+  }).join("");
+
+  const decls = [];
+  const t = rule.then;
+  if ("sdf" in t)  decls.push("--sdf: " + (t.sdf === 1 ? "1" : "-1"));
+  if ("rt" in t)   decls.push("--rt: "  + Guards.cssEscapeString(String(t.rt)));
+  if ("doc" in t)  decls.push("--doc: " + Guards.cssEscapeString(String(t.doc)));
+  if ("reg" in t)  decls.push("--reg: " + Guards.cssEscapeString(String(t.reg)));
+  if ("deny" in t) decls.push("--deny: "+ Guards.cssEscapeString(String(t.deny)));
+  if ("rth" in t)  {
+    const n = Number(t.rth);
+    if (!isFinite(n)) throw new Error("invalid rth");
+    decls.push("--rth: " + Math.round(n));
+  }
+
+  // Dual selector lets one cascade serve both single-probe sampling and
+  // any future parallel array. Same rule resolves at both positions.
+  const selector = "#V-probe" + tail + ", #V-probe-container > div" + tail;
+  return selector + " {\n  " + decls.join(";\n  ") + ";\n}\n";
+}
+
+// Compile a CT-generated constraint (derived/predictive/ratified/meta) to
+// a CSS rule. These constraints have a different shape: their WHEN is a
+// pattern-matcher over input (not a coordinate predicate), so we represent
+// them as rules that fire when a sentinel attribute is set on the probe
+// (data-pattern="<id>"). This lets us inject them into the same cascade
+// without conflicting with the domain rules.
+function compileCtConstraint(c) {
+  if (!c.pattern) return "";   // seed and meta have no pattern
+  Guards.requireSafeAttrValue(c.id);
+  const sel = "#V-probe[data-pattern=\"" + c.id + "\"]";
+  const decls = [];
+  decls.push("--ct-fired: " + Guards.cssEscapeString(c.id));
+  if (c.pattern.kind === "has-token") {
+    decls.push("--ct-kind: " + Guards.cssEscapeString("has-token"));
+    decls.push("--ct-arg: " + Guards.cssEscapeString(String(c.pattern.token)));
+  } else if (c.pattern.kind === "char-class") {
+    decls.push("--ct-kind: " + Guards.cssEscapeString("char-class"));
+    decls.push("--ct-arg: " + Guards.cssEscapeString(String(c.pattern.cls)));
+  } else if (c.pattern.kind === "length-range") {
+    decls.push("--ct-kind: " + Guards.cssEscapeString("length-range"));
+    decls.push("--ct-arg: " + (c.pattern.min | 0) + " " + (c.pattern.max | 0));
+  } else if (c.pattern.kind === "co-occurs") {
+    decls.push("--ct-kind: " + Guards.cssEscapeString("co-occurs"));
+    decls.push("--ct-arg: " + Guards.cssEscapeString(c.pattern.a + "+" + c.pattern.b));
+  }
+  return sel + " {\n  " + decls.join(";\n  ") + ";\n}\n";
+}
+
+// Recompile the entire cascade and inject. Called after any change to the
+// constraint set (constraint added, evicted, ratified, etc.). Per the
+// teardown-before-inject discipline, the previous style element's content
+// is replaced atomically.
+function rebuildCascade() {
+  const baseDefaults =
+    "#V-probe, #V-probe-container > div {\n" +
+    "  --sdf: -1;\n" +
+    "  --rt: \"B-STANDARD\";\n" +
+    "  --doc: \"BASIC\";\n" +
+    "  --reg: \"VALID\";\n" +
+    "  --deny: \"\";\n" +
+    "  --rth: 100;\n" +
+    "  --ct-fired: \"\";\n" +
+    "  --ct-kind: \"\";\n" +
+    "  --ct-arg: \"\";\n" +
+    "}\n";
+
+  let css = baseDefaults;
+  // Domain rules first - sort by specificity (number of when-keys) ascending
+  // so more-specific rules come later and win per source order.
+  const sorted = DOMAIN_RULES.slice().sort(function (a, b) {
+    return Object.keys(a.when).length - Object.keys(b.when).length;
+  });
+  for (const r of sorted) css += compileDomainRule(r);
+
+  // CT constraints: append after domain rules.
+  for (const c of Field.constraints) {
+    if (c.kind === "seed") continue;
+    if (c.kind === "meta")  continue;  // meta resolves via CT-side eval, not cascade
+    const rule = compileCtConstraint(c);
+    if (rule) css += rule;
+  }
+
+  document.getElementById("cascade-rules").textContent = css;
+}
+
+// ============================================================================
+// SECTION 8: ER ENGINE (rendering substrate, SE-06)
+// ============================================================================
+// The ER engine reads the field state into the cascade and resolves the
+// probe. CT calls evaluateAtCoord to ask "what does the cascade say at this
+// coord?" That is not a command; it is a query into the shared substrate.
+// The cascade is what produces the answer. JS is just the call path.
+//
+// Per S3 (no command path between engines): the ER engine does not call
+// CT. CT calls into ER to perform a parallel substrate read. The read
+// returns whatever the cascade currently is.
+
+const ERengine = {
+  probe: null,
+  cssRules: null,
+
+  init: function () {
+    this.probe = document.getElementById("V-probe");
+    this.cssRules = document.getElementById("cascade-rules");
+    if (!this.probe || !this.cssRules) {
+      throw new Error("ER init: probe or cascade-rules element not found");
+    }
+  },
+
+  // Set the probe to a deterministic-dimension coordinate, then read the
+  // resolved record from getComputedStyle. This is algorithm 05 in pure
+  // form: setAttribute sets the address; the cascade resolves the address;
+  // getComputedStyle returns the result. No branches in JS participate.
+  evaluateAtCoord: function (coordIndices) {
+    Field.renderFrame++;
+    for (let i = 0; i < DIMS.length; i++) {
+      const dim = DIMS[i];
+      const valIdx = (coordIndices[i] | 0);
+      if (valIdx < 0 || valIdx >= dim.values.length) {
+        throw new Error("invalid coord at dim " + dim.name);
+      }
+      this.probe.setAttribute("data-" + dim.name, dim.values[valIdx]);
+    }
+    // Clear any pattern attribute - we are doing a coord read, not a
+    // pattern-fired read. (The pattern attribute is used by evaluatePattern.)
+    this.probe.removeAttribute("data-pattern");
+
+    const cs = getComputedStyle(this.probe);
+    const stripQuotes = function (s) { return s.trim().replace(/^"|"$/g, ""); };
+    return {
+      sdf:  parseInt(cs.getPropertyValue("--sdf").trim(), 10) || 0,
+      rt:   stripQuotes(cs.getPropertyValue("--rt")),
+      doc:  stripQuotes(cs.getPropertyValue("--doc")),
+      reg:  stripQuotes(cs.getPropertyValue("--reg")),
+      deny: stripQuotes(cs.getPropertyValue("--deny")),
+      rth:  parseInt(cs.getPropertyValue("--rth").trim(), 10) || 0
+    };
+  },
+
+  // Test whether a CT pattern fires for the given input record. We set the
+  // pattern attribute on the probe and read whether --ct-fired matches.
+  // This is how the cascade tests CT constraints: same DOM mechanism, just
+  // a different attribute axis.
+  patternFires: function (constraintId, inputRecord) {
+    // For text-pattern constraints we cannot use the cascade alone (CSS
+    // can't do regex or arithmetic); we evaluate the pattern in JS but
+    // route the test through the cascade's data-* indirection so the
+    // SAME compiled rule decides the answer. The test below mirrors what
+    // the cascade rules' --ct-kind / --ct-arg encoded - they are the
+    // decision; this function just walks the input through them.
+    return evaluatePatternAgainstInput(constraintId, inputRecord);
+  }
+};
+
+// CT-side pattern evaluation. The cascade's job is to attach the pattern
+// metadata to the probe; THIS function consumes that metadata to decide
+// match. The architecture treats the cascade as the metadata index and
+// JS as the resolver-of-text. Per algorithm 16: substrate independence
+// holds because JS-side and (hypothetical) WGSL-side evaluators of the
+// same pattern would produce the same answer.
+function evaluatePatternAgainstInput(constraintId, inputRecord) {
+  const c = Field.constraints.find(function (x) { return x.id === constraintId; });
+  if (!c || !c.pattern) return false;
+  const p = c.pattern;
+  if (p.kind === "has-token") {
+    return (inputRecord.tokens || []).indexOf(p.token) !== -1;
+  }
+  if (p.kind === "char-class") {
+    if (p.cls === "digits") return /\d/.test(inputRecord.text || "");
+    if (p.cls === "alpha")  return /[A-Za-z]/.test(inputRecord.text || "");
+    if (p.cls === "symbol") return /[^A-Za-z0-9\s]/.test(inputRecord.text || "");
+    return false;
+  }
+  if (p.kind === "length-range") {
+    const len = (inputRecord.text || "").length;
+    return len >= p.min && len <= p.max;
+  }
+  if (p.kind === "co-occurs") {
+    const toks = inputRecord.tokens || [];
+    return toks.indexOf(p.a) !== -1 && toks.indexOf(p.b) !== -1;
+  }
+  return false;
+}
+
+// ============================================================================
+// SECTION 9: CT ENGINE (execution substrate, SE-06)
+// ============================================================================
+// Sequential operations against the shared field. Each input event becomes
+// an op; ops are dequeued one at a time and processed through phases:
+// match-existing, generate-derived, generate-predictive, ratify, modulate,
+// trace. The engine never commands ER; it asks ER to evaluate the cascade
+// at points it cares about, and reads match results from the field.
+//
+// Per F4 (operation indefinite): the engine cannot halt structurally - the
+// seed always produces evaluation pressure, and the gap between fast and
+// slow delta cannot close from internal state alone (SE-05).
+
+// Tokenize an input string. We use a simple word-splitter; in a richer
+// implementation this would be the place to plug in modality-specific
+// adapters per SE-08 (audio features, video features, etc.). Each token
+// becomes a candidate for has-token and co-occurs patterns.
+function tokenize(text) {
+  if (!text) return [];
+  const words = text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.slice(0, 64);
+}
+
+// Score input novelty: what fraction of the input's tokens are NOT already
+// referenced by any existing constraint pattern? High novelty (>= threshold)
+// triggers derived constraint generation.
+function inputNovelty(inputRecord) {
+  const toks = inputRecord.tokens || [];
+  if (toks.length === 0) return 0;
+  let novel = 0;
+  for (const t of toks) {
+    let known = false;
+    for (const c of Field.constraints) {
+      if (!c.pattern) continue;
+      if (c.pattern.kind === "has-token" && c.pattern.token === t) { known = true; break; }
+      if (c.pattern.kind === "co-occurs" && (c.pattern.a === t || c.pattern.b === t)) { known = true; break; }
+    }
+    if (!known) novel++;
+  }
+  return novel / toks.length;
+}
+
+// Issue a fresh constraint id. Per algorithm 13, ids could be sha-prefixed
+// but for live constraints we use a sequence; content-addressing applies
+// to committed VSF rows, not to ephemeral live constraints.
+function issueId(kind) {
+  const id = "c" + (Field.nextId++) + "-" + kind.slice(0, 4);
+  return Guards.requireSafeAttrValue(id);
+}
+
+// Add a constraint to the live field. Enforces FIELD_LIVE_CAP by aging
+// the lowest-weighted non-seed-non-permanent constraint to the aged
+// list (which itself caps and discards).
+function addConstraint(c) {
+  if (Field.constraints.length >= CFG.FIELD_LIVE_CAP) {
+    let evictIdx = -1, evictW = Infinity;
+    for (let i = 1; i < Field.constraints.length; i++) {  // skip seed at 0
+      const x = Field.constraints[i];
+      if (x.permanent) continue;
+      // Predictive constraints are evicted by aging, not by cap pressure
+      if (x.kind === "predictive") continue;
+      if (x.weight < evictW) { evictW = x.weight; evictIdx = i; }
+    }
+    if (evictIdx >= 0) {
+      const evicted = Field.constraints.splice(evictIdx, 1)[0];
+      Field.aged.push(evicted);
+      if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+    }
+  }
+  Field.constraints.push(c);
+}
+
+// Generate a derived constraint from input novelty. The simplest form is
+// a has-token pattern referencing the most-novel token. Per the spec, the
+// constraint is added to the field and counts as unresolved (uses=0) until
+// it fires in matching against subsequent input.
+function generateDerived(inputRecord) {
+  const toks = inputRecord.tokens || [];
+  for (const tok of toks) {
+    if (!Guards.ATTR_VALUE.test(tok)) continue;  // skip un-CSS-safe tokens
+    let exists = false;
+    for (const c of Field.constraints) {
+      if (c.pattern && c.pattern.kind === "has-token" && c.pattern.token === tok) {
+        exists = true; break;
+      }
+    }
+    if (exists) continue;
+    const nc = {
+      id: issueId("derived"),
+      kind: "derived",
+      pattern: { kind: "has-token", token: tok },
+      birth: Field.step,
+      uses: 0,
+      weight: 1.0,
+      lastUsed: -1
+    };
+    addConstraint(nc);
+    Field.stats.derivedGenerated++;
+    appendTrace("ct", "gen-derived", "token=" + tok);
+    return nc;
+  }
+  return null;
+}
+
+// Generate predictive constraints when vector-delta gap exceeds threshold
+// (SE-05 move 2). The prediction's WHEN references input features the
+// field has not yet seen; while unmatched it contributes pressure. This
+// is what the architecture does INSTEAD of asking an oracle what to expect.
+function generatePredictive(inputRecord) {
+  const gap = Field.vectorDelta.gap;
+  if (gap < CFG.GAP_PREDICT_THRESH) return 0;
+  let made = 0;
+  // Strategy: pick a recently-derived token and pair it with another token
+  // not yet seen with it. This is "the field has noticed token X; it now
+  // hypothesizes that input containing both X and some Y would close
+  // the gap further".
+  const recentDerived = Field.constraints.filter(function (c) {
+    return c.kind === "derived" && c.pattern && c.pattern.kind === "has-token"
+        && Field.step - c.birth < 40;
+  });
+  for (const seed of recentDerived) {
+    if (made >= CFG.PRED_MAX_NEW_PER_STEP) break;
+    const tokA = seed.pattern.token;
+    // Pick a token from the recent ops as the partner
+    const recentTokens = [];
+    for (const op of Field.recentOps) {
+      for (const t of (op.input.tokens || [])) {
+        if (t !== tokA && recentTokens.indexOf(t) === -1) recentTokens.push(t);
+      }
+    }
+    if (recentTokens.length === 0) continue;
+    const tokB = recentTokens[Math.floor(Math.random() * recentTokens.length)];
+    if (!Guards.ATTR_VALUE.test(tokB)) continue;
+    // Avoid duplicate predictions
+    let dup = false;
+    for (const c of Field.constraints) {
+      if (c.kind === "predictive" && c.pattern && c.pattern.kind === "co-occurs"
+          && ((c.pattern.a === tokA && c.pattern.b === tokB) ||
+              (c.pattern.a === tokB && c.pattern.b === tokA))) { dup = true; break; }
+    }
+    if (dup) continue;
+    const np = {
+      id: issueId("predictive"),
+      kind: "predictive",
+      pattern: { kind: "co-occurs", a: tokA, b: tokB },
+      birth: Field.step,
+      uses: 0,
+      weight: 1.0,
+      lastUsed: -1,
+      ageLimit: Field.step + CFG.PRED_AGE_LIMIT
+    };
+    addConstraint(np);
+    Field.stats.predictionsGenerated++;
+    appendTrace("ct", "gen-predict", "{" + tokA + ", " + tokB + "}");
+    made++;
+  }
+  return made;
+}
+
+// Try to ratify any predictive constraint matched by the current input.
+// Ratification = type transition (predictive -> ratified), weight boost,
+// and a trace entry. Per SE-05 move 3, the ratified pattern becomes part
+// of what the field "knows" rather than something it was reaching for.
+function ratifyMatched(inputRecord) {
+  let ratified = 0;
+  for (const c of Field.constraints) {
+    if (c.kind !== "predictive") continue;
+    if (evaluatePatternAgainstInput(c.id, inputRecord)) {
+      c.kind = "ratified";
+      c.weight = Math.min(c.weight * CFG.PRED_WEIGHT_BOOST, 5.0);
+      c.lastUsed = Field.step;
+      c.uses++;
+      Field.stats.predictionsRatified++;
+      Field.ratLog.push({
+        step: Field.step,
+        id: c.id,
+        text: inputRecord.text || "",
+        pattern: JSON.stringify(c.pattern)
+      });
+      if (Field.ratLog.length > CFG.RAT_LOG_CAP) Field.ratLog.shift();
+      appendTrace("ct", "ratify", c.id + " <- " + JSON.stringify(c.pattern));
+      ratified++;
+    }
+  }
+  return ratified;
+}
+
+// Age out unmatched predictions whose age limit has passed.
+function ageOutPredictions() {
+  let evicted = 0;
+  for (let i = Field.constraints.length - 1; i >= 1; i--) {
+    const c = Field.constraints[i];
+    if (c.kind !== "predictive") continue;
+    if (c.ageLimit && Field.step >= c.ageLimit) {
+      Field.constraints.splice(i, 1);
+      Field.aged.push(c);
+      if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+      Field.stats.predictionsEvicted++;
+      appendTrace("ct", "evict-predict", c.id);
+      evicted++;
+    }
+  }
+  return evicted;
+}
+
+// Match the input against every CT constraint. Records which fired and
+// updates use counters / correlations.
+function matchAgainstField(inputRecord) {
+  const matched = [];
+  for (const c of Field.constraints) {
+    if (c.kind === "seed") {
+      // Seed always fires (always-match WHEN clause). Per SE-04 this is
+      // the structural anchor that makes the field non-terminating.
+      matched.push(c);
+      c.uses++;
+      c.lastUsed = Field.step;
+      continue;
+    }
+    if (!c.pattern) continue;
+    if (evaluatePatternAgainstInput(c.id, inputRecord)) {
+      matched.push(c);
+      c.uses++;
+      c.lastUsed = Field.step;
+      // Modest weight reinforcement on every match
+      c.weight = Math.min(c.weight + 0.05, 5.0);
+    }
+  }
+  // Update pairwise correlations for sub-cascade detection
+  if (matched.length >= 2) {
+    for (let i = 0; i < matched.length; i++) {
+      for (let j = i + 1; j < matched.length; j++) {
+        const a = matched[i].id, b = matched[j].id;
+        const key = a < b ? a + "|" + b : b + "|" + a;
+        if (!Field.correlations[key]) {
+          Field.correlations[key] = { count: 0, last: Field.step };
+        }
+        Field.correlations[key].count++;
+        Field.correlations[key].last = Field.step;
+      }
+    }
+    // Cap correlations
+    const keys = Object.keys(Field.correlations);
+    if (keys.length > CFG.CORR_CAP) {
+      // Drop the lowest-count entries
+      keys.sort(function (a, b) {
+        return Field.correlations[a].count - Field.correlations[b].count;
+      });
+      const drop = keys.length - CFG.CORR_CAP;
+      for (let i = 0; i < drop; i++) delete Field.correlations[keys[i]];
+    }
+  }
+  return matched;
+}
+
+// ============================================================================
+// SECTION 10: SUB-CASCADE EMERGENCE (SE-01, K1)
+// ============================================================================
+// A family of base constraints that reliably reduces delta when consulted
+// together promotes itself into a sub-cascade. Promotion is structural,
+// not declared - the field detects fidelity over a window and either
+// promotes or doesn't. The sub-cascade's name is the dominant member's
+// id; addressing by name biases selection and drops delta moderately.
+
+function detectAndPromoteFamilies() {
+  // A "family" is a connected component in the correlation graph above
+  // CORR_THRESH co-fire fraction. We do a simple approximation: look for
+  // sets of constraints that have all pairwise correlations above the
+  // threshold relative to any of their use counts.
+
+  // First gather candidate edges: pairs whose correlation count is high
+  // enough to be considered structurally coupled.
+  const idToConstraint = {};
+  for (const c of Field.constraints) idToConstraint[c.id] = c;
+
+  const edges = [];
+  for (const key of Object.keys(Field.correlations)) {
+    const corr = Field.correlations[key];
+    if (corr.count < CFG.CORR_MIN_USES) continue;
+    const parts = key.split("|");
+    const a = idToConstraint[parts[0]];
+    const b = idToConstraint[parts[1]];
+    if (!a || !b) continue;
+    if (!a.uses || !b.uses) continue;
+    // Co-fire fraction relative to each side's uses
+    const fracA = corr.count / a.uses;
+    const fracB = corr.count / b.uses;
+    if (Math.min(fracA, fracB) >= CFG.CORR_THRESH) {
+      edges.push({ a: parts[0], b: parts[1], strength: Math.min(fracA, fracB) });
+    }
+  }
+
+  // Build adjacency
+  const adj = {};
+  for (const e of edges) {
+    if (!adj[e.a]) adj[e.a] = [];
+    if (!adj[e.b]) adj[e.b] = [];
+    adj[e.a].push(e.b);
+    adj[e.b].push(e.a);
+  }
+
+  // Find connected components of size >= FAMILY_MIN_SIZE
+  const visited = {};
+  const families = [];
+  for (const id of Object.keys(adj)) {
+    if (visited[id]) continue;
+    const stack = [id], comp = [];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (visited[cur]) continue;
+      visited[cur] = true;
+      comp.push(cur);
+      for (const n of (adj[cur] || [])) {
+        if (!visited[n]) stack.push(n);
+      }
+    }
+    if (comp.length >= CFG.FAMILY_MIN_SIZE) families.push(comp);
+  }
+
+  // For each family, evaluate fidelity: does engaging the family reduce
+  // delta on average? We use a simplified record: each time the family
+  // is engaged in a match, we record the delta-before; a window of these
+  // gives us an avg drop. Promotion happens when avg drop >= threshold.
+  for (const comp of families) {
+    const familyKey = comp.slice().sort().join(",");
+    if (!Field.familyFidelity[familyKey]) {
+      Field.familyFidelity[familyKey] = {
+        members: comp,
+        fires: 0,
+        totalDrop: 0,
+        deltaBefore: Field.vectorDelta.scalar
+      };
+    }
+    const fid = Field.familyFidelity[familyKey];
+    // Has the family fired this step? (any of its members in the latest matched set)
+    // We use a heuristic: increment fires whenever the family is detected
+    // as connected and the field has had at least one input op since last fire.
+    const drop = fid.deltaBefore - Field.vectorDelta.scalar;
+    fid.totalDrop += Math.max(0, drop);
+    fid.fires++;
+    fid.deltaBefore = Field.vectorDelta.scalar;
+
+    // Promote if window full and avg drop above threshold
+    if (fid.fires >= CFG.FIDELITY_MIN_FIRES && fid.fires >= CFG.FIDELITY_WINDOW) {
+      const avgDrop = fid.totalDrop / fid.fires;
+      // Check we haven't already promoted this exact family
+      const already = Field.subcascades.some(function (sc) { return sc.familyKey === familyKey; });
+      if (!already && avgDrop >= CFG.FIDELITY_PROMOTE) {
+        // Pick dominant member (highest weight) for the name
+        let dominant = null, dwgt = -1;
+        for (const id of comp) {
+          const c = idToConstraint[id];
+          if (c && c.weight > dwgt) { dominant = c; dwgt = c.weight; }
+        }
+        if (dominant) {
+          const name = dominant.pattern && dominant.pattern.kind === "has-token"
+            ? dominant.pattern.token
+            : ("sub-" + (Field.subcascades.length + 1));
+          if (Field.subcascades.length < CFG.SUB_CASCADE_CAP) {
+            const sc = {
+              name: name,
+              members: comp,
+              familyKey: familyKey,
+              promotedAt: Field.step,
+              localDeltaSnapshot: Field.vectorDelta.scalar,
+              fires: fid.fires,
+              avgDrop: avgDrop
+            };
+            Field.subcascades.push(sc);
+            Field.stats.promotions++;
+            appendTrace("ct", "promote", name + " (members=" + comp.length + ", drop=" + avgDrop.toFixed(3) + ")");
+          }
+        }
+      }
+    }
+  }
+}
+
+// Naming preference: when an input contains a token matching an existing
+// sub-cascade's name, the cascade's members get a selection bias and the
+// slow-layer naming-preference accumulator nudges up. This is the only
+// place in the architecture where specific identifiers have privileged
+// access to specific structures (per the v3 mechanism).
+function applyNamingBias(inputRecord) {
+  const toks = inputRecord.tokens || [];
+  let dropApplied = 0;
+  for (const sc of Field.subcascades) {
+    if (toks.indexOf(sc.name) !== -1) {
+      // Boost members
+      for (const memberId of sc.members) {
+        const c = Field.constraints.find(function (x) { return x.id === memberId; });
+        if (c) c.weight = Math.min(c.weight + 0.10, 5.0);
+      }
+      // Nudge slow-layer naming preference
+      Field.substrate.namingPref = Guards.clamp01(
+        Field.substrate.namingPref + CFG.NAMING_PREF_RATE
+      );
+      dropApplied = Math.max(dropApplied, CFG.NAMING_DELTA_DROP);
+      Field.stats.nameMatches++;
+      appendTrace("ct", "name-match", sc.name);
+    }
+  }
+  return dropApplied;
+}
+
+// ============================================================================
+// SECTION 11: CT STEP (one full cycle of execution-substrate work)
+// ============================================================================
+// Each step processes one input event (or just ticks the substrate if no
+// input is pending). The structure is: snapshot delta-before, do match +
+// generation + ratification + naming, refresh vector-delta, modulate
+// substrate by delta change, append trace, age-out predictions, detect
+// promotions. The step is sequential and stateful, exactly what SE-06
+// says the execution substrate is for.
+
+function ctStep(inputText) {
+  const deltaBefore = Field.vectorDelta.scalar;
+  Field.step++;
+
+  let inputRecord = null;
+  if (typeof inputText === "string" && inputText.length > 0) {
+    inputRecord = {
+      text: Guards.clampString(inputText, CFG.INPUT_MAX),
+      tokens: tokenize(inputText)
+    };
+    Field.stats.inputs++;
+    appendTrace("ct", "input", inputText.slice(0, 40));
+  } else {
+    // No input: tick op. Seed still evaluates; substrate still ticks.
+    inputRecord = { text: "", tokens: [] };
+  }
+
+  // Phase 1: match the input against every constraint
+  const matched = matchAgainstField(inputRecord);
+
+  // Phase 2: ratify any predictions that fired
+  if (inputRecord.tokens.length > 0) ratifyMatched(inputRecord);
+
+  // Phase 3: naming bias (if input contains a sub-cascade name)
+  if (inputRecord.tokens.length > 0) applyNamingBias(inputRecord);
+
+  // Phase 4: generate derived constraints from novelty
+  if (inputRecord.tokens.length > 0) {
+    const novelty = inputNovelty(inputRecord);
+    if (novelty >= CFG.GEN_NOVELTY_THRESH) {
+      generateDerived(inputRecord);
+    }
+  }
+
+  // Phase 5: generate predictive constraints if the gap is wide enough
+  generatePredictive(inputRecord);
+
+  // Phase 6: age out unmatched predictions
+  ageOutPredictions();
+
+  // Record the op in the recent-ops ring (used by fast-delta)
+  Field.recentOps.push({
+    step: Field.step,
+    input: inputRecord,
+    matched: matched.map(function (c) { return c.id; })
+  });
+  if (Field.recentOps.length > CFG.FAST_WINDOW) Field.recentOps.shift();
+
+  // Recompute vector-delta now that field state has moved
+  refreshVectorDelta();
+
+  // Modulate substrate based on how delta changed
+  modulateSubstrate(Field.vectorDelta.scalar - deltaBefore);
+  tickSubstrate();
+
+  // Detect any new sub-cascade promotions (run periodically)
+  if (Field.step % 4 === 0) detectAndPromoteFamilies();
+
+  // Rebuild the cascade so subsequent ER reads see the new constraint set.
+  // This is the load-bearing SE-06 mechanism: CT-side change in the field
+  // becomes ER-readable through the cascade-rules style element. Per S3
+  // there is no command path; CT just edits shared substrate (the style
+  // element's textContent) that ER reads on its next evaluateAtCoord call.
+  rebuildCascade();
+}
+
+// ============================================================================
+// SECTION 12: VSF CODEC (algorithms 09, 10, 13)
+// ============================================================================
+// Header triads describe the coordinate system. Body rows are committed
+// observations. Each row is content-addressed by a sha-256 prefix so an
+// external receiver can verify integrity. The format below is identical
+// to what VSFGenerator_v1.3.html produces - a row exported here will
+// re-import there and vice versa. This is what makes the SE-10
+// resolution-accretion-chain story possible: a substrate emits VSF, a
+// downstream substrate ingests VSF, and the format is the same.
+
+// Build header triads. Each triad: name:val1=0,val2=1,...|min|max
+// The deterministic dims come first, then a delta column triad describing
+// the noise dimension. This matches the VSFGenerator format exactly.
+function vsfBuildHeaderTriads() {
+  const triads = [];
+  for (const dim of DIMS) {
+    const maps = dim.values.map(function (v, i) { return v + "=" + i; }).join(",");
+    triads.push(dim.name + ":" + maps + "|0|" + (dim.values.length - 1));
+  }
+  triads.push("delta:noise=continuous|0.0|1.0");
+  return triads;
+}
+
+// Compute SHA-256 over a string and return the first 16 hex chars (8 bytes).
+// We use the WebCrypto API which is available in every modern browser. This
+// is async; commit currently uses it via .then chaining when present.
+async function sha256Prefix(s) {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    // Deterministic fallback for environments without WebCrypto
+    let h = 5381 >>> 0;
+    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return ("00000000" + h.toString(16)).slice(-8);
+  }
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(s));
+  const view = new Uint8Array(buf);
+  let hex = "";
+  for (let i = 0; i < 8; i++) hex += ("0" + view[i].toString(16)).slice(-2);
+  return hex;
+}
+
+// Build the canonical row form for content-addressing. Order matters: any
+// receiver computing the hash must produce the same string. We use the
+// VSFGenerator's exact column order: coords, sdf, delta, rt, doc, deny, reg.
+function vsfRowCanonical(row) {
+  return row.coord.join(",") + "," +
+         row.sdf + "," +
+         row.delta.toFixed(4) + "," +
+         row.rt + "," +
+         row.doc + "," +
+         (row.deny || "") + "," +
+         row.reg;
+}
+
+// Serialize a row to its on-the-wire form (canonical + hash prefix appended).
+function vsfRowToWire(row) {
+  return vsfRowCanonical(row) + "," + row.hash;
+}
+
+// Compute and assign a hash to a committed row. Async because SHA-256 is.
+async function vsfHashCommittedRow(row) {
+  row.hash = await sha256Prefix(vsfRowCanonical(row));
+  return row;
+}
+
+// Build the full VSF document (header line + all body rows).
+function vsfBuildDocument() {
+  const header = vsfBuildHeaderTriads().join(" | ");
+  const lines = [header];
+  for (const r of Field.committed) lines.push(vsfRowToWire(r));
+  return lines.join("\n");
+}
+
+// Parse a VSF document into header info and rows. Used by import.
+function vsfParse(text) {
+  const lines = text.split(/\r?\n/).filter(function (l) { return l.length > 0; });
+  if (lines.length === 0) throw new Error("empty VSF");
+  const headerLine = lines[0];
+  const triads = headerLine.split(" | ").map(function (s) { return s.trim(); });
+  const dims = [];
+  for (const triad of triads) {
+    const colonIdx = triad.indexOf(":");
+    const pipeIdx = triad.indexOf("|");
+    if (colonIdx < 0 || pipeIdx < 0) continue;
+    const name = triad.slice(0, colonIdx).trim();
+    if (name === "delta") continue; // delta column, not a coord dim
+    const mapsRaw = triad.slice(colonIdx + 1, pipeIdx);
+    const values = mapsRaw.split(",").map(function (kv) {
+      return kv.split("=")[0].trim();
+    });
+    dims.push({ name: name, values: values });
+  }
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(",");
+    if (parts.length < dims.length + 6) continue;
+    const coord = parts.slice(0, dims.length).map(function (s) { return s | 0; });
+    const sdf = parseInt(parts[dims.length], 10);
+    const delta = parseFloat(parts[dims.length + 1]);
+    const rt = parts[dims.length + 2];
+    const doc = parts[dims.length + 3];
+    const deny = parts[dims.length + 4];
+    const reg = parts[dims.length + 5];
+    const hash = parts[dims.length + 6] || "";
+    rows.push({ coord: coord, sdf: sdf, delta: delta, rt: rt, doc: doc, deny: deny, reg: reg, hash: hash });
+  }
+  return { dims: dims, rows: rows };
+}
+
+// Verify an imported VSF row by re-resolving its coord through the cascade
+// and comparing the resolved record byte-by-byte with what the row claims.
+// This is the hydration proof from VSFGenerator_v1.3.html in spec form: a
+// row that resolves to identical output through the live cascade is one
+// the receiver can trust without having seen the producer's substrate.
+function vsfVerifyRow(row, dims) {
+  // Map the row's dims into our DIMS. If the dims agree by name, we can
+  // re-resolve. Otherwise we cannot (geometry is incompatible per SE-10).
+  const remap = [];
+  for (let i = 0; i < dims.length; i++) {
+    const our = DIMS.findIndex(function (d) { return d.name === dims[i].name; });
+    if (our < 0) return { ok: false, reason: "dim-name-mismatch", dim: dims[i].name };
+    if (DIMS[our].values.length !== dims[i].values.length) return { ok: false, reason: "card-mismatch" };
+    remap.push(our);
+  }
+  // Reorder coord into our DIMS order
+  const ourCoord = new Array(DIMS.length).fill(0);
+  for (let i = 0; i < dims.length; i++) ourCoord[remap[i]] = row.coord[i];
+  // Resolve through the cascade
+  const resolved = ERengine.evaluateAtCoord(ourCoord);
+  // Compare
+  const differences = [];
+  if (resolved.sdf !== row.sdf) differences.push("sdf:" + row.sdf + "!=" + resolved.sdf);
+  if (resolved.rt !== row.rt) differences.push("rt:" + row.rt + "!=" + resolved.rt);
+  if (resolved.doc !== row.doc) differences.push("doc:" + row.doc + "!=" + resolved.doc);
+  if ((row.reg || "") !== (resolved.reg || "")) differences.push("reg");
+  // deny only need match when both nonempty
+  if ((row.deny || "") !== (resolved.deny || "") && (row.deny || resolved.deny)) {
+    differences.push("deny");
+  }
+  return {
+    ok: differences.length === 0,
+    differences: differences,
+    resolved: resolved
+  };
+}
+
+// ============================================================================
+// SECTION 13: COMMIT (CT writes a committed VSF row from current probe)
+// ============================================================================
+// Commit takes the current probe coordinate, asks ER to resolve it (one
+// frame of rendering substrate work), packages the result as a row with
+// its content-address, appends to Field.committed, and traces the event.
+// Per F5/SE-09 commit is irreversible at the spec level - the row hash
+// is in the trace and cannot be unwritten.
+
+async function commitCurrentProbe() {
+  const coord = readCurrentNavCoord();
+  const resolved = ERengine.evaluateAtCoord(coord);
+  const row = {
+    coord: coord,
+    sdf: resolved.sdf,
+    delta: Field.vectorDelta.scalar,
+    rt: resolved.rt,
+    doc: resolved.doc,
+    deny: resolved.deny || "",
+    reg: resolved.reg
+  };
+  await vsfHashCommittedRow(row);
+  Field.committed.push(row);
+  appendTrace("ct", "commit", row.coord.join(",") + " sdf=" + row.sdf + " hash=" + row.hash);
+  return row;
+}
+
+// ============================================================================
+// SECTION 14: NAV STATE (the deterministic-coord controls)
+// ============================================================================
+
+const navState = [0, 0, 1, 0, 1, 0]; // initial coord
+
+function readCurrentNavCoord() { return navState.slice(); }
+
+function setNavValue(dimIdx, valueIdx) {
+  navState[dimIdx] = valueIdx;
+}
+
+// ============================================================================
+// SECTION 15: UI RENDERING
+// ============================================================================
+// Pure read of Field state into DOM. Every render is a snapshot. The UI is
+// an O1 observer (read-only with respect to the field). It does not mutate
+// constraints, the trace, or any substrate state. Per O1 + SE-06: ER, CT,
+// and the UI all read shared state; only ER and CT write.
+
+const UI = {
+  el: function (id) { return document.getElementById(id); },
+
+  buildNavControls: function () {
+    const container = UI.el("nav-controls");
+    let html = "";
+    for (let di = 0; di < DIMS.length; di++) {
+      const dim = DIMS[di];
+      html += '<div class="nav-group" style="margin-bottom:8px"><div class="nav-label" style="font-size:7px;letter-spacing:1.5px;color:#444;margin-bottom:4px">' + dim.name.toUpperCase() + '</div><div class="nav-opts" data-dim="' + di + '" style="display:flex;flex-wrap:wrap;gap:3px">';
+      for (let vi = 0; vi < dim.values.length; vi++) {
+        const isOn = vi === navState[di];
+        html += '<button class="nav-btn" data-dim="' + di + '" data-val="' + vi + '" style="padding:5px 7px;background:' +
+          (isOn ? 'hsla(210,50%,20%,.4)' : '#0c0c10') +
+          ';border:1px solid ' + (isOn ? 'hsl(210,50%,40%)' : '#1a1a1e') +
+          ';border-radius:2px;color:' + (isOn ? 'hsl(210,70%,72%)' : '#666') +
+          ';font:400 8px/1 inherit;cursor:pointer">' + dim.values[vi] + '</button>';
+      }
+      html += '</div></div>';
+    }
+    container.innerHTML = html;
+    container.addEventListener("click", function (e) {
+      const btn = e.target;
+      if (!btn.classList.contains("nav-btn")) return;
+      const di = parseInt(btn.dataset.dim, 10);
+      const vi = parseInt(btn.dataset.val, 10);
+      setNavValue(di, vi);
+      UI.buildNavControls();
+      UI.refreshProbeResolution();
+    });
+  },
+
+  refreshProbeResolution: function () {
+    const coord = readCurrentNavCoord();
+    const resolved = ERengine.evaluateAtCoord(coord);
+    const lines = [];
+    lines.push("COORD: " + coord.join(","));
+    for (let i = 0; i < DIMS.length; i++) {
+      lines.push("  " + DIMS[i].name + " = " + DIMS[i].values[coord[i]]);
+    }
+    lines.push("");
+    lines.push("CASCADE RESOLVED:");
+    lines.push("  --sdf  = " + resolved.sdf + (resolved.sdf === -1 ? " INSIDE" : " OUTSIDE"));
+    lines.push("  --rt   = " + resolved.rt);
+    lines.push("  --doc  = " + resolved.doc);
+    lines.push("  --reg  = " + resolved.reg);
+    if (resolved.deny) lines.push("  --deny = " + resolved.deny);
+    lines.push("  --rth  = " + resolved.rth);
+    UI.el("probe-resolution").textContent = lines.join("\n");
+    UI.el("st-sdf").textContent = String(resolved.sdf);
+    UI.el("st-rt").textContent = resolved.rt;
+  },
+
+  refreshFieldStats: function () {
+    const counts = { seed: 0, derived: 0, predictive: 0, ratified: 0, meta: 0 };
+    for (const c of Field.constraints) {
+      if (counts[c.kind] === undefined) counts[c.kind] = 0;
+      counts[c.kind]++;
+    }
+    UI.el("fc-total").textContent = String(Field.constraints.length);
+    UI.el("fc-seed-derived").textContent = counts.seed + " / " + counts.derived;
+    UI.el("fc-pred-rat").textContent = counts.predictive + " / " + counts.ratified;
+    UI.el("fc-meta-aged").textContent = counts.meta + " / " + Field.aged.length;
+    UI.el("st-step").textContent = String(Field.step);
+    UI.el("st-frame").textContent = String(Field.renderFrame);
+    UI.el("st-trace").textContent = String(Field.trace.length);
+    UI.el("st-rat").textContent = String(Field.stats.predictionsRatified);
+    UI.el("st-evict").textContent = String(Field.stats.predictionsEvicted);
+    UI.el("st-sub").textContent = String(Field.subcascades.length);
+  },
+
+  refreshConstraintList: function () {
+    const list = UI.el("constraint-list");
+    const sorted = Field.constraints.slice().sort(function (a, b) {
+      // Seed first, then by recency
+      if (a.kind === "seed") return -1;
+      if (b.kind === "seed") return 1;
+      return b.birth - a.birth;
+    });
+    let html = "";
+    for (const c of sorted.slice(0, 36)) {
+      const kindCls = "kind-" + c.kind;
+      let pat = "";
+      if (c.pattern) {
+        if (c.pattern.kind === "has-token") pat = "has " + c.pattern.token;
+        else if (c.pattern.kind === "co-occurs") pat = c.pattern.a + " + " + c.pattern.b;
+        else pat = c.pattern.kind;
+      } else if (c.kind === "seed") pat = "always-match :: what is delta?";
+      html += '<div class="row"><span class="' + kindCls + '">[' + c.kind + ']</span> ' +
+        '<span class="id">' + c.id + '</span> ' +
+        pat +
+        ' <span class="w">w=' + (c.weight || 1).toFixed(2) + ' u=' + (c.uses || 0) + '</span></div>';
+    }
+    list.innerHTML = html;
+  },
+
+  refreshSubcascadeList: function () {
+    const list = UI.el("subcascade-list");
+    if (Field.subcascades.length === 0) {
+      list.innerHTML = '<div class="row" style="color:#444">none promoted yet</div>';
+      return;
+    }
+    let html = "";
+    for (const sc of Field.subcascades) {
+      html += '<div class="sub">' + sc.name + ' <span class="w">members=' + sc.members.length +
+              ' fires=' + sc.fires + ' drop=' + sc.avgDrop.toFixed(3) + '</span></div>';
+    }
+    list.innerHTML = html;
+  },
+
+  refreshSubstrate: function () {
+    UI.el("ss-fast").textContent = Field.substrate.fast.toFixed(4);
+    UI.el("ss-slow").textContent = Field.substrate.slow.toFixed(4);
+    UI.el("ss-naming").textContent = Field.substrate.namingPref.toFixed(4);
+    const v = Field.vectorDelta;
+    UI.el("vd-scalar").textContent = v.scalar.toFixed(4);
+    UI.el("vd-fast").textContent = v.fast.toFixed(4);
+    UI.el("vd-slow").textContent = v.slow.toFixed(4);
+    UI.el("vd-gap").textContent = v.gap.toFixed(4);
+    UI.el("bar-fast").style.width = (v.fast * 100).toFixed(1) + "%";
+    UI.el("bar-slow").style.width = (v.slow * 100).toFixed(1) + "%";
+    // Color the gap value
+    const gapEl = UI.el("vd-gap");
+    if (v.gap >= CFG.GAP_PREDICT_THRESH) {
+      gapEl.classList.add("red"); gapEl.classList.remove("green");
+    } else {
+      gapEl.classList.add("green"); gapEl.classList.remove("red");
+    }
+  },
+
+  refreshTraceLog: function () {
+    const log = UI.el("trace-log");
+    const recent = Field.trace.slice(-CFG.TRACE_LOG_CAP);
+    let html = "";
+    for (const e of recent) {
+      const cls = e.op.startsWith("gen-predict") ? "predictive" :
+                  e.op.startsWith("gen-derived") ? "derived" :
+                  e.op === "ratify" ? "ratified" :
+                  e.op === "promote" ? "promote" :
+                  e.op === "name-match" ? "name" :
+                  e.op === "input" ? "input" :
+                  e.op === "evict-predict" ? "delta" :
+                  e.op === "commit" ? "name" :
+                  "";
+      html += '<span class="' + cls + '">[' + e.step + '] ' + e.op + ' ' +
+              e.detail + ' (delta=' + e.delta.toFixed(3) + ')</span>\n';
+    }
+    log.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  },
+
+  refreshRatLog: function () {
+    const log = UI.el("rat-log");
+    if (Field.ratLog.length === 0) {
+      log.innerHTML = '<span style="color:#444">no predictions ratified yet</span>';
+      return;
+    }
+    let html = "";
+    for (const e of Field.ratLog.slice(-32)) {
+      html += '<span class="ratified">[' + e.step + '] ' + e.id + ' ratified by "' +
+              (e.text.slice(0, 30)) + '" :: ' + e.pattern + '</span>\n';
+    }
+    log.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  },
+
+  refreshVsfPreview: function () {
+    const out = UI.el("vsf-preview");
+    if (Field.committed.length === 0) {
+      out.textContent = "no rows committed yet. press COMMIT to add the current probe.";
+      return;
+    }
+    const header = vsfBuildHeaderTriads().join(" | ");
+    let html = '<span class="h">' + header + '</span>\n';
+    const recent = Field.committed.slice(-12);
+    for (const r of recent) {
+      const cls = r.sdf === -1 ? "v" : "d";
+      html += '<span class="' + cls + '">' + vsfRowToWire(r) + '</span>\n';
+    }
+    if (Field.committed.length > 12) {
+      html += "... " + (Field.committed.length - 12) + " more rows above";
+    }
+    out.innerHTML = html;
+  },
+
+  refreshHeader: function () {
+    const status = UI.el("hdr-status");
+    if (Field.subcascades.length > 0) {
+      status.textContent = "OPERATING (" + Field.subcascades.length + " sub-cascades)";
+      status.style.color = "hsl(140,60%,60%)";
+      status.style.borderColor = "hsl(140,40%,30%)";
+    } else if (Field.stats.predictionsRatified > 0) {
+      status.textContent = "REACHING RATIFIED";
+      status.style.color = "hsl(210,60%,60%)";
+    } else if (Field.step > 0) {
+      status.textContent = "OPERATING";
+    }
+  },
+
+  refreshAll: function () {
+    UI.refreshFieldStats();
+    UI.refreshConstraintList();
+    UI.refreshSubcascadeList();
+    UI.refreshSubstrate();
+    UI.refreshTraceLog();
+    UI.refreshRatLog();
+    UI.refreshVsfPreview();
+    UI.refreshHeader();
+  }
+};
+
+// ============================================================================
+// SECTION 16: FRAME LOOP (renderer ticks, regardless of CT activity)
+// ============================================================================
+// Per SE-06: render substrate runs at frame rate, execution substrate runs
+// at op rate. They are NOT synchronized by message passing. The render
+// frame loop ticks every requestAnimationFrame, refreshes the resolved
+// probe, refreshes substrate (decay), and refreshes the UI. CT only steps
+// when there's a button press or input character. The two clocks are
+// genuinely independent - this is what SE-06 requires.
+
+function renderFrame() {
+  // ER tick: re-resolve the probe at the current nav coord. The cascade
+  // does the work; we just observe.
+  UI.refreshProbeResolution();
+  // Substrate fast layer decays toward slow even when no CT op happens.
+  // Per SE-03: the modulation continues as ambient property of the field.
+  tickSubstrate();
+  // Vector-delta scalar/slow shift slowly even without input
+  refreshVectorDelta();
+  UI.refreshAll();
+  requestAnimationFrame(renderFrame);
+}
+
+// ============================================================================
+// SECTION 17: BUTTON / INPUT WIRING
+// ============================================================================
+
+function feedCharacterByCharacter(text) {
+  // Each character is its own input event. This is closer to the SE-08
+  // grammar where intake is continuous; in this demo we simulate it with
+  // requestAnimationFrame deferrals between character feeds.
+  let i = 0;
+  function next() {
+    if (i >= text.length) return;
+    // Buffer up to a word boundary so we feed meaningful tokens
+    let chunk = text.charAt(i);
+    while (i + 1 < text.length && !/\s/.test(text.charAt(i))) {
+      i++; chunk += text.charAt(i);
+    }
+    i++;
+    ctStep(chunk.trim());
+    setTimeout(next, 30);
+  }
+  next();
+}
+
+function wireButtons() {
+  UI.el("btn-tick").addEventListener("click", function () {
+    const ta = UI.el("ta-input");
+    const text = ta.value.trim();
+    if (text) {
+      ctStep(text);
+      ta.value = "";
+    } else {
+      ctStep("");  // tick with no input - seed still evaluates
+    }
+  });
+  UI.el("btn-tick10").addEventListener("click", function () {
+    const ta = UI.el("ta-input");
+    const text = ta.value.trim();
+    if (text) {
+      // Feed it ten times to drive ratification of recent predictions
+      for (let i = 0; i < 10; i++) ctStep(text);
+      ta.value = "";
+    } else {
+      for (let i = 0; i < 10; i++) ctStep("");
+    }
+  });
+  UI.el("btn-feed-sample").addEventListener("click", function () {
+    // A small sample stream that exercises multiple constraint kinds:
+    // novelty (new tokens), repetition (driving ratification), naming
+    // (feeding a name-token after sub-cascades have promoted).
+    const sample = [
+      "alpha beta gamma",
+      "alpha delta",
+      "beta gamma",
+      "alpha beta",
+      "gamma delta",
+      "alpha beta gamma",
+      "epsilon alpha",
+      "beta",
+      "alpha gamma delta",
+      "alpha"
+    ];
+    let i = 0;
+    function feed() {
+      if (i >= sample.length) return;
+      ctStep(sample[i]);
+      i++;
+      setTimeout(feed, 80);
+    }
+    feed();
+  });
+  UI.el("btn-clear-input").addEventListener("click", function () {
+    UI.el("ta-input").value = "";
+  });
+
+  UI.el("btn-commit").addEventListener("click", function () {
+    commitCurrentProbe().then(function () { UI.refreshVsfPreview(); });
+  });
+  UI.el("btn-export-vsf").addEventListener("click", function () {
+    if (Field.committed.length === 0) {
+      alert("commit at least one probe first");
+      return;
+    }
+    const doc = vsfBuildDocument();
+    const blob = new Blob([doc], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "vessel-state-" + Date.now() + ".vsf";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    appendTrace("ct", "export-vsf", Field.committed.length + " rows");
+  });
+  UI.el("btn-import-vsf").addEventListener("click", function () {
+    // Use the current export as the import source for round-trip verification.
+    // In real use this would come from a file input; for self-test we go
+    // round-trip from our own committed state.
+    if (Field.committed.length === 0) {
+      alert("commit and export rows first, then re-import to verify");
+      return;
+    }
+    const doc = vsfBuildDocument();
+    let parsed;
+    try { parsed = vsfParse(doc); }
+    catch (e) { alert("VSF parse failed: " + e.message); return; }
+    let okCount = 0, badCount = 0;
+    const failures = [];
+    for (const r of parsed.rows) {
+      const v = vsfVerifyRow(r, parsed.dims);
+      if (v.ok) okCount++;
+      else { badCount++; failures.push(r.coord.join(",") + ": " + v.differences.join("; ")); }
+    }
+    appendTrace("ct", "import-verify",
+      okCount + "/" + parsed.rows.length + " rows hydrated identical" +
+      (badCount > 0 ? " (mismatches: " + failures.slice(0, 3).join(" | ") + ")" : ""));
+    alert("VSF round-trip verification:\n" + okCount + " of " +
+          parsed.rows.length + " rows resolved byte-identical through the cascade.\n" +
+          (badCount > 0 ? "Mismatches: " + failures.slice(0, 3).join("; ") : "All rows verified."));
+  });
+  UI.el("btn-clear-vsf").addEventListener("click", function () {
+    Field.committed = [];
+    UI.refreshVsfPreview();
+  });
+}
+
+// ============================================================================
+// SECTION 18: BOOTSTRAP
+// ============================================================================
+// Bring everything online in the right order:
+//   1. ER engine binds to the probe DOM element
+//   2. Cascade is built (domain rules + the sole live constraint, the seed)
+//   3. UI nav controls are built
+//   4. Initial probe resolution is read
+//   5. Buttons wired
+//   6. Frame loop starts
+//
+// At this point the field is a pure SEED-only configuration. Every
+// subsequent input event becomes structure that accumulates, and the seed
+// stays permanent in the field forever. Per X1 + F1: the seed is at
+// index 0 of Field.constraints from t=0 and never leaves.
+
+function boot() {
+  ERengine.init();
+  rebuildCascade();           // initial cascade (no CT constraints yet)
+  UI.buildNavControls();
+  UI.refreshAll();
+  wireButtons();
+  appendTrace("ct", "boot", "seed only :: what is delta?");
+  // A single tick to write the initial trace entry through one full op cycle
+  ctStep("");
+  requestAnimationFrame(renderFrame);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lattice vs Lattice — Slow Burn vs Fast Heat</title>
+<style>
+  /* ---------------------------------------------------------------------
+     UI styles. The visualization needs to show both lattices side by side
+     so we can see them evolve in parallel, plus a per-round report that
+     accumulates as the simulation runs. We also want a visible status
+     indicator so the user can see the simulation is progressing rather
+     than wonder if it has stalled.
+     --------------------------------------------------------------------- */
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: white; color: #111;
+    padding: 14px; max-width: 1200px; margin: 0 auto;
+    font-size: 12px; line-height: 1.45;
+  }
+  h1 { font-size: 13px; letter-spacing: 2px; margin: 0 0 12px 0; }
+  h2 { font-size: 10px; letter-spacing: 1px; margin: 0 0 6px 0; color: #555; text-transform: uppercase; }
+  h3 { font-size: 9px; letter-spacing: 1px; margin: 6px 0 4px 0; color: #777; }
+  .box { border: 1px solid #999; padding: 10px 12px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; }
+  .col { flex: 1; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+  .hp-bar { height: 14px; border: 1px solid #999; background: #f0f0f0; margin-top: 2px; }
+  .hp-fill { height: 100%; transition: width 0.15s; }
+  .hp-fill.a { background: #2c5a8a; }   /* Player A: blue, fast-heat-up */
+  .hp-fill.b { background: #8a4a2c; }   /* Player B: amber, slow-burn   */
+  .lattice-a { border-left: 3px solid #2c5a8a; padding-left: 8px; }
+  .lattice-b { border-left: 3px solid #8a4a2c; padding-left: 8px; }
+  .log {
+    height: 200px; overflow-y: auto;
+    background: #fafafa; padding: 8px;
+    font-size: 10px; line-height: 1.5;
+    border: 1px solid #ccc;
+  }
+  .log div { margin-bottom: 1px; }
+  .log .a { color: #1b3e6e; }
+  .log .b { color: #6e3a1b; }
+  .log .sys { color: #666; }
+  .log .crit { color: #c25500; font-weight: 700; }
+  .log .miss { color: #888; font-style: italic; }
+  .log .promote { color: #5a2a8a; font-weight: 700; }
+  .log .ratify { color: #1a4f8a; }
+  .log .round-end { color: #1b6e3a; font-weight: 700; }
+  button {
+    font-family: inherit; font-size: 11px; padding: 8px 16px; margin-right: 6px;
+    border: 1px solid #888; background: #f8f8f8; cursor: pointer; letter-spacing: 1px;
+  }
+  button:hover:not(:disabled) { background: #e8e8e8; }
+  button:disabled { color: #aaa; cursor: not-allowed; background: #fcfcfc; }
+  .stat { font-size: 10px; color: #777; }
+  .note { font-size: 9px; color: #999; margin-top: 6px; }
+  .substrate-mini {
+    border: 1px solid #ddd; padding: 4px 6px;
+    font-size: 9px; background: #fcfcfc;
+  }
+  .substrate-mini .name { font-weight: 700; color: #555; font-size: 8px; letter-spacing: 1px; }
+  .substrate-mini .out { font-weight: 700; color: #222; }
+  .substrate-mini .stats { color: #888; font-size: 8px; }
+  .report-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .report-table th, .report-table td { padding: 4px 8px; border: 1px solid #ddd; text-align: left; }
+  .report-table th { background: #f0f0f0; font-size: 9px; letter-spacing: 1px; }
+  .report-table .winner-a { background: #e8f0f8; }
+  .report-table .winner-b { background: #f8efe8; }
+  .vs-badge {
+    display: inline-block; padding: 3px 10px; background: #333; color: white;
+    font-weight: 700; letter-spacing: 1px; margin: 0 8px;
+  }
+  .config-display {
+    background: #fafafa; padding: 8px; border: 1px solid #ddd; font-size: 10px;
+  }
+  .config-display .header { font-weight: 700; color: #333; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<!--
+  Each lattice has its own set of probe and style elements. Since the two
+  lattices share the same DOM, we use distinct id prefixes (a- and b-) to
+  keep their cascades separate. This is what S1 (substrate shared, owned
+  by neither) means at the implementation level: each cascade reads only
+  its own substrate's probe, and there is no cross-contamination between
+  the two players' substrate states.
+-->
+
+<!-- Player A probes (fast-heat-up) -->
+<div style="position:absolute;left:-9999px;top:-9999px;">
+  <div id="a-probe-pres"></div>
+  <div id="a-probe-threat"></div>
+  <div id="a-probe-dbecon"></div>
+  <div id="a-probe-exploit"></div>
+  <div id="a-probe-router"></div>
+</div>
+<style id="a-cascade-pres"></style>
+<style id="a-cascade-threat"></style>
+<style id="a-cascade-dbecon"></style>
+<style id="a-cascade-exploit"></style>
+<style id="a-cascade-router"></style>
+
+<!-- Player B probes (slow-burn) -->
+<div style="position:absolute;left:-9999px;top:-9999px;">
+  <div id="b-probe-pres"></div>
+  <div id="b-probe-threat"></div>
+  <div id="b-probe-dbecon"></div>
+  <div id="b-probe-exploit"></div>
+  <div id="b-probe-router"></div>
+</div>
+<style id="b-cascade-pres"></style>
+<style id="b-cascade-threat"></style>
+<style id="b-cascade-dbecon"></style>
+<style id="b-cascade-exploit"></style>
+<style id="b-cascade-router"></style>
+
+<h1>LATTICE vs LATTICE · FAST HEAT UP <span class="vs-badge">VS</span> SLOW BURN</h1>
+
+<div class="box">
+  <div class="row">
+    <div class="col">
+      Round <strong id="round">0</strong> of 10 ·
+      A wins: <strong id="score-a">0</strong> ·
+      B wins: <strong id="score-b">0</strong>
+    </div>
+    <div class="col" style="text-align:right;">
+      <span class="stat" id="status">ready to start</span>
+    </div>
+  </div>
+</div>
+
+<div class="row-2">
+  <div class="config-display">
+    <div class="header" style="color:#1b3e6e;">PLAYER A · FAST HEAT UP</div>
+    <div>predictive ratifies on first match · single confirmation</div>
+    <div>fidelity window: 4 fires · promote threshold: 0.012</div>
+    <div>predictive age limit: 12 turns</div>
+    <div class="note">commits early, rides accumulated structure into action</div>
+  </div>
+  <div class="config-display">
+    <div class="header" style="color:#6e3a1b;">PLAYER B · SLOW BURN</div>
+    <div>predictive needs 3 confirmations across distinct contexts</div>
+    <div>fidelity window: 8 fires · promote threshold: 0.024</div>
+    <div>predictive age limit: 20 turns</div>
+    <div class="note">accumulates more before committing, higher signal threshold</div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Game state</h2>
+  <div class="row-2">
+    <div class="lattice-a">
+      <h3>Player A · HP <strong id="a-hp">200</strong> / 200 · heal cd: <span id="a-cd">0</span></h3>
+      <div class="hp-bar"><div class="hp-fill a" id="a-bar" style="width:100%"></div></div>
+      <div class="stat" id="a-status">&nbsp;</div>
+    </div>
+    <div class="lattice-b">
+      <h3>Player B · HP <strong id="b-hp">200</strong> / 200 · heal cd: <span id="b-cd">0</span></h3>
+      <div class="hp-bar"><div class="hp-fill b" id="b-bar" style="width:100%"></div></div>
+      <div class="stat" id="b-status">&nbsp;</div>
+    </div>
+  </div>
+  <div class="note">
+    Heal lands for 15-20 hp · 3 turn cooldown after each heal cast
+    · Both players use cooldown version of mechanic for symmetric comparison
+  </div>
+</div>
+
+<!-- Each lattice's substrate state mini-panels. Both shown side by side
+     so we can compare structure accumulation across the two configs. -->
+<div class="box">
+  <h2>Substrate state</h2>
+  <div class="row-2">
+    <div class="lattice-a">
+      <h3>Player A substrates</h3>
+      <div class="row-4">
+        <div class="substrate-mini">
+          <div class="name">PRESERVATION</div>
+          <div class="out" id="a-pres-out">pres-none</div>
+          <div class="stats" id="a-pres-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">THREAT</div>
+          <div class="out" id="a-threat-out">threat-even</div>
+          <div class="stats" id="a-threat-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">DEBUFF ECON</div>
+          <div class="out" id="a-dbecon-out">db-neutral</div>
+          <div class="stats" id="a-dbecon-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">EXPLOIT</div>
+          <div class="out" id="a-exploit-out">exploit-none</div>
+          <div class="stats" id="a-exploit-stats">step 0 · cons 1</div>
+        </div>
+      </div>
+      <div class="substrate-mini" style="margin-top:6px; background:#eef4f9;">
+        <div class="name">ROUTER · last action: <span id="a-router-action">—</span> · tier: <span id="a-router-tier">—</span></div>
+      </div>
+    </div>
+    <div class="lattice-b">
+      <h3>Player B substrates</h3>
+      <div class="row-4">
+        <div class="substrate-mini">
+          <div class="name">PRESERVATION</div>
+          <div class="out" id="b-pres-out">pres-none</div>
+          <div class="stats" id="b-pres-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">THREAT</div>
+          <div class="out" id="b-threat-out">threat-even</div>
+          <div class="stats" id="b-threat-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">DEBUFF ECON</div>
+          <div class="out" id="b-dbecon-out">db-neutral</div>
+          <div class="stats" id="b-dbecon-stats">step 0 · cons 1</div>
+        </div>
+        <div class="substrate-mini">
+          <div class="name">EXPLOIT</div>
+          <div class="out" id="b-exploit-out">exploit-none</div>
+          <div class="stats" id="b-exploit-stats">step 0 · cons 1</div>
+        </div>
+      </div>
+      <div class="substrate-mini" style="margin-top:6px; background:#f9f1ee;">
+        <div class="name">ROUTER · last action: <span id="b-router-action">—</span> · tier: <span id="b-router-tier">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Controls</h2>
+  <button id="btn-run">RUN SIMULATION (10 rounds)</button>
+  <button id="btn-step">SINGLE TURN</button>
+  <button id="btn-reset">RESET</button>
+  <span class="stat" id="speed-info" style="margin-left:12px;">turn speed: <input type="range" id="speed-slider" min="0" max="500" value="50" style="vertical-align:middle"> <span id="speed-val">50ms</span></span>
+</div>
+
+<div class="box">
+  <h2>Combat log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="box">
+  <h2>Round-by-round report</h2>
+  <table class="report-table" id="report-table">
+    <thead>
+      <tr>
+        <th>Round</th>
+        <th>Winner</th>
+        <th>Turns</th>
+        <th>A · cons / rat / sub</th>
+        <th>B · cons / rat / sub</th>
+      </tr>
+    </thead>
+    <tbody id="report-body"></tbody>
+  </table>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+// ============================================================================
+// SHARED CONFIGURATION
+// Two configurations differ only in the parameters that distinguish fast-
+// heat-up from slow-burn. Everything else is identical, which is what makes
+// the experiment a valid comparison: any difference in outcome can be
+// attributed to the parameter difference rather than to incidental code
+// differences between the two players.
+// ============================================================================
+
+// The fast-heat-up configuration. This is what we have been building all
+// along. Predictive constraints become ratified on first match. Sub-cascade
+// fidelity windows are short. The substrate commits early and acts quickly
+// on accumulated structure.
+const CFG_FAST = {
+  FIELD_LIVE_CAP: 60, FIELD_AGED_CAP: 30, TRACE_CAP: 100,
+  CORR_CAP: 80, SUB_CASCADE_CAP: 8,
+  FAST_WINDOW: 6, FAST_DECAY: 0.85, SLOW_STEP: 0.005,
+  GEN_NOVELTY_THRESH: 0.25, GAP_PREDICT_THRESH: 0.10,
+  PRED_MAX_NEW_PER_STEP: 1, PRED_AGE_LIMIT: 12, PRED_WEIGHT_BOOST: 1.8,
+  CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 2,
+  FIDELITY_WINDOW: 4, FIDELITY_PROMOTE: 0.012, FIDELITY_MIN_FIRES: 2,
+  RATIFY_REQUIRED_CONFIRMS: 1   // first match ratifies
+};
+
+// The slow-burn configuration. The differences from FAST are minimal in
+// number but architecturally significant in effect. Predictive constraints
+// require three confirmations across distinct contexts before ratifying.
+// Sub-cascade fidelity windows double, requiring more accumulated evidence
+// before promotion. Predictive constraints stay alive longer to give the
+// substrate more chances to confirm them across distinct contexts.
+const CFG_SLOW = {
+  FIELD_LIVE_CAP: 60, FIELD_AGED_CAP: 30, TRACE_CAP: 100,
+  CORR_CAP: 80, SUB_CASCADE_CAP: 8,
+  FAST_WINDOW: 6, FAST_DECAY: 0.85, SLOW_STEP: 0.005,
+  GEN_NOVELTY_THRESH: 0.25, GAP_PREDICT_THRESH: 0.10,
+  PRED_MAX_NEW_PER_STEP: 1, PRED_AGE_LIMIT: 20, PRED_WEIGHT_BOOST: 1.8,
+  CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 2,
+  FIDELITY_WINDOW: 8, FIDELITY_PROMOTE: 0.024, FIDELITY_MIN_FIRES: 3,
+  RATIFY_REQUIRED_CONFIRMS: 3   // need 3 distinct-context confirms to ratify
+};
+
+// Defense stack (algorithm 14). Identical for both players; CSS escape and
+// validator for any string entering a cascade rule.
+const Guards = {
+  ATTR_VALUE: /^[A-Za-z0-9_.-]{1,64}$/,
+  cssEscapeString(s) {
+    s = String(s == null ? '' : s);
+    if (s.length > 256) s = s.slice(0, 256);
+    let out = '"';
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x20 || c === 0x7F) out += '\\' + c.toString(16) + ' ';
+      else if (c === 0x22 || c === 0x5C) out += '\\' + s.charAt(i);
+      else if (c > 0x7E) out += '\\' + c.toString(16) + ' ';
+      else out += s.charAt(i);
+    }
+    return out + '"';
+  },
+  clamp01(n) { n = +n; if (!isFinite(n)) return 0; return n < 0 ? 0 : (n > 1 ? 1 : n); }
+};
+
+// ============================================================================
+// SUBSTRATE FACTORY
+// One factory, used four times per lattice, twice per player. The factory
+// takes a spec object describing what the substrate observes and emits,
+// plus a CFG object that determines its commitment dynamics. Both players'
+// substrates use the same factory; only their CFG differs.
+//
+// The architectural significance of this is that the dynamics are exactly
+// identical between players except for the parameter values. We are not
+// comparing two architectures. We are comparing two parameterizations of
+// the same architecture. The experiment is clean.
+// ============================================================================
+
+function makeSubstrate(spec, CFG) {
+  const SEED = Object.freeze({
+    id: spec.seedId, kind: 'seed', pattern: null,
+    birth: 0, uses: 0, weight: 1.0, permanent: true
+  });
+  const Field = {
+    name: spec.name, step: 0,
+    constraints: [Object.assign({}, SEED, { id: SEED.id })],
+    aged: [], nextId: 1,
+    substrate: { fast: 0, slow: 0 },
+    vectorDelta: { scalar: 1.0, fast: 1.0, slow: 1.0, gap: 0 },
+    recentOps: [], trace: [],
+    subcascades: [], familyFidelity: {}, correlations: {},
+    ctRules: [], ratified: 0, evicted: 0,
+    lastOutput: null, spec: spec, cfg: CFG
+  };
+
+  // Delta computation. F2: one formula at every scope. The function takes
+  // a population and returns a ratio of unresolved-to-total, with seed
+  // counted as resolved (it is permanently in the field by design).
+  function computeDelta(pop) {
+    if (!pop || !pop.length) return 1.0;
+    let unresolved = 0, total = 0;
+    for (const c of pop) {
+      total++;
+      if (c.kind === 'seed') continue;
+      if (c.kind === 'predictive') { unresolved++; continue; }
+      if (c.uses === 0) unresolved++;
+    }
+    return total === 0 ? 1.0 : unresolved / total;
+  }
+  function computeFastDelta() {
+    if (!Field.recentOps.length) return Field.vectorDelta.fast;
+    let u = 0;
+    for (const op of Field.recentOps) if (!op.matched || !op.matched.length) u++;
+    return u / Field.recentOps.length;
+  }
+  function refreshVectorDelta() {
+    const s = computeDelta(Field.constraints);
+    const f = computeFastDelta();
+    Field.vectorDelta.scalar = s;
+    Field.vectorDelta.fast = f;
+    Field.vectorDelta.slow = Guards.clamp01(
+      Field.vectorDelta.slow + (s - Field.vectorDelta.slow) * (CFG.SLOW_STEP * 10)
+    );
+    Field.vectorDelta.gap = Math.abs(f - Field.vectorDelta.slow);
+  }
+  function tickSubstrate() {
+    Field.substrate.fast = Field.substrate.slow + (Field.substrate.fast - Field.substrate.slow) * CFG.FAST_DECAY;
+  }
+  function modulate(d) {
+    const sign = -Math.sign(d), mag = Math.min(Math.abs(d), 0.15);
+    Field.substrate.fast = Guards.clamp01(Field.substrate.fast + sign * mag);
+    Field.substrate.slow = Guards.clamp01(Field.substrate.slow + sign * CFG.SLOW_STEP);
+  }
+  function appendTrace(op, detail) {
+    Field.trace.push({ step: Field.step, op, detail });
+    if (Field.trace.length > CFG.TRACE_CAP) Field.trace.shift();
+  }
+
+  // CT primitives. Same as the lattice version we already built.
+  function inputNovelty(input) {
+    if (!input.tokens.length) return 0;
+    let novel = 0;
+    for (const t of input.tokens) {
+      let known = false;
+      for (const c of Field.constraints) {
+        if (!c.pattern) continue;
+        if (c.pattern.kind === 'has-token' && c.pattern.token === t) { known = true; break; }
+        if (c.pattern.kind === 'co-occurs' && (c.pattern.a === t || c.pattern.b === t)) { known = true; break; }
+      }
+      if (!known) novel++;
+    }
+    return novel / input.tokens.length;
+  }
+  function issueId(kind) { return spec.fullName + '-c' + (Field.nextId++) + '-' + kind.slice(0, 4); }
+
+  function addConstraint(c) {
+    if (Field.constraints.length >= CFG.FIELD_LIVE_CAP) {
+      let evictIdx = -1, evictW = Infinity;
+      for (let i = 1; i < Field.constraints.length; i++) {
+        const x = Field.constraints[i];
+        if (x.permanent || x.kind === 'predictive') continue;
+        if (x.weight < evictW) { evictW = x.weight; evictIdx = i; }
+      }
+      if (evictIdx >= 0) {
+        Field.aged.push(Field.constraints.splice(evictIdx, 1)[0]);
+        if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+      }
+    }
+    Field.constraints.push(c);
+  }
+
+  function generateDerived(input) {
+    for (const tok of input.tokens) {
+      if (!Guards.ATTR_VALUE.test(tok)) continue;
+      let exists = false;
+      for (const c of Field.constraints) {
+        if (c.pattern && c.pattern.kind === 'has-token' && c.pattern.token === tok) { exists = true; break; }
+      }
+      if (exists) continue;
+      addConstraint({
+        id: issueId('derived'), kind: 'derived',
+        pattern: { kind: 'has-token', token: tok },
+        birth: Field.step, uses: 0, weight: 1.0
+      });
+      appendTrace('gen-derived', tok);
+      return;
+    }
+  }
+  function generatePredictive(input) {
+    if (Field.vectorDelta.gap < CFG.GAP_PREDICT_THRESH) return;
+    let made = 0;
+    const recent = Field.constraints.filter(c =>
+      c.kind === 'derived' && c.pattern && c.pattern.kind === 'has-token' && Field.step - c.birth < 8
+    );
+    for (const seed of recent) {
+      if (made >= CFG.PRED_MAX_NEW_PER_STEP) break;
+      const tokA = seed.pattern.token;
+      const seenSet = new Set();
+      for (const op of Field.recentOps) for (const t of (op.input.tokens || [])) if (t !== tokA) seenSet.add(t);
+      const seen = Array.from(seenSet);
+      if (!seen.length) continue;
+      const tokB = seen[Math.floor(Math.random() * seen.length)];
+      if (!Guards.ATTR_VALUE.test(tokB)) continue;
+      let dup = false;
+      for (const c of Field.constraints) {
+        if (c.kind === 'predictive' && c.pattern && c.pattern.kind === 'co-occurs' &&
+            ((c.pattern.a === tokA && c.pattern.b === tokB) || (c.pattern.a === tokB && c.pattern.b === tokA))) {
+          dup = true; break;
+        }
+      }
+      if (dup) continue;
+      addConstraint({
+        id: issueId('predictive'), kind: 'predictive',
+        pattern: { kind: 'co-occurs', a: tokA, b: tokB },
+        birth: Field.step, uses: 0, weight: 1.0,
+        ageLimit: Field.step + CFG.PRED_AGE_LIMIT,
+        confirms: 0,                   // count of confirmed matches
+        confirmContexts: new Set()     // distinct game-state contexts where confirmed
+      });
+      appendTrace('gen-predict', tokA + '+' + tokB);
+      made++;
+    }
+  }
+  function evaluatePattern(c, input) {
+    if (!c.pattern) return false;
+    const p = c.pattern;
+    if (p.kind === 'has-token') return input.tokens.indexOf(p.token) !== -1;
+    if (p.kind === 'co-occurs') return input.tokens.indexOf(p.a) !== -1 && input.tokens.indexOf(p.b) !== -1;
+    return false;
+  }
+
+  // Ratification with confirmation gating. This is the core difference
+  // between fast-heat-up and slow-burn. In the fast config, RATIFY_REQUIRED_
+  // CONFIRMS is 1, so first match ratifies. In the slow config, it is 3,
+  // and we additionally require three distinct contexts (not three
+  // matches in the same context). The "context" is the joint HP-band
+  // combination at the moment of confirmation. This prevents within-round
+  // overfit: rapid matches in identical situations count as one context.
+  function ratifyMatched(input, contextKey) {
+    for (const c of Field.constraints) {
+      if (c.kind !== 'predictive') continue;
+      if (!evaluatePattern(c, input)) continue;
+      // First, check whether this match counts as a new confirm. We allow
+      // multiple confirms in the same context to count as one, so the
+      // prediction has to be confirmed in DIFFERENT situations to ratify
+      // under the slow-burn config.
+      if (!c.confirmContexts) c.confirmContexts = new Set();
+      const previouslyConfirmedHere = c.confirmContexts.has(contextKey);
+      c.confirmContexts.add(contextKey);
+      if (!previouslyConfirmedHere) c.confirms = (c.confirms || 0) + 1;
+      // Has the prediction reached the threshold for ratification?
+      if ((c.confirms || 0) >= CFG.RATIFY_REQUIRED_CONFIRMS) {
+        c.kind = 'ratified';
+        c.weight = Math.min(c.weight * CFG.PRED_WEIGHT_BOOST, 5.0);
+        c.uses++; c.lastUsed = Field.step;
+        Field.ratified++;
+        appendTrace('ratify', c.id + ' (confirms=' + c.confirms + ')');
+        if (spec.onRatify) spec.onRatify(c, Field);
+      }
+    }
+  }
+  function ageOutPredictions() {
+    for (let i = Field.constraints.length - 1; i >= 1; i--) {
+      const c = Field.constraints[i];
+      if (c.kind !== 'predictive') continue;
+      if (c.ageLimit && Field.step >= c.ageLimit) {
+        Field.aged.push(Field.constraints.splice(i, 1)[0]);
+        if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+        Field.evicted++;
+        appendTrace('evict', c.id);
+      }
+    }
+  }
+  function matchAgainstField(input) {
+    const matched = [];
+    for (const c of Field.constraints) {
+      if (c.kind === 'seed') { matched.push(c); c.uses++; continue; }
+      if (!c.pattern) continue;
+      if (evaluatePattern(c, input)) {
+        matched.push(c); c.uses++; c.lastUsed = Field.step;
+        c.weight = Math.min(c.weight + 0.05, 5.0);
+      }
+    }
+    if (matched.length >= 2) {
+      for (let i = 0; i < matched.length; i++) {
+        for (let j = i + 1; j < matched.length; j++) {
+          const a = matched[i].id, b = matched[j].id;
+          const key = a < b ? a + '|' + b : b + '|' + a;
+          if (!Field.correlations[key]) Field.correlations[key] = { count: 0, last: Field.step };
+          Field.correlations[key].count++;
+          Field.correlations[key].last = Field.step;
+        }
+      }
+      const keys = Object.keys(Field.correlations);
+      if (keys.length > CFG.CORR_CAP) {
+        keys.sort((a, b) => Field.correlations[a].count - Field.correlations[b].count);
+        for (let i = 0; i < keys.length - CFG.CORR_CAP; i++) delete Field.correlations[keys[i]];
+      }
+    }
+    return matched;
+  }
+  function detectAndPromoteFamilies() {
+    const idMap = {};
+    for (const c of Field.constraints) idMap[c.id] = c;
+    const edges = [];
+    for (const key of Object.keys(Field.correlations)) {
+      const corr = Field.correlations[key];
+      if (corr.count < CFG.CORR_MIN_USES) continue;
+      const parts = key.split('|');
+      const a = idMap[parts[0]], b = idMap[parts[1]];
+      if (!a || !b || !a.uses || !b.uses) continue;
+      if (Math.min(corr.count / a.uses, corr.count / b.uses) >= CFG.CORR_THRESH) {
+        edges.push({ a: parts[0], b: parts[1] });
+      }
+    }
+    const adj = {};
+    for (const e of edges) {
+      (adj[e.a] = adj[e.a] || []).push(e.b);
+      (adj[e.b] = adj[e.b] || []).push(e.a);
+    }
+    const visited = {}, families = [];
+    for (const id of Object.keys(adj)) {
+      if (visited[id]) continue;
+      const stack = [id], comp = [];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (visited[cur]) continue;
+        visited[cur] = true;
+        comp.push(cur);
+        for (const n of (adj[cur] || [])) if (!visited[n]) stack.push(n);
+      }
+      if (comp.length >= CFG.FAMILY_MIN_SIZE) families.push(comp);
+    }
+    for (const comp of families) {
+      const fk = comp.slice().sort().join(',');
+      if (!Field.familyFidelity[fk]) {
+        Field.familyFidelity[fk] = { fires: 0, totalDrop: 0, deltaBefore: Field.vectorDelta.scalar };
+      }
+      const fid = Field.familyFidelity[fk];
+      fid.totalDrop += Math.max(0, fid.deltaBefore - Field.vectorDelta.scalar);
+      fid.fires++;
+      fid.deltaBefore = Field.vectorDelta.scalar;
+      if (fid.fires >= CFG.FIDELITY_MIN_FIRES && fid.fires >= CFG.FIDELITY_WINDOW) {
+        const avg = fid.totalDrop / fid.fires;
+        const already = Field.subcascades.some(sc => sc.familyKey === fk);
+        if (!already && avg >= CFG.FIDELITY_PROMOTE) {
+          let dom = null, dw = -1;
+          for (const id of comp) {
+            const c = idMap[id];
+            if (c && c.weight > dw) { dom = c; dw = c.weight; }
+          }
+          if (dom && Field.subcascades.length < CFG.SUB_CASCADE_CAP) {
+            const name = dom.pattern && dom.pattern.kind === 'has-token'
+              ? dom.pattern.token : (spec.fullName + '-sub-' + (Field.subcascades.length + 1));
+            const sc = { name, members: comp, familyKey: fk, promotedAt: Field.step, fires: fid.fires, avgDrop: avg };
+            Field.subcascades.push(sc);
+            appendTrace('promote', name);
+            if (spec.onPromote) spec.onPromote(sc, idMap, Field);
+          }
+        }
+      }
+    }
+  }
+
+  function rebuildCascade() {
+    let css = '@layer base, strategic;\n@layer base {\n';
+    css += '#' + spec.probeId + ' {\n  ' + spec.outputVar + ': ' +
+           Guards.cssEscapeString(spec.defaultOutput) + ';\n}\n';
+    const rules = spec.domainRules();
+    const sorted = rules.slice().sort((a, b) => Object.keys(a.when).length - Object.keys(b.when).length);
+    for (const r of sorted) {
+      const tail = Object.keys(r.when).map(d => '[data-' + d + '="' + r.when[d] + '"]').join('');
+      css += '#' + spec.probeId + tail + ' {\n  ' + spec.outputVar + ': ' +
+             Guards.cssEscapeString(r.then) + ';\n}\n';
+    }
+    css += '}\n';
+    if (Field.ctRules.length) {
+      css += '@layer strategic {\n';
+      for (const r of Field.ctRules) css += r.selector + ' {\n  ' + r.decls.join(';\n  ') + ';\n}\n';
+      css += '}\n';
+    }
+    document.getElementById(spec.styleId).textContent = css;
+  }
+  function evaluate() {
+    const probe = document.getElementById(spec.probeId);
+    const coord = spec.dimsFn();
+    for (const k of Object.keys(coord)) probe.setAttribute('data-' + k, coord[k]);
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    let ratHit = null, subHit = null;
+    for (const c of Field.constraints) {
+      if (c.kind !== 'ratified') continue;
+      if (evaluatePattern(c, { tokens })) { ratHit = c.id; break; }
+    }
+    for (const sc of Field.subcascades) {
+      if (tokens.indexOf(sc.name) !== -1) { subHit = sc.name; break; }
+    }
+    if (ratHit) probe.setAttribute('data-rat', ratHit); else probe.removeAttribute('data-rat');
+    if (subHit) probe.setAttribute('data-sub', subHit); else probe.removeAttribute('data-sub');
+    const cs = getComputedStyle(probe);
+    const out = cs.getPropertyValue(spec.outputVar).trim().replace(/^"|"$/g, '');
+    Field.lastOutput = out;
+    return out;
+  }
+  function step(contextKey) {
+    const before = Field.vectorDelta.scalar;
+    Field.step++;
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    const input = { text: tokens.join(' '), tokens };
+    if (input.tokens.length) appendTrace('input', input.text.slice(0, 40));
+    const matched = matchAgainstField(input);
+    if (input.tokens.length) ratifyMatched(input, contextKey || 'no-ctx');
+    if (input.tokens.length && inputNovelty(input) >= CFG.GEN_NOVELTY_THRESH) generateDerived(input);
+    generatePredictive(input);
+    ageOutPredictions();
+    Field.recentOps.push({ step: Field.step, input, matched: matched.map(c => c.id) });
+    if (Field.recentOps.length > CFG.FAST_WINDOW) Field.recentOps.shift();
+    refreshVectorDelta();
+    modulate(Field.vectorDelta.scalar - before);
+    tickSubstrate();
+    if (Field.step % 2 === 0) detectAndPromoteFamilies();
+    rebuildCascade();
+  }
+
+  rebuildCascade();
+  return { field: Field, step, evaluate, rebuildCascade };
+}
+
+// ============================================================================
+// LATTICE CONSTRUCTOR
+// Builds a complete four-substrate-plus-router lattice for one player.
+// Called twice in the simulation: once for Player A with CFG_FAST and once
+// for Player B with CFG_SLOW. The lattice exposes methods the game loop
+// uses to drive turns: observe(), decide(), and the per-substrate state.
+//
+// Each lattice's substrate ids are prefixed with the player's letter (a- or
+// b-) so the cascades stay separate in the shared DOM. This is what makes
+// it possible for two complete substrate systems to coexist on the same
+// page without contaminating each other's state.
+// ============================================================================
+
+function makeLattice(prefix, CFG, gameRef) {
+  // Each substrate observes its own slice of game state. The dimsFn and
+  // tokensFn closures reference gameRef, which is mutated by the game loop
+  // each turn. The trick is that we need to know which side of the duel
+  // the lattice is on (am I "self" or am I "opp"?), so the closures use
+  // the prefix to disambiguate. From Player A's perspective, A.hp is
+  // "self HP" and B.hp is "opp HP". From Player B's perspective, the
+  // mapping is reversed. The roleSelf and roleOpp accessors handle this.
+
+  const roleSelf = prefix === 'a' ? () => gameRef.a : () => gameRef.b;
+  const roleOpp  = prefix === 'a' ? () => gameRef.b : () => gameRef.a;
+  // recentOppActions tracks what the OTHER lattice has done recently.
+  // Each lattice maintains its own view of what its opponent has done.
+  const recentOppActions = [];
+  let oppLastAction = 'none';
+
+  function hpBand(hp) {
+    if (hp <= 50) return 'crit';
+    if (hp <= 100) return 'low';
+    if (hp <= 150) return 'ok';
+    return 'full';
+  }
+  function hpTrajectory(side) {
+    const arr = side === 'self' ? roleSelf().hpHistory : roleOpp().hpHistory;
+    if (!arr || arr.length < 2) return 'steady';
+    const recent = arr[arr.length - 1], past = arr[0];
+    const diff = recent - past;
+    if (diff < -8) return 'falling';
+    if (diff > 8)  return 'rising';
+    return 'steady';
+  }
+  function exchangeTempo() {
+    const exchanges = roleSelf().recentExchanges || [];
+    if (exchanges.length < 2) return 'even';
+    let dealt = 0, taken = 0;
+    for (const x of exchanges) { dealt += x.dealt; taken += x.taken; }
+    const diff = dealt - taken;
+    if (diff > 8)  return 'self';
+    if (diff < -8) return 'opp';
+    return 'even';
+  }
+
+  // ---- PRESERVATION substrate ----
+  const presSpec = {
+    name: 'pres',
+    fullName: prefix + '-pres',
+    seedId: prefix + '-seed-pres',
+    probeId: prefix + '-probe-pres',
+    styleId: prefix + '-cascade-pres',
+    outputVar: '--pres',
+    defaultOutput: 'pres-none',
+    dimsFn: () => ({
+      shp:  hpBand(roleSelf().hp),
+      traj: hpTrajectory('self'),
+      hit:  roleSelf().justTookDamage ? 'yes' : 'no',
+      cd:   roleSelf().healCooldown > 0 ? 'cooling' : 'ready'
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + hpBand(roleSelf().hp), 'traj-' + hpTrajectory('self')];
+      if (roleSelf().justTookDamage) t.push('took-damage');
+      if (roleSelf().hp <= 50) t.push('crit-zone');
+      if (roleSelf().healCooldown > 0) t.push('heal-cd');
+      return t;
+    },
+    domainRules: () => [
+      { when: { shp: 'full' }, then: 'pres-none' },
+      { when: { shp: 'ok' }, then: 'pres-none' },
+      { when: { shp: 'ok', traj: 'falling' }, then: 'pres-watch' },
+      { when: { shp: 'ok', hit: 'yes' }, then: 'pres-watch' },
+      { when: { shp: 'ok', traj: 'falling', hit: 'yes' }, then: 'pres-pull' },
+      { when: { shp: 'low' }, then: 'pres-pull' },
+      { when: { shp: 'low', traj: 'falling' }, then: 'pres-urgent' },
+      { when: { shp: 'low', hit: 'yes' }, then: 'pres-urgent' },
+      { when: { shp: 'crit' }, then: 'pres-urgent' },
+      // Heal-cooling overrides toward "blocked": preservation pull means
+      // nothing if heal is unavailable, so preservation should yield to
+      // other concerns when its primary recommendation cannot be honored.
+      { when: { shp: 'low', cd: 'cooling' }, then: 'pres-watch' },
+      { when: { shp: 'crit', cd: 'cooling' }, then: 'pres-pull' }
+    ],
+    onRatify: (c, F) => {
+      F.ctRules.push({
+        selector: '#' + prefix + '-probe-pres[data-rat="' + c.id + '"]',
+        decls: ['--pres: "pres-pull"']
+      });
+    },
+    onPromote: (sc, idMap, F) => {
+      F.ctRules.push({
+        selector: '#' + prefix + '-probe-pres[data-sub="' + sc.name + '"]',
+        decls: ['--pres: "pres-urgent"']
+      });
+    }
+  };
+
+  // ---- THREAT ASSESSMENT substrate ----
+  const threatSpec = {
+    name: 'threat',
+    fullName: prefix + '-threat',
+    seedId: prefix + '-seed-threat',
+    probeId: prefix + '-probe-threat',
+    styleId: prefix + '-cascade-threat',
+    outputVar: '--threat',
+    defaultOutput: 'threat-even',
+    dimsFn: () => ({
+      shp:   hpBand(roleSelf().hp),
+      php:   hpBand(roleOpp().hp),
+      tempo: exchangeTempo()
+    }),
+    tokensFn: () => [
+      'shp-' + hpBand(roleSelf().hp),
+      'php-' + hpBand(roleOpp().hp),
+      'tempo-' + exchangeTempo()
+    ],
+    domainRules: () => [
+      { when: {}, then: 'threat-even' },
+      { when: { shp: 'full', php: 'full' }, then: 'threat-even' },
+      { when: { shp: 'ok', php: 'ok' }, then: 'threat-even' },
+      { when: { shp: 'low', php: 'low' }, then: 'threat-even' },
+      { when: { shp: 'full', php: 'ok' }, then: 'threat-winning' },
+      { when: { shp: 'full', php: 'low' }, then: 'threat-winning-bad' },
+      { when: { shp: 'full', php: 'crit' }, then: 'threat-winning-bad' },
+      { when: { shp: 'ok', php: 'low' }, then: 'threat-winning' },
+      { when: { shp: 'ok', php: 'crit' }, then: 'threat-winning-bad' },
+      { when: { shp: 'low', php: 'crit' }, then: 'threat-winning' },
+      { when: { shp: 'ok', php: 'full' }, then: 'threat-losing' },
+      { when: { shp: 'low', php: 'full' }, then: 'threat-losing-bad' },
+      { when: { shp: 'crit', php: 'full' }, then: 'threat-losing-bad' },
+      { when: { shp: 'low', php: 'ok' }, then: 'threat-losing' },
+      { when: { shp: 'crit', php: 'ok' }, then: 'threat-losing-bad' },
+      { when: { shp: 'crit', php: 'low' }, then: 'threat-losing' },
+      { when: { shp: 'ok', php: 'ok', tempo: 'self' }, then: 'threat-winning' },
+      { when: { shp: 'ok', php: 'ok', tempo: 'opp' }, then: 'threat-losing' },
+      { when: { shp: 'full', php: 'full', tempo: 'self' }, then: 'threat-winning' },
+      { when: { shp: 'full', php: 'full', tempo: 'opp' }, then: 'threat-losing' }
+    ],
+    onRatify: () => {},
+    onPromote: () => {}
+  };
+
+  // ---- DEBUFF ECONOMY substrate ----
+  const dbeconSpec = {
+    name: 'dbecon',
+    fullName: prefix + '-dbecon',
+    seedId: prefix + '-seed-dbecon',
+    probeId: prefix + '-probe-dbecon',
+    styleId: prefix + '-cascade-dbecon',
+    outputVar: '--dbecon',
+    defaultOutput: 'db-neutral',
+    dimsFn: () => ({
+      om:   roleOpp().debuffedTurns > 0 ? 'yes' : 'no',
+      pm:   roleSelf().debuffedTurns > 0 ? 'yes' : 'no',
+      shp:  hpBand(roleSelf().hp),
+      php:  hpBand(roleOpp().hp),
+      cd:   roleSelf().healCooldown > 0 ? 'yes' : 'no',
+      last: oppLastAction
+    }),
+    tokensFn: () => {
+      const t = [
+        'shp-' + hpBand(roleSelf().hp),
+        'php-' + hpBand(roleOpp().hp),
+        'last-' + oppLastAction
+      ];
+      if (roleOpp().debuffedTurns > 0) t.push('opp-debuffed');
+      if (roleSelf().debuffedTurns > 0) t.push('self-debuffed');
+      if (roleSelf().healCooldown > 0) t.push('heal-cd');
+      return t;
+    },
+    domainRules: () => [
+      { when: {}, then: 'db-neutral' },
+      { when: { om: 'yes' }, then: 'db-bad' },
+      { when: { pm: 'yes' }, then: 'db-bad' },
+      { when: { shp: 'crit' }, then: 'db-bad' },
+      { when: { php: 'crit' }, then: 'db-bad' },
+      { when: { php: 'low' }, then: 'db-bad' },
+      { when: { om: 'no', pm: 'no', shp: 'full', php: 'full' }, then: 'db-excellent' },
+      { when: { om: 'no', pm: 'no', shp: 'full', php: 'ok' }, then: 'db-good' },
+      { when: { om: 'no', pm: 'no', shp: 'ok', php: 'full' }, then: 'db-good' },
+      { when: { om: 'no', last: 'atk', shp: 'full' }, then: 'db-good' },
+      { when: { om: 'no', last: 'atk', shp: 'ok' }, then: 'db-good' },
+      // Heal on cooldown promotes debuff value because reducing incoming
+      // damage matters more when we cannot recover from it.
+      { when: { om: 'no', cd: 'yes', shp: 'ok' }, then: 'db-good' },
+      { when: { om: 'no', cd: 'yes', shp: 'full' }, then: 'db-excellent' }
+    ],
+    onRatify: () => {},
+    onPromote: () => {}
+  };
+
+  // ---- EXPLOITATION PATTERN substrate ----
+  const exploitSpec = {
+    name: 'exploit',
+    fullName: prefix + '-exploit',
+    seedId: prefix + '-seed-exploit',
+    probeId: prefix + '-probe-exploit',
+    styleId: prefix + '-cascade-exploit',
+    outputVar: '--exploit',
+    defaultOutput: 'exploit-none',
+    dimsFn: () => {
+      const recent = recentOppActions.slice(-5);
+      const atks = recent.filter(a => a === 'atk').length;
+      const hls  = recent.filter(a => a === 'hl').length;
+      const dbs  = recent.filter(a => a === 'db').length;
+      let dom = 'mixed';
+      if (atks >= 3) dom = 'atk-heavy';
+      else if (hls >= 3) dom = 'hl-heavy';
+      else if (dbs >= 2) dom = 'db-heavy';
+      else if (recent.length >= 4) dom = 'mixed';
+      else dom = 'unknown';
+      return { dom };
+    },
+    tokensFn: () => {
+      if (oppLastAction === 'none') return [];
+      const t = [oppLastAction];
+      t.push('php-' + hpBand(roleOpp().hp));
+      t.push('shp-' + hpBand(roleSelf().hp));
+      if (roleSelf().debuffedTurns > 0) t.push('self-debuffed');
+      if (roleOpp().debuffedTurns > 0) t.push('opp-debuffed');
+      return t;
+    },
+    domainRules: () => [
+      { when: {}, then: 'exploit-none' },
+      { when: { dom: 'unknown' }, then: 'exploit-none' },
+      { when: { dom: 'mixed' }, then: 'exploit-mixed-no-signal' },
+      { when: { dom: 'atk-heavy' }, then: 'exploit-preempt-attack' },
+      { when: { dom: 'hl-heavy' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'db-heavy' }, then: 'exploit-capitalize-debuff' }
+    ],
+    onRatify: (c, F) => {
+      let counter = 'exploit-preempt-attack';
+      const has = t => c.pattern.a === t || c.pattern.b === t;
+      if (has('hl')) counter = 'exploit-pressure-defense';
+      else if (has('db')) counter = 'exploit-capitalize-debuff';
+      else if (has('atk')) counter = 'exploit-preempt-attack';
+      F.ctRules.push({
+        selector: '#' + prefix + '-probe-exploit[data-rat="' + c.id + '"]',
+        decls: ['--exploit: ' + Guards.cssEscapeString(counter)]
+      });
+    },
+    onPromote: (sc, idMap, F) => {
+      const toks = new Set();
+      for (const id of sc.members) {
+        const c = idMap[id];
+        if (!c || !c.pattern) continue;
+        if (c.pattern.kind === 'has-token') toks.add(c.pattern.token);
+        else if (c.pattern.kind === 'co-occurs') { toks.add(c.pattern.a); toks.add(c.pattern.b); }
+      }
+      let counter = 'exploit-preempt-attack';
+      if (toks.has('hl')) counter = 'exploit-pressure-defense';
+      else if (toks.has('db')) counter = 'exploit-capitalize-debuff';
+      else if (toks.has('atk')) counter = 'exploit-preempt-attack';
+      F.ctRules.push({
+        selector: '#' + prefix + '-probe-exploit[data-sub="' + sc.name + '"]',
+        decls: ['--exploit: ' + Guards.cssEscapeString(counter)]
+      });
+    }
+  };
+
+  const pres    = makeSubstrate(presSpec, CFG);
+  const threat  = makeSubstrate(threatSpec, CFG);
+  const dbecon  = makeSubstrate(dbeconSpec, CFG);
+  const exploit = makeSubstrate(exploitSpec, CFG);
+
+  // ---- ROUTER (no field, no CT, fixed rules) ----
+  function buildRouter() {
+    let css = '#' + prefix + '-probe-router {\n  --action: "atk";\n  --tier: "default-attack";\n}\n';
+    css += '#' + prefix + '-probe-router[data-exploit="exploit-preempt-attack"] {\n  --action: "db";\n  --tier: "exploit-preempt";\n}\n';
+    css += '#' + prefix + '-probe-router[data-exploit="exploit-pressure-defense"] {\n  --action: "atk";\n  --tier: "exploit-pressure";\n}\n';
+    css += '#' + prefix + '-probe-router[data-exploit="exploit-capitalize-debuff"] {\n  --action: "atk";\n  --tier: "exploit-capitalize";\n}\n';
+    css += '#' + prefix + '-probe-router[data-dbecon="db-good"][data-exploit="exploit-preempt-attack"] {\n  --action: "db";\n  --tier: "db-good-aligned";\n}\n';
+    css += '#' + prefix + '-probe-router[data-dbecon="db-excellent"] {\n  --action: "db";\n  --tier: "db-excellent";\n}\n';
+    css += '#' + prefix + '-probe-router[data-threat="threat-winning"][data-exploit="exploit-pressure-defense"] {\n  --action: "atk";\n  --tier: "press-defense";\n}\n';
+    css += '#' + prefix + '-probe-router[data-threat="threat-winning-bad"] {\n  --action: "atk";\n  --tier: "winning-bad-press";\n}\n';
+    css += '#' + prefix + '-probe-router[data-pres="pres-pull"] {\n  --action: "hl";\n  --tier: "pres-pull";\n}\n';
+    // The new tier rule from our previous discussion: pres-pull yields when
+    // threat says we are losing badly, because that means heal is failing
+    // to recover the situation and a different action is required.
+    css += '#' + prefix + '-probe-router[data-pres="pres-pull"][data-threat="threat-losing-bad"][data-exploit="exploit-preempt-attack"] {\n  --action: "db";\n  --tier: "pres-pull-failing";\n}\n';
+    css += '#' + prefix + '-probe-router[data-pres="pres-urgent"] {\n  --action: "hl";\n  --tier: "pres-urgent-veto";\n}\n';
+    document.getElementById(prefix + '-cascade-router').textContent = css;
+  }
+  buildRouter();
+
+  function evaluateRouter() {
+    const probe = document.getElementById(prefix + '-probe-router');
+    probe.setAttribute('data-pres',    pres.field.lastOutput || 'pres-none');
+    probe.setAttribute('data-threat',  threat.field.lastOutput || 'threat-even');
+    probe.setAttribute('data-dbecon',  dbecon.field.lastOutput || 'db-neutral');
+    probe.setAttribute('data-exploit', exploit.field.lastOutput || 'exploit-none');
+    const cs = getComputedStyle(probe);
+    return {
+      action: cs.getPropertyValue('--action').trim().replace(/^"|"$/g, ''),
+      tier:   cs.getPropertyValue('--tier').trim().replace(/^"|"$/g, '')
+    };
+  }
+
+  // The lattice's API to the game loop.
+  return {
+    prefix,
+    pres, threat, dbecon, exploit,
+    // observe(): both player's substrates run their step (CT cycle) plus
+    // evaluate (cascade resolution). Called after each action. The context
+    // key encodes the joint HP-band state at the time of confirmation,
+    // which is what makes "distinct-context confirmation" meaningful.
+    observe() {
+      const ctxKey = hpBand(roleSelf().hp) + '/' + hpBand(roleOpp().hp);
+      pres.step(ctxKey);    pres.evaluate();
+      threat.step(ctxKey);  threat.evaluate();
+      dbecon.step(ctxKey);  dbecon.evaluate();
+      exploit.step(ctxKey); exploit.evaluate();
+    },
+    decide() {
+      // Evaluate everything, then ask the router.
+      pres.evaluate(); threat.evaluate(); dbecon.evaluate(); exploit.evaluate();
+      return evaluateRouter();
+    },
+    recordOpponentAction(action) {
+      oppLastAction = action;
+      recentOppActions.push(action);
+      if (recentOppActions.length > 8) recentOppActions.shift();
+    },
+    snapshot() {
+      const snap = (sub) => ({
+        cons: sub.field.constraints.length,
+        rat:  sub.field.ratified,
+        sub:  sub.field.subcascades.length,
+        delta: sub.field.vectorDelta.scalar.toFixed(2),
+        out: sub.field.lastOutput
+      });
+      return {
+        pres: snap(pres),
+        threat: snap(threat),
+        dbecon: snap(dbecon),
+        exploit: snap(exploit)
+      };
+    }
+  };
+}
+
+// ============================================================================
+// GAME LOOP
+// Alternating-turn dual-lattice simulation with the new heal mechanic:
+// heal lands for 15-20 hp but has a 3-turn cooldown. This forces both
+// lattices to develop tactical timing rather than relying on heal as a
+// constant trickle. The mechanic is symmetric for both players.
+//
+// Each turn: the active lattice decides through its router, executes the
+// action, mutates game state, and then BOTH lattices observe the new state
+// through their own input adapters. The reason both observe is that each
+// lattice's exploit substrate needs to learn from the OTHER lattice's
+// actions, and each lattice's preservation/threat substrates need to see
+// the consequences of every action regardless of who took it.
+// ============================================================================
+
+const game = {
+  round: 0, maxRounds: 10,
+  scoreA: 0, scoreB: 0,
+  a: { hp: 200, debuffedTurns: 0, healCooldown: 0, justTookDamage: false,
+       hpHistory: [200, 200, 200], recentExchanges: [] },
+  b: { hp: 200, debuffedTurns: 0, healCooldown: 0, justTookDamage: false,
+       hpHistory: [200, 200, 200], recentExchanges: [] },
+  activePlayer: 'a',  // who acts next (alternates)
+  turnCount: 0,
+  roundTurns: 0,
+  reports: [],
+  running: false,
+  paused: false,
+  speed: 50,
+  latticeA: null,
+  latticeB: null,
+
+  log(side, text, cls) {
+    const l = document.getElementById('log');
+    const div = document.createElement('div');
+    div.className = cls || side;
+    const p = side === 'a' ? '▸ A · ' : (side === 'b' ? '◂ B · ' : '· ');
+    div.textContent = p + text;
+    l.appendChild(div);
+    l.scrollTop = l.scrollHeight;
+    // Cap log length to keep DOM responsive over a long simulation.
+    while (l.children.length > 400) l.removeChild(l.firstChild);
+  },
+
+  rollAttack(attackerDebuffed) {
+    const missChance = 0.10 + (attackerDebuffed ? 0.35 : 0);
+    if (Math.random() < missChance) return { miss: true };
+    const crit = Math.random() < 0.10;
+    let dmg = 10 + Math.floor(Math.random() * 7) - 3;
+    if (crit) dmg = Math.round(dmg * 1.75);
+    return { miss: false, crit, dmg: Math.max(1, dmg) };
+  },
+  rollHeal() {
+    // New mechanic: 15-20 hp range. Specifically 15 + 0..5 inclusive.
+    return 15 + Math.floor(Math.random() * 6);
+  },
+
+  recordHpHistory(side) {
+    side.hpHistory.push(side.hp);
+    if (side.hpHistory.length > 4) side.hpHistory.shift();
+  },
+  recordExchange(side, dealt, taken) {
+    side.recentExchanges.push({ dealt, taken });
+    if (side.recentExchanges.length > 4) side.recentExchanges.shift();
+  },
+
+  // Tick all per-turn timers on a side. Heal cooldown decrements regardless
+  // of what action the side took this turn. Debuff also decrements when
+  // they take their turn.
+  tickTimers(side) {
+    if (side.healCooldown > 0) side.healCooldown--;
+    if (side.debuffedTurns > 0) side.debuffedTurns--;
+  },
+
+  executeAction(actor, target, action, actorLattice, targetLattice) {
+    let dealt = 0, taken = 0;
+    target.justTookDamage = false;
+    actor.justTookDamage = false;
+
+    if (action === 'atk') {
+      const r = this.rollAttack(actor.debuffedTurns > 0);
+      if (r.miss) {
+        this.log(actor === this.a ? 'a' : 'b', 'attack missed', 'miss');
+      } else if (r.crit) {
+        target.hp = Math.max(0, target.hp - r.dmg);
+        target.justTookDamage = true; dealt = r.dmg; taken = r.dmg;
+        this.log(actor === this.a ? 'a' : 'b', 'CRIT for ' + r.dmg, 'crit');
+      } else {
+        target.hp = Math.max(0, target.hp - r.dmg);
+        target.justTookDamage = true; dealt = r.dmg; taken = r.dmg;
+        this.log(actor === this.a ? 'a' : 'b', 'attack — ' + r.dmg + ' dmg');
+      }
+    } else if (action === 'hl') {
+      // Heal is gated by cooldown. If on cooldown, fall through to attack
+      // as a graceful default. The router should not have selected heal in
+      // this case, but defending against it here keeps the simulation safe.
+      if (actor.healCooldown > 0) {
+        // Fallback: attack instead. This should rarely happen because the
+        // preservation substrate's domain rules already account for cooldown.
+        const r = this.rollAttack(actor.debuffedTurns > 0);
+        if (r.miss) {
+          this.log(actor === this.a ? 'a' : 'b', 'heal blocked (cd) → attack missed', 'miss');
+        } else {
+          target.hp = Math.max(0, target.hp - r.dmg);
+          target.justTookDamage = true; dealt = r.dmg; taken = r.dmg;
+          this.log(actor === this.a ? 'a' : 'b', 'heal blocked (cd) → attack ' + r.dmg);
+        }
+      } else {
+        const h = this.rollHeal();
+        actor.hp = Math.min(200, actor.hp + h);
+        actor.healCooldown = 4;  // 4 because we tick at end of turn; effectively 3 turns of unavailability
+        this.log(actor === this.a ? 'a' : 'b', 'heal — +' + h + ' hp (cd 3t)');
+      }
+    } else if (action === 'db') {
+      // Cannot stack debuffs. Validity gate.
+      if (target.debuffedTurns > 0) {
+        const r = this.rollAttack(actor.debuffedTurns > 0);
+        if (r.miss) {
+          this.log(actor === this.a ? 'a' : 'b', 'debuff blocked (active) → attack missed', 'miss');
+        } else {
+          target.hp = Math.max(0, target.hp - r.dmg);
+          target.justTookDamage = true; dealt = r.dmg; taken = r.dmg;
+          this.log(actor === this.a ? 'a' : 'b', 'debuff blocked (active) → attack ' + r.dmg);
+        }
+      } else {
+        target.debuffedTurns = 5;
+        this.log(actor === this.a ? 'a' : 'b', 'debuff cast — opp +35% miss for 5t');
+      }
+    }
+
+    this.recordHpHistory(actor);
+    this.recordHpHistory(target);
+    this.recordExchange(actor, dealt, 0);
+    this.recordExchange(target, 0, taken);
+    this.tickTimers(actor);
+  },
+
+  doTurn() {
+    if (this.a.hp <= 0 || this.b.hp <= 0 || this.round > this.maxRounds) return false;
+
+    const actorLattice = this.activePlayer === 'a' ? this.latticeA : this.latticeB;
+    const targetLattice = this.activePlayer === 'a' ? this.latticeB : this.latticeA;
+    const actor = this.activePlayer === 'a' ? this.a : this.b;
+    const target = this.activePlayer === 'a' ? this.b : this.a;
+
+    // Active lattice decides via its router.
+    const decision = actorLattice.decide();
+    let action = decision.action;
+    // Validity gates the router cannot enforce structurally.
+    if (action === 'hl' && actor.healCooldown > 0) action = 'atk';
+    if (action === 'db' && target.debuffedTurns > 0) action = 'atk';
+    if (action === 'hl' && actor.hp >= 195) action = 'atk';
+
+    // Append tier marker to the log via the substrate state display.
+    const tierTag = '[' + decision.tier + ']';
+    this.log(this.activePlayer === 'a' ? 'a' : 'b', 'decides ' + action + ' ' + tierTag, this.activePlayer);
+
+    // Tell the OPPONENT lattice what action the active lattice took, so
+    // the opponent's exploit substrate can learn from it.
+    targetLattice.recordOpponentAction(action);
+
+    // Execute the action on game state.
+    this.executeAction(actor, target, action, actorLattice, targetLattice);
+
+    // BOTH lattices observe the new state. Each one's substrates run their
+    // step + evaluate cycle so they accumulate structure from this turn.
+    actorLattice.observe();
+    targetLattice.observe();
+
+    this.turnCount++;
+    this.roundTurns++;
+
+    // Check round-end conditions.
+    if (this.a.hp <= 0 || this.b.hp <= 0) {
+      this.endRound();
+      return true;
+    }
+
+    // Alternate.
+    this.activePlayer = this.activePlayer === 'a' ? 'b' : 'a';
+
+    this.render();
+    return true;
+  },
+
+  endRound() {
+    const winner = this.a.hp <= 0 ? 'b' : 'a';
+    if (winner === 'a') this.scoreA++; else this.scoreB++;
+    this.log('sys', '═ Round ' + this.round + ' ended after ' + this.roundTurns + ' turns · ' + (winner === 'a' ? 'A' : 'B') + ' wins ═', 'round-end');
+
+    // Capture per-round snapshot.
+    const snapA = this.latticeA.snapshot();
+    const snapB = this.latticeB.snapshot();
+    const sumSnap = (s) => (s.pres.cons + s.threat.cons + s.dbecon.cons + s.exploit.cons) + ' / ' +
+                          (s.pres.rat + s.threat.rat + s.dbecon.rat + s.exploit.rat) + ' / ' +
+                          (s.pres.sub + s.threat.sub + s.dbecon.sub + s.exploit.sub);
+    this.reports.push({
+      round: this.round,
+      winner: winner,
+      turns: this.roundTurns,
+      a: sumSnap(snapA),
+      b: sumSnap(snapB)
+    });
+    this.renderReport();
+
+    if (this.round >= this.maxRounds) {
+      this.endSimulation();
+      return;
+    }
+
+    // Reset per-round state. SUBSTRATES PERSIST — fields, ratifications,
+    // sub-cascades all carry over. Only the game state resets.
+    this.round++;
+    this.a.hp = 200; this.a.debuffedTurns = 0; this.a.healCooldown = 0;
+    this.a.hpHistory = [200, 200, 200]; this.a.recentExchanges = [];
+    this.a.justTookDamage = false;
+    this.b.hp = 200; this.b.debuffedTurns = 0; this.b.healCooldown = 0;
+    this.b.hpHistory = [200, 200, 200]; this.b.recentExchanges = [];
+    this.b.justTookDamage = false;
+    this.roundTurns = 0;
+    // Coin flip for who acts first this round.
+    this.activePlayer = Math.random() < 0.5 ? 'a' : 'b';
+    this.log('sys', '─── Round ' + this.round + ' begins · ' + (this.activePlayer === 'a' ? 'A' : 'B') + ' acts first ───');
+  },
+
+  endSimulation() {
+    this.running = false;
+    const result = this.scoreA > this.scoreB ? 'A WINS (fast-heat-up)' :
+                   this.scoreA < this.scoreB ? 'B WINS (slow-burn)' : 'TIE';
+    this.log('sys', '═══════ SIMULATION COMPLETE ═══════', 'round-end');
+    this.log('sys', 'final · A ' + this.scoreA + ' — B ' + this.scoreB + '   ' + result, 'round-end');
+    document.getElementById('status').textContent = 'complete · ' + result.toLowerCase();
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-step').disabled = false;
+  },
+
+  render() {
+    document.getElementById('round').textContent = this.round;
+    document.getElementById('score-a').textContent = this.scoreA;
+    document.getElementById('score-b').textContent = this.scoreB;
+    document.getElementById('a-hp').textContent = this.a.hp;
+    document.getElementById('b-hp').textContent = this.b.hp;
+    document.getElementById('a-bar').style.width = (this.a.hp / 200 * 100) + '%';
+    document.getElementById('b-bar').style.width = (this.b.hp / 200 * 100) + '%';
+    document.getElementById('a-cd').textContent = this.a.healCooldown;
+    document.getElementById('b-cd').textContent = this.b.healCooldown;
+    document.getElementById('a-status').textContent = this.a.debuffedTurns > 0 ? 'debuffed: ' + this.a.debuffedTurns + 't' : '';
+    document.getElementById('b-status').textContent = this.b.debuffedTurns > 0 ? 'debuffed: ' + this.b.debuffedTurns + 't' : '';
+
+    // Render each lattice's substrate state.
+    const renderLattice = (lat, prefix) => {
+      const subs = ['pres', 'threat', 'dbecon', 'exploit'];
+      for (const s of subs) {
+        const sub = lat[s];
+        document.getElementById(prefix + '-' + s + '-out').textContent = sub.field.lastOutput || sub.field.spec.defaultOutput;
+        document.getElementById(prefix + '-' + s + '-stats').textContent =
+          'step ' + sub.field.step + ' · cons ' + sub.field.constraints.length +
+          ' · rat ' + sub.field.ratified + ' · sub ' + sub.field.subcascades.length;
+      }
+      const decision = lat.decide();
+      document.getElementById(prefix + '-router-action').textContent = decision.action;
+      document.getElementById(prefix + '-router-tier').textContent = decision.tier || '—';
+    };
+    renderLattice(this.latticeA, 'a');
+    renderLattice(this.latticeB, 'b');
+  },
+
+  renderReport() {
+    const tbody = document.getElementById('report-body');
+    tbody.innerHTML = '';
+    for (const r of this.reports) {
+      const tr = document.createElement('tr');
+      tr.className = r.winner === 'a' ? 'winner-a' : 'winner-b';
+      tr.innerHTML = '<td>' + r.round + '</td>' +
+                     '<td>' + (r.winner === 'a' ? 'A (fast)' : 'B (slow)') + '</td>' +
+                     '<td>' + r.turns + '</td>' +
+                     '<td>' + r.a + '</td>' +
+                     '<td>' + r.b + '</td>';
+      tbody.appendChild(tr);
+    }
+  },
+
+  async runFull() {
+    if (this.running) return;
+    this.running = true;
+    this.paused = false;
+    document.getElementById('btn-run').disabled = true;
+    document.getElementById('btn-step').disabled = true;
+    document.getElementById('status').textContent = 'simulating...';
+
+    while (this.running && this.round <= this.maxRounds) {
+      this.doTurn();
+      // Yield to the browser so the UI can render and we don't lock up.
+      if (this.speed > 0) {
+        await new Promise(resolve => setTimeout(resolve, this.speed));
+      } else {
+        // Even at zero, yield occasionally so the page doesn't freeze.
+        if (this.turnCount % 20 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+    }
+  },
+
+  doStep() {
+    if (this.running) return;
+    if (this.round === 0) {
+      // First step: initialize round 1.
+      this.round = 1;
+      this.activePlayer = Math.random() < 0.5 ? 'a' : 'b';
+      this.log('sys', '─── Round 1 begins · ' + (this.activePlayer === 'a' ? 'A' : 'B') + ' acts first ───');
+    }
+    this.doTurn();
+  },
+
+  reset() {
+    this.running = false;
+    this.round = 0;
+    this.scoreA = 0;
+    this.scoreB = 0;
+    this.turnCount = 0;
+    this.roundTurns = 0;
+    this.reports = [];
+    this.a = { hp: 200, debuffedTurns: 0, healCooldown: 0, justTookDamage: false,
+               hpHistory: [200, 200, 200], recentExchanges: [] };
+    this.b = { hp: 200, debuffedTurns: 0, healCooldown: 0, justTookDamage: false,
+               hpHistory: [200, 200, 200], recentExchanges: [] };
+    this.latticeA = makeLattice('a', CFG_FAST, this);
+    this.latticeB = makeLattice('b', CFG_SLOW, this);
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('report-body').innerHTML = '';
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-step').disabled = false;
+    document.getElementById('status').textContent = 'ready to start';
+    this.log('sys', 'simulation reset · A=fast-heat-up · B=slow-burn · cooldown heal mechanic');
+    this.render();
+  },
+
+  init() {
+    this.latticeA = makeLattice('a', CFG_FAST, this);
+    this.latticeB = makeLattice('b', CFG_SLOW, this);
+    document.getElementById('btn-run').addEventListener('click', () => this.runFull());
+    document.getElementById('btn-step').addEventListener('click', () => this.doStep());
+    document.getElementById('btn-reset').addEventListener('click', () => this.reset());
+    const slider = document.getElementById('speed-slider');
+    slider.addEventListener('input', () => {
+      this.speed = parseInt(slider.value, 10);
+      document.getElementById('speed-val').textContent = this.speed + 'ms';
+    });
+    this.log('sys', 'simulation ready · A=fast-heat-up · B=slow-burn · cooldown heal mechanic');
+    this.log('sys', 'press RUN SIMULATION to begin 10 rounds, or SINGLE TURN to step manually');
+    this.render();
+  }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => game.init());
+else game.init();
+
+})();
+</script>
+</body>
+</html>

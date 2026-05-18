@@ -1,0 +1,1974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rich Substrate Duel · SYMMETRIC · CROSSED COORDINATION</title>
+<style>
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: white; color: #111;
+    padding: 14px; max-width: 1400px; margin: 0 auto;
+    font-size: 11px; line-height: 1.45;
+  }
+  h1 { font-size: 13px; letter-spacing: 2px; margin: 0 0 12px 0; }
+  h2 { font-size: 10px; letter-spacing: 1px; margin: 0 0 6px 0; color: #555; text-transform: uppercase; }
+  h3 { font-size: 10px; margin: 0 0 6px 0; color: #333; }
+  .box { border: 1px solid #999; padding: 10px 12px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-meta { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 10px; }
+  .col { flex: 1; }
+  .hp-bar { height: 14px; border: 1px solid #999; background: #f0f0f0; margin-top: 2px; }
+  .hp-fill { height: 100%; transition: width 0.2s; }
+  .hp-fill.a { background: #2c5a8a; }
+  .hp-fill.b { background: #8a4a2c; }
+  .log {
+    height: 320px; overflow-y: auto;
+    background: #fafafa; padding: 8px;
+    font-size: 10px; line-height: 1.4;
+    border: 1px solid #ccc;
+  }
+  .log div { margin-bottom: 1px; }
+  .log .a { color: #2c5a8a; }
+  .log .b { color: #8a4a2c; }
+  .log .sys { color: #666; }
+  .log .meta { color: #6a3a8a; }
+  .log .crit { color: #c25500; font-weight: 700; }
+  .log .miss { color: #888; font-style: italic; }
+  .log .promote { color: #5a2a8a; font-weight: 700; }
+  .log .ratify { color: #1a4f8a; }
+  .log .swap { color: #b00020; font-weight: 700; background: #fff4e8; padding: 2px 4px; }
+  button {
+    font-family: inherit; font-size: 11px; padding: 7px 12px; margin-right: 4px;
+    border: 1px solid #888; background: #f8f8f8; cursor: pointer; letter-spacing: 1px;
+  }
+  button:hover:not(:disabled) { background: #e8e8e8; }
+  button:disabled { color: #aaa; cursor: not-allowed; background: #fcfcfc; }
+  .stat { font-size: 10px; color: #777; }
+  .note { font-size: 9px; color: #999; margin-top: 6px; }
+  .substrate-box {
+    border: 1px solid #bbb; padding: 6px; background: #fbfbfd;
+    font-size: 10px;
+  }
+  .substrate-box.meta { border-color: #6a3a8a; background: #f8f4fc; }
+  .substrate-box h2 { color: #444; margin-bottom: 3px; font-size: 9px; }
+  .substrate-box.meta h2 { color: #6a3a8a; }
+  .substrate-box .out {
+    font-weight: 700; color: #222;
+    padding: 1px 3px; background: #f0f0f4; display: inline-block; font-size: 9px;
+  }
+  .substrate-box .stats { font-size: 9px; color: #666; }
+  .ability-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font-size: 9px; }
+  .ability-cell {
+    padding: 3px 4px; border: 1px solid #ddd; background: #fafafa;
+    border-radius: 2px;
+  }
+  .ability-cell.cd { background: #fbe8e8; color: #888; }
+  .ability-cell.ready { background: #eaf6ec; }
+  .ability-name { font-weight: 700; }
+  .ability-state { font-size: 8px; color: #888; }
+  .effect-list { font-size: 9px; color: #666; }
+  .effect-active {
+    display: inline-block; padding: 1px 5px; background: #fef0d8; border-radius: 2px;
+    margin-right: 4px; margin-top: 2px;
+  }
+  table { width: 100%; }
+  .report-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .report-table th, .report-table td { padding: 4px 6px; border: 1px solid #ddd; text-align: left; }
+  .report-table th { background: #f0f0f0; font-size: 9px; letter-spacing: 1px; }
+  .report-table .winner-a { background: #e8f0f8; }
+  .report-table .winner-b { background: #f8efe8; }
+</style>
+</head>
+<body>
+
+<!-- Player A and B probes for each upstream substrate, plus meta probe -->
+<div style="position:absolute;left:-9999px;top:-9999px;">
+  <div id="probe-a-pres"></div><div id="probe-a-threat"></div>
+  <div id="probe-a-dbecon"></div><div id="probe-a-exploit"></div>
+  <div id="probe-a-router"></div>
+  <div id="probe-b-pres"></div><div id="probe-b-threat"></div>
+  <div id="probe-b-dbecon"></div><div id="probe-b-exploit"></div>
+  <div id="probe-b-router"></div>
+  <div id="probe-meta"></div>
+</div>
+<style id="cascade-a-pres"></style><style id="cascade-a-threat"></style>
+<style id="cascade-a-dbecon"></style><style id="cascade-a-exploit"></style>
+<style id="cascade-a-router"></style>
+<style id="cascade-a-selector"></style>
+<style id="cascade-b-pres"></style><style id="cascade-b-threat"></style>
+<style id="cascade-b-dbecon"></style><style id="cascade-b-exploit"></style>
+<style id="cascade-b-router"></style>
+<style id="cascade-b-selector"></style>
+<style id="cascade-meta"></style>
+
+<h1>RICH SUBSTRATE DUEL · SYMMETRIC · CROSSED COORDINATION</h1>
+
+<div class="box">
+  <div class="row">
+    <div class="col">
+      Round <strong id="round">1</strong> of 10 ·
+      A <strong id="score-a">0</strong> ·
+      B <strong id="score-b">0</strong>
+    </div>
+    <div class="col" style="text-align:right;">
+      <span class="stat" id="status">ready</span>
+    </div>
+  </div>
+</div>
+
+<div class="row-2">
+  <div class="box">
+    <h3>Player A &middot; HP <strong id="a-hp">200</strong> / 200</h3>
+    <div class="hp-bar"><div class="hp-fill a" id="a-bar" style="width:100%"></div></div>
+    <div class="effect-list" id="a-effects" style="margin-top:4px">&nbsp;</div>
+    <div style="margin-top:8px"><strong style="font-size:9px">Abilities</strong></div>
+    <div class="ability-grid" id="a-abilities"></div>
+  </div>
+  <div class="box">
+    <h3>Player B &middot; HP <strong id="b-hp">200</strong> / 200</h3>
+    <div class="hp-bar"><div class="hp-fill b" id="b-bar" style="width:100%"></div></div>
+    <div class="effect-list" id="b-effects" style="margin-top:4px">&nbsp;</div>
+    <div style="margin-top:8px"><strong style="font-size:9px">Abilities</strong></div>
+    <div class="ability-grid" id="b-abilities"></div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Controls</h2>
+  <button id="btn-run">RUN SIMULATION (10 rounds)</button>
+  <button id="btn-step">SINGLE TURN</button>
+  <button id="btn-reset">RESET</button>
+  <button id="btn-copy">COPY ALL DATA</button>
+  <span class="stat" id="copy-confirm" style="margin-left:8px; color: #2c8a4a; font-weight:700;"></span>
+  <span class="stat" id="speed-info" style="margin-left:12px;">turn speed: <input type="range" id="speed-slider" min="0" max="500" value="20" style="vertical-align:middle"> <span id="speed-val">20ms</span></span>
+</div>
+
+<div class="row-meta">
+  <div class="box">
+    <h3>Player A substrates</h3>
+    <div id="a-subs"></div>
+    <div style="margin-top:6px;font-size:9px"><strong>Router:</strong> <span id="a-router-out">—</span> <span class="stat">tier: <span id="a-router-tier">—</span></span></div>
+  </div>
+  <div class="box">
+    <h3>Meta-substrate (cross-lattice coupling)</h3>
+    <div id="meta-sub"></div>
+    <div class="note">Observes ratification events from both lattices. Produces tokens each lattice reads as additional input. Has its own field, seed, dynamics.</div>
+  </div>
+  <div class="box">
+    <h3>Player B substrates</h3>
+    <div id="b-subs"></div>
+    <div style="margin-top:6px;font-size:9px"><strong>Router:</strong> <span id="b-router-out">—</span> <span class="stat">tier: <span id="b-router-tier">—</span></span></div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Combat log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="box">
+  <h2>Round-by-round report</h2>
+  <table class="report-table" id="report-table">
+    <thead><tr><th>Round</th><th>Winner</th><th>Turns</th><th>A · cons / rat / sub</th><th>B · cons / rat / sub</th><th>Meta · cons / rat / sub</th></tr></thead>
+    <tbody id="report-body"></tbody>
+  </table>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+// ============================================================================
+// CONFIGURATION
+// Moderate parameters between fast-heat-up and slow-burn. Both players
+// use the same config so any difference in outcome traces to play
+// dynamics rather than parameter asymmetry.
+// ============================================================================
+const CFG = {
+  FIELD_LIVE_CAP: 80, FIELD_AGED_CAP: 40, TRACE_CAP: 200,
+  CORR_CAP: 100, SUB_CASCADE_CAP: 12,
+  FAST_WINDOW: 8, FAST_DECAY: 0.85, SLOW_STEP: 0.005,
+  GEN_NOVELTY_THRESH: 0.25, GAP_PREDICT_THRESH: 0.10,
+  PRED_MAX_NEW_PER_STEP: 1, PRED_AGE_LIMIT: 16, PRED_WEIGHT_BOOST: 1.8,
+  // Moderate ratification: 2 confirmations across distinct contexts.
+  RATIFY_REQUIRED_CONFIRMATIONS: 2,
+  CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 2,
+  FIDELITY_WINDOW: 5, FIDELITY_PROMOTE: 0.018, FIDELITY_MIN_FIRES: 2
+};
+
+// ============================================================================
+// THE 15 ABILITIES
+// Each carries: cooldown, effect signature, damage profile, special behavior.
+// The substrate observes the player's ability choice each turn and can
+// learn patterns about which abilities follow which.
+// ============================================================================
+// ============================================================================
+// ABILITY VECTOR SPACE
+// Each ability is a point in a parameter space. Seed abilities are pre-placed
+// vectors; substrates may invent new vectors at ratification time. Invented
+// abilities enter the inventing primitive's per-side inventory and become
+// candidates for selection on subsequent turns. The space is closed under
+// noise perturbation so any sampled point is a valid ability.
+// ============================================================================
+//
+// A vector has the following components:
+//   target:        'self' | 'opp'
+//   damage:        number ≥ 0   (interpreted as healing if target='self' and effect∈heal-shaped)
+//   damageType:    'instant' | 'dot' | 'drain' | 'none'
+//   hitProb:       0..1         (probability the action lands at all)
+//   cooldown:      integer ≥ 0
+//   effect:        'none' | 'shield' | 'hot' | 'blind' | 'debuff' | 'critch' |
+//                  'critdmg' | 'evade' | 'counter' | 'sustain' | 'cleanse' | 'heal'
+//   effectMag:     number ≥ 0   (effect-specific magnitude — shield HP, hot/turn, etc.)
+//   effectDuration:integer ≥ 0  (how many turns the effect persists)
+//   tag:           string       (which primitive output this ability fits — used for voting)
+//   selectability: number       (accumulated; ratification adds, anti-ratification subtracts)
+//   born:          { side, primitive, turn, context, parent_id }
+//
+// Damage is resolved through the same pipeline regardless of whether the
+// vector was a seed or an invention. There is no special handling for
+// invented abilities — they share the substrate's expressive surface.
+
+function makeVec(spec) {
+  return Object.assign({
+    id: spec.id,
+    name: spec.name || spec.id,
+    target: 'opp',
+    damage: 0,
+    damageType: 'none',
+    hitProb: 1.0,
+    cooldown: 0,
+    effect: 'none',
+    effectMag: 0,
+    effectDuration: 0,
+    tag: 'default',
+    selectability: 0,
+    born: { side: 'seed', primitive: 'seed', turn: 0, context: 'seed', parent_id: null }
+  }, spec);
+}
+
+// Seed abilities — the original 16 lifted into the vector space.
+// Names preserved so the log stays readable across seeds and inventions.
+const SEED_ABILITIES = [
+  // Baseline damage and recovery
+  makeVec({ id: 'atk',     name: 'Attack',          target: 'opp', damage: 10, damageType: 'instant', hitProb: 0.90, cooldown: 0,  effect: 'none',                                 tag: 'threat-even' }),
+  makeVec({ id: 'heavy',   name: 'Heavy Strike',    target: 'opp', damage: 21, damageType: 'instant', hitProb: 0.90, cooldown: 4,  effect: 'none',                                 tag: 'ab-finish-window' }),
+  makeVec({ id: 'heal',    name: 'Heal',            target: 'self', damage: 18, damageType: 'instant', hitProb: 1.0, cooldown: 3,  effect: 'heal',    effectMag: 18,               tag: 'pres-pull' }),
+  makeVec({ id: 'hot',     name: 'Heal-over-Time',  target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 8,  effect: 'hot',     effectMag: 5,  effectDuration: 6, tag: 'pres-pull' }),
+  // Damage-over-time and execution
+  makeVec({ id: 'dot',     name: 'Damage-over-Time',target: 'opp', damage: 0,  damageType: 'dot',     hitProb: 0.90, cooldown: 5,  effect: 'none',    effectMag: 8,  effectDuration: 4, tag: 'exploit-pressure-defense' }),
+  makeVec({ id: 'execute', name: 'Execute',         target: 'opp', damage: 50, damageType: 'instant', hitProb: 0.35, cooldown: 0,  effect: 'none',                                 tag: 'ab-execute-opp' }),
+  // Buffs and stances
+  makeVec({ id: 'critch',  name: 'Crit Chance Buff',target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 20, effect: 'critch',  effectMag: 0.30, effectDuration: 3, tag: 'ab-burst-window' }),
+  makeVec({ id: 'critdmg', name: 'Crit Dmg Buff',   target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 20, effect: 'critdmg', effectMag: 0.75, effectDuration: 3, tag: 'ab-burst-window' }),
+  makeVec({ id: 'evade',   name: 'Evasion',         target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 8,  effect: 'evade',   effectMag: 0.25, effectDuration: 4, tag: 'ab-defensive-tools' }),
+  makeVec({ id: 'shield',  name: 'Shield',          target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 12, effect: 'shield',  effectMag: 50,   effectDuration: 8, tag: 'pres-urgent' }),
+  makeVec({ id: 'counter', name: 'Counter Stance',  target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 10, effect: 'counter', effectMag: 0.5,  effectDuration: 2, tag: 'ab-defensive-tools' }),
+  makeVec({ id: 'sustain', name: 'Sustain Stance',  target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 15, effect: 'sustain', effectMag: 5,    effectDuration: 4, tag: 'ab-defensive-tools' }),
+  // Disruption and utility
+  makeVec({ id: 'debuff',  name: 'Debuff',          target: 'opp', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 6,  effect: 'debuff',  effectMag: 0.35, effectDuration: 5, tag: 'exploit-preempt-attack' }),
+  makeVec({ id: 'blind',   name: 'Blind',           target: 'opp', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 10, effect: 'blind',   effectMag: 1,    effectDuration: 1, tag: 'ab-setup-window' }),
+  makeVec({ id: 'drain',   name: 'Drain',           target: 'opp', damage: 10, damageType: 'drain',   hitProb: 0.90, cooldown: 6,  effect: 'none',                                 tag: 'pres-pull' }),
+  makeVec({ id: 'cleanse', name: 'Cleanse',         target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 12, effect: 'cleanse', effectMag: 0,                tag: 'ab-defensive-tools' })
+];
+
+// Centroids in vector space, keyed by primitive output. When a primitive
+// ratifies a sub-cascade with a given lastOutput, an invention is sampled
+// from gaussian noise centered on that output's centroid. The centroid
+// encodes "what kind of ability is appropriate for this state".
+//
+// These are NOT prescriptive — they are starting points for a sampling
+// distribution. Noise can move a candidate well outside the centroid's
+// neighborhood, including across target='self'/'opp' or effect type.
+const PRIMITIVE_CENTROIDS = {
+  // Pres outputs — preservation. Self-targeted, healing-shaped.
+  'pres-none':              { target: 'self', damage: 5,  damageType: 'instant', hitProb: 1.0, cooldown: 4,  effect: 'heal',    effectMag: 5,    effectDuration: 0 },
+  'pres-watch':             { target: 'self', damage: 8,  damageType: 'instant', hitProb: 1.0, cooldown: 5,  effect: 'heal',    effectMag: 8,    effectDuration: 0 },
+  'pres-pull':              { target: 'self', damage: 18, damageType: 'instant', hitProb: 1.0, cooldown: 5,  effect: 'heal',    effectMag: 18,   effectDuration: 0 },
+  'pres-urgent':            { target: 'self', damage: 30, damageType: 'instant', hitProb: 1.0, cooldown: 6,  effect: 'shield',  effectMag: 40,   effectDuration: 5 },
+  // Threat outputs — strategic balance. Mixed targeting based on threat direction.
+  'threat-even':            { target: 'opp', damage: 12, damageType: 'instant', hitProb: 0.85, cooldown: 1,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'threat-rising':          { target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 8,  effect: 'evade',   effectMag: 0.3,  effectDuration: 4 },
+  'threat-winning':         { target: 'opp', damage: 22, damageType: 'instant', hitProb: 0.85, cooldown: 4,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'threat-winning-bad':     { target: 'opp', damage: 35, damageType: 'instant', hitProb: 0.70, cooldown: 5,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  // Abecon outputs — ability economy windows. Opportunity-keyed.
+  'ab-burst-window':        { target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 18, effect: 'critch',  effectMag: 0.30, effectDuration: 3 },
+  'ab-execute-opp':         { target: 'opp', damage: 50, damageType: 'instant', hitProb: 0.40, cooldown: 0,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'ab-finish-window':       { target: 'opp', damage: 25, damageType: 'instant', hitProb: 0.85, cooldown: 4,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'ab-setup-window':        { target: 'opp', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 8,  effect: 'blind',   effectMag: 1,    effectDuration: 1 },
+  'ab-defensive-tools':     { target: 'self', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 10, effect: 'counter', effectMag: 0.5,  effectDuration: 2 },
+  // Exploit outputs — opponent-shape exploitation. Opp-targeted, control-heavy.
+  'exploit-preempt-attack': { target: 'opp', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 6,  effect: 'debuff',  effectMag: 0.35, effectDuration: 5 },
+  'exploit-pressure-defense':{ target: 'opp', damage: 22, damageType: 'instant', hitProb: 0.85, cooldown: 4,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'exploit-capitalize-debuff':{ target: 'opp', damage: 18, damageType: 'instant', hitProb: 0.85, cooldown: 2,  effect: 'none',    effectMag: 0,    effectDuration: 0 },
+  'exploit-disrupt-setup':  { target: 'opp', damage: 0,  damageType: 'none',    hitProb: 1.0, cooldown: 8,  effect: 'blind',   effectMag: 1,    effectDuration: 1 }
+};
+
+// Effects available for random mutation. Some are self-only (heal, shield,
+// hot, evade, counter, sustain, critch, critdmg, cleanse), some opp-only
+// (blind, debuff). 'none' is allowed everywhere. The mutation logic respects
+// these constraints — see mutateEffect() below.
+const SELF_EFFECTS = ['none', 'heal', 'shield', 'hot', 'evade', 'counter', 'sustain', 'critch', 'critdmg', 'cleanse'];
+const OPP_EFFECTS  = ['none', 'blind', 'debuff'];
+const ALL_DAMAGE_TYPES = ['instant', 'dot', 'drain', 'none'];
+
+let inventionCounter = 0;
+
+function gaussian() {
+  // Box-Muller; clipped to roughly [-3, 3]
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  let z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  if (z < -3) z = -3; if (z > 3) z = 3;
+  return z;
+}
+
+function perturbScalar(x, frac) {
+  // x scaled by a multiplicative gaussian factor in roughly [1-3*frac, 1+3*frac]
+  return Math.max(0, x * (1 + gaussian() * frac));
+}
+
+function perturbProb(p, frac) {
+  let q = p + gaussian() * frac;
+  if (q < 0.05) q = 0.05;
+  if (q > 1.0) q = 1.0;
+  return q;
+}
+
+function mutateEffect(currentEffect, target, mutationRate) {
+  // With probability mutationRate, swap to another effect compatible with target.
+  if (Math.random() > mutationRate) return currentEffect;
+  const pool = target === 'self' ? SELF_EFFECTS : OPP_EFFECTS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Produce a brand-new ability vector by sampling around the centroid for the
+// primitive's current output. The "context" string is the lastOutput value of
+// the ratifying primitive. Noise is unconstrained — candidates may swap target
+// or effect with low probability, allowing the architecture to discover
+// abilities that no centroid prescribes.
+function inventAbility(side, primitiveName, contextOutput, turn) {
+  const centroid = PRIMITIVE_CENTROIDS[contextOutput] || PRIMITIVE_CENTROIDS['threat-even'];
+
+  // Target may flip with low probability — most inventions stay in centroid's lane.
+  let target = centroid.target;
+  if (Math.random() < 0.10) target = (target === 'self' ? 'opp' : 'self');
+
+  // Effect mutates against the target-compatible pool. The centroid's own
+  // effect is preserved most of the time but can drift.
+  let effect = centroid.effect;
+  if (target !== centroid.target) {
+    // If target flipped, the centroid's effect may not be compatible — re-roll.
+    const pool = target === 'self' ? SELF_EFFECTS : OPP_EFFECTS;
+    effect = pool[Math.floor(Math.random() * pool.length)];
+  } else {
+    effect = mutateEffect(effect, target, 0.20);
+  }
+
+  // Scalar parameters: gaussian perturbation around centroid values.
+  const damage = Math.round(perturbScalar(centroid.damage, 0.35));
+  const hitProb = perturbProb(centroid.hitProb, 0.10);
+  const cooldown = Math.max(0, Math.round(perturbScalar(centroid.cooldown, 0.30)));
+  const effectMag = perturbScalar(centroid.effectMag, 0.30);
+  const effectDuration = Math.max(0, Math.round(perturbScalar(centroid.effectDuration, 0.30)));
+
+  // Damage type: instant most likely, occasional drift to dot/drain on opp targets.
+  let damageType = 'instant';
+  if (damage === 0) damageType = 'none';
+  else if (target === 'opp' && Math.random() < 0.15) {
+    damageType = Math.random() < 0.5 ? 'dot' : 'drain';
+  }
+
+  inventionCounter++;
+  const id = 'inv-' + side + '-' + primitiveName.split('-')[1] + '-' + turn + '-' + inventionCounter;
+  const name = id;  // verbose, but distinguishes inventions in logs immediately
+
+  return {
+    id, name,
+    target, damage, damageType, hitProb,
+    cooldown, effect, effectMag, effectDuration,
+    tag: contextOutput,
+    selectability: 0,
+    born: { side, primitive: primitiveName, turn, context: contextOutput, parent_id: null }
+  };
+}
+
+// ============================================================================
+// GUARDS
+// ============================================================================
+const Guards = {
+  ATTR_VALUE: /^[A-Za-z0-9_.-]{1,64}$/,
+  cssEscapeString(s) {
+    s = String(s == null ? '' : s);
+    if (s.length > 256) s = s.slice(0, 256);
+    let out = '"';
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x20 || c === 0x7F) out += '\\' + c.toString(16) + ' ';
+      else if (c === 0x22 || c === 0x5C) out += '\\' + s.charAt(i);
+      else if (c > 0x7E) out += '\\' + c.toString(16) + ' ';
+      else out += s.charAt(i);
+    }
+    return out + '"';
+  },
+  clamp01(n) { n = +n; if (!isFinite(n)) return 0; return n < 0 ? 0 : (n > 1 ? 1 : n); }
+};
+
+// ============================================================================
+// SUBSTRATE FACTORY (shared infrastructure)
+// Each substrate uses this. The meta-substrate uses it too — it is just
+// a substrate whose input is ratification events from elsewhere instead of
+// game actions. The architecture is uniform across all substrates.
+// ============================================================================
+function makeSubstrate(spec) {
+  const SEED = Object.freeze({
+    id: spec.seedId, kind: 'seed', pattern: null,
+    birth: 0, uses: 0, weight: 1.0, permanent: true
+  });
+  const F = {
+    name: spec.name, step: 0,
+    constraints: [Object.assign({}, SEED, { id: SEED.id })],
+    aged: [], nextId: 1,
+    substrate: { fast: 0, slow: 0 },
+    vectorDelta: { scalar: 1.0, fast: 1.0, slow: 1.0, gap: 0 },
+    recentOps: [], trace: [],
+    subcascades: [], familyFidelity: {}, correlations: {},
+    ctRules: [], ratified: 0, evicted: 0,
+    lastOutput: null, spec: spec
+  };
+
+  function computeDelta(pop) {
+    if (!pop || !pop.length) return 1.0;
+    let unresolved = 0, total = 0;
+    for (const c of pop) {
+      total++;
+      if (c.kind === 'seed') continue;
+      if (c.kind === 'predictive') { unresolved++; continue; }
+      if (c.uses === 0) unresolved++;
+    }
+    return total === 0 ? 1.0 : unresolved / total;
+  }
+  function computeFastDelta() {
+    if (!F.recentOps.length) return F.vectorDelta.fast;
+    let u = 0;
+    for (const op of F.recentOps) if (!op.matched || !op.matched.length) u++;
+    return u / F.recentOps.length;
+  }
+  function refreshDelta() {
+    const s = computeDelta(F.constraints);
+    const f = computeFastDelta();
+    F.vectorDelta.scalar = s; F.vectorDelta.fast = f;
+    F.vectorDelta.slow = Guards.clamp01(F.vectorDelta.slow + (s - F.vectorDelta.slow) * (CFG.SLOW_STEP * 10));
+    F.vectorDelta.gap = Math.abs(f - F.vectorDelta.slow);
+  }
+  function modulate(dC) {
+    const sign = -Math.sign(dC); const mag = Math.min(Math.abs(dC), 0.15);
+    F.substrate.fast = Guards.clamp01(F.substrate.fast + sign * mag);
+    F.substrate.slow = Guards.clamp01(F.substrate.slow + sign * CFG.SLOW_STEP);
+  }
+  function appendTrace(op, detail) {
+    F.trace.push({ step: F.step, op, detail });
+    if (F.trace.length > CFG.TRACE_CAP) F.trace.shift();
+  }
+  function tokenize(text) {
+    if (!text) return [];
+    return text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).slice(0, 16);
+  }
+  function novelty(input) {
+    if (!input.tokens.length) return 0;
+    let n = 0;
+    for (const t of input.tokens) {
+      let known = false;
+      for (const c of F.constraints) {
+        if (!c.pattern) continue;
+        if (c.pattern.kind === 'has-token' && c.pattern.token === t) { known = true; break; }
+        if (c.pattern.kind === 'co-occurs' && (c.pattern.a === t || c.pattern.b === t)) { known = true; break; }
+      }
+      if (!known) n++;
+    }
+    return n / input.tokens.length;
+  }
+  function issueId(kind) { return spec.name + '-' + (F.nextId++) + '-' + kind.slice(0, 4); }
+  function addConstraint(c) {
+    if (F.constraints.length >= CFG.FIELD_LIVE_CAP) {
+      let evIdx = -1, evW = Infinity;
+      for (let i = 1; i < F.constraints.length; i++) {
+        const x = F.constraints[i];
+        if (x.permanent || x.kind === 'predictive') continue;
+        if (x.weight < evW) { evW = x.weight; evIdx = i; }
+      }
+      if (evIdx >= 0) {
+        F.aged.push(F.constraints.splice(evIdx, 1)[0]);
+        if (F.aged.length > CFG.FIELD_AGED_CAP) F.aged.shift();
+      }
+    }
+    F.constraints.push(c);
+  }
+  function genDerived(input) {
+    for (const tok of input.tokens) {
+      if (!Guards.ATTR_VALUE.test(tok)) continue;
+      let exists = false;
+      for (const c of F.constraints) {
+        if (c.pattern && c.pattern.kind === 'has-token' && c.pattern.token === tok) { exists = true; break; }
+      }
+      if (exists) continue;
+      addConstraint({
+        id: issueId('drv'), kind: 'derived',
+        pattern: { kind: 'has-token', token: tok },
+        birth: F.step, uses: 0, weight: 1.0
+      });
+      appendTrace('gen-derived', tok);
+      return;
+    }
+  }
+  function genPredictive(input) {
+    if (F.vectorDelta.gap < CFG.GAP_PREDICT_THRESH) return;
+    let made = 0;
+    const recent = F.constraints.filter(c =>
+      c.kind === 'derived' && c.pattern && c.pattern.kind === 'has-token' && F.step - c.birth < 8
+    );
+    for (const seed of recent) {
+      if (made >= CFG.PRED_MAX_NEW_PER_STEP) break;
+      const tokA = seed.pattern.token;
+      const seen = [];
+      for (const op of F.recentOps) {
+        for (const t of (op.input.tokens || [])) {
+          if (t !== tokA && seen.indexOf(t) === -1) seen.push(t);
+        }
+      }
+      if (!seen.length) continue;
+      const tokB = seen[Math.floor(Math.random() * seen.length)];
+      if (!Guards.ATTR_VALUE.test(tokB)) continue;
+      let dup = false;
+      for (const c of F.constraints) {
+        if (c.kind === 'predictive' && c.pattern && c.pattern.kind === 'co-occurs' &&
+            ((c.pattern.a === tokA && c.pattern.b === tokB) || (c.pattern.a === tokB && c.pattern.b === tokA))) {
+          dup = true; break;
+        }
+      }
+      if (dup) continue;
+      addConstraint({
+        id: issueId('prd'), kind: 'predictive',
+        pattern: { kind: 'co-occurs', a: tokA, b: tokB },
+        birth: F.step, uses: 0, weight: 1.0,
+        ageLimit: F.step + CFG.PRED_AGE_LIMIT,
+        confirmations: 0, contextSet: new Set()
+      });
+      appendTrace('gen-predict', tokA + '+' + tokB);
+      made++;
+    }
+  }
+  function evalPattern(c, input) {
+    if (!c.pattern) return false;
+    const p = c.pattern;
+    if (p.kind === 'has-token') return input.tokens.indexOf(p.token) !== -1;
+    if (p.kind === 'co-occurs') return input.tokens.indexOf(p.a) !== -1 && input.tokens.indexOf(p.b) !== -1;
+    return false;
+  }
+  function ratify(input) {
+    // Confirmations across distinct contexts. Two confirmations needed.
+    const ctxKey = input.tokens.slice().sort().join(',').slice(0, 80);
+    for (const c of F.constraints) {
+      if (c.kind !== 'predictive') continue;
+      if (evalPattern(c, input)) {
+        if (!c.contextSet) c.contextSet = new Set();
+        c.contextSet.add(ctxKey);
+        c.confirmations = (c.confirmations || 0) + 1;
+        if (c.contextSet.size >= CFG.RATIFY_REQUIRED_CONFIRMATIONS) {
+          c.kind = 'ratified';
+          c.weight = Math.min(c.weight * CFG.PRED_WEIGHT_BOOST, 5.0);
+          c.uses++; c.lastUsed = F.step;
+          F.ratified++;
+          appendTrace('ratify', c.id);
+          if (spec.onRatify) spec.onRatify(c, F);
+        }
+      }
+    }
+  }
+  function ageOut() {
+    for (let i = F.constraints.length - 1; i >= 1; i--) {
+      const c = F.constraints[i];
+      if (c.kind !== 'predictive') continue;
+      if (c.ageLimit && F.step >= c.ageLimit) {
+        F.aged.push(F.constraints.splice(i, 1)[0]);
+        if (F.aged.length > CFG.FIELD_AGED_CAP) F.aged.shift();
+        F.evicted++;
+        appendTrace('evict', c.id);
+      }
+    }
+  }
+  function matchField(input) {
+    const matched = [];
+    for (const c of F.constraints) {
+      if (c.kind === 'seed') { matched.push(c); c.uses++; continue; }
+      if (!c.pattern) continue;
+      if (evalPattern(c, input)) {
+        matched.push(c); c.uses++; c.lastUsed = F.step;
+        c.weight = Math.min(c.weight + 0.05, 5.0);
+      }
+    }
+    if (matched.length >= 2) {
+      for (let i = 0; i < matched.length; i++) {
+        for (let j = i + 1; j < matched.length; j++) {
+          const a = matched[i].id, b = matched[j].id;
+          const key = a < b ? a + '|' + b : b + '|' + a;
+          if (!F.correlations[key]) F.correlations[key] = { count: 0, last: F.step };
+          F.correlations[key].count++;
+          F.correlations[key].last = F.step;
+        }
+      }
+      const keys = Object.keys(F.correlations);
+      if (keys.length > CFG.CORR_CAP) {
+        keys.sort((a, b) => F.correlations[a].count - F.correlations[b].count);
+        for (let i = 0; i < keys.length - CFG.CORR_CAP; i++) delete F.correlations[keys[i]];
+      }
+    }
+    return matched;
+  }
+  function detectFamilies() {
+    const idMap = {};
+    for (const c of F.constraints) idMap[c.id] = c;
+    const edges = [];
+    for (const key of Object.keys(F.correlations)) {
+      const corr = F.correlations[key];
+      if (corr.count < CFG.CORR_MIN_USES) continue;
+      const parts = key.split('|');
+      const a = idMap[parts[0]], b = idMap[parts[1]];
+      if (!a || !b || !a.uses || !b.uses) continue;
+      if (Math.min(corr.count / a.uses, corr.count / b.uses) >= CFG.CORR_THRESH) {
+        edges.push({ a: parts[0], b: parts[1] });
+      }
+    }
+    const adj = {};
+    for (const e of edges) {
+      (adj[e.a] = adj[e.a] || []).push(e.b);
+      (adj[e.b] = adj[e.b] || []).push(e.a);
+    }
+    const visited = {}, families = [];
+    for (const id of Object.keys(adj)) {
+      if (visited[id]) continue;
+      const stack = [id], comp = [];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (visited[cur]) continue;
+        visited[cur] = true;
+        comp.push(cur);
+        for (const n of (adj[cur] || [])) if (!visited[n]) stack.push(n);
+      }
+      if (comp.length >= CFG.FAMILY_MIN_SIZE) families.push(comp);
+    }
+    for (const comp of families) {
+      const fk = comp.slice().sort().join(',');
+      if (!F.familyFidelity[fk]) {
+        F.familyFidelity[fk] = { fires: 0, totalDrop: 0, deltaBefore: F.vectorDelta.scalar };
+      }
+      const fid = F.familyFidelity[fk];
+      fid.totalDrop += Math.max(0, fid.deltaBefore - F.vectorDelta.scalar);
+      fid.fires++;
+      fid.deltaBefore = F.vectorDelta.scalar;
+      if (fid.fires >= CFG.FIDELITY_MIN_FIRES && fid.fires >= CFG.FIDELITY_WINDOW) {
+        const avg = fid.totalDrop / fid.fires;
+        const already = F.subcascades.some(sc => sc.familyKey === fk);
+        if (!already && avg >= CFG.FIDELITY_PROMOTE) {
+          let dom = null, dw = -1;
+          for (const id of comp) {
+            const c = idMap[id];
+            if (c && c.weight > dw) { dom = c; dw = c.weight; }
+          }
+          if (dom && F.subcascades.length < CFG.SUB_CASCADE_CAP) {
+            const name = dom.pattern && dom.pattern.kind === 'has-token'
+              ? dom.pattern.token : (spec.name + '-sub-' + (F.subcascades.length + 1));
+            const sc = { name, members: comp, familyKey: fk, promotedAt: F.step, fires: fid.fires, avgDrop: avg };
+            F.subcascades.push(sc);
+            appendTrace('promote', name);
+            if (spec.onPromote) spec.onPromote(sc, idMap, F);
+          }
+        }
+      }
+    }
+  }
+  function rebuildCascade() {
+    let css = '@layer base, strategic;\n@layer base {\n';
+    css += '#' + spec.probeId + ' {\n  ' + spec.outputVar + ': ' + Guards.cssEscapeString(spec.defaultOutput) + ';\n}\n';
+    const rules = spec.domainRules ? spec.domainRules() : [];
+    const sorted = rules.slice().sort((a, b) => Object.keys(a.when).length - Object.keys(b.when).length);
+    for (const r of sorted) {
+      const tail = Object.keys(r.when).map(d => '[data-' + d + '="' + r.when[d] + '"]').join('');
+      css += '#' + spec.probeId + tail + ' {\n  ' + spec.outputVar + ': ' + Guards.cssEscapeString(r.then) + ';\n}\n';
+    }
+    css += '}\n';
+    if (F.ctRules.length) {
+      css += '@layer strategic {\n';
+      for (const r of F.ctRules) css += r.selector + ' {\n  ' + r.decls.join(';\n  ') + ';\n}\n';
+      css += '}\n';
+    }
+    document.getElementById(spec.styleId).textContent = css;
+  }
+  function evaluate() {
+    const probe = document.getElementById(spec.probeId);
+    const coord = spec.dimsFn();
+    for (const k of Object.keys(coord)) probe.setAttribute('data-' + k, coord[k]);
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    let ratHit = null, subHit = null;
+    for (const c of F.constraints) {
+      if (c.kind !== 'ratified') continue;
+      if (evalPattern(c, { tokens })) { ratHit = c.id; break; }
+    }
+    for (const sc of F.subcascades) {
+      if (tokens.indexOf(sc.name) !== -1) { subHit = sc.name; break; }
+    }
+    if (ratHit) probe.setAttribute('data-rat', ratHit); else probe.removeAttribute('data-rat');
+    if (subHit) probe.setAttribute('data-sub', subHit); else probe.removeAttribute('data-sub');
+    const cs = getComputedStyle(probe);
+    const out = cs.getPropertyValue(spec.outputVar).trim().replace(/^"|"$/g, '');
+    F.lastOutput = out;
+    return out;
+  }
+  function step(explicitTokens) {
+    const before = F.vectorDelta.scalar;
+    F.step++;
+    const tokens = explicitTokens != null ? explicitTokens : (spec.tokensFn ? spec.tokensFn() : []);
+    const input = { text: tokens.join(' '), tokens };
+    if (input.tokens.length) appendTrace('input', input.text.slice(0, 40));
+    const matched = matchField(input);
+    if (input.tokens.length) ratify(input);
+    if (input.tokens.length && novelty(input) >= CFG.GEN_NOVELTY_THRESH) genDerived(input);
+    genPredictive(input);
+    ageOut();
+    F.recentOps.push({ step: F.step, input, matched: matched.map(c => c.id) });
+    if (F.recentOps.length > CFG.FAST_WINDOW) F.recentOps.shift();
+    refreshDelta();
+    modulate(F.vectorDelta.scalar - before);
+    F.substrate.fast = F.substrate.slow + (F.substrate.fast - F.substrate.slow) * CFG.FAST_DECAY;
+    if (F.step % 2 === 0) detectFamilies();
+    rebuildCascade();
+  }
+  rebuildCascade();
+  return { field: F, step, evaluate, rebuildCascade };
+}
+
+// ============================================================================
+// META-SUBSTRATE
+// Observes ratification events from both lattices. Its input is constructed
+// from the structural changes in either lattice: when A's exploit ratifies
+// X+Y, a token "a-rat-X-Y" enters the meta-substrate's input. Same for B.
+// The meta-substrate accumulates structure about which kinds of ratifications
+// happen on which side and how they correlate. Its output is a small enum
+// that both lattices read.
+// ============================================================================
+let meta;  // forward declaration - assigned after both lattices exist
+let game;
+
+const metaSpec = {
+  name: 'meta',
+  seedId: 'seed::meta::what-do-they-each-know',
+  probeId: 'probe-meta',
+  styleId: 'cascade-meta',
+  outputVar: '--meta',
+  defaultOutput: 'meta-quiet',
+  dimsFn: () => {
+    // The meta-substrate's coord encodes recent ratification activity from
+    // each side. dimsFn returns a state representation built from the buffer
+    // of recent ratification events.
+    if (!game) return { aActive: 'quiet', bActive: 'quiet', balance: 'even' };
+    const aRecent = meta.recentARats || 0;
+    const bRecent = meta.recentBRats || 0;
+    return {
+      aActive: aRecent === 0 ? 'quiet' : aRecent < 2 ? 'low' : 'active',
+      bActive: bRecent === 0 ? 'quiet' : bRecent < 2 ? 'low' : 'active',
+      balance: aRecent === bRecent ? 'even' :
+               aRecent > bRecent ? 'a-leads' : 'b-leads'
+    };
+  },
+  tokensFn: () => {
+    // Tokens are produced from the buffer of recent ratification events
+    // tagged with which side they came from.
+    if (!meta || !meta.eventBuffer) return [];
+    const t = [];
+    for (const ev of meta.eventBuffer.slice(-8)) {
+      t.push(ev.side + '-rat');
+      t.push(ev.side + '-' + ev.subName);
+      if (ev.tokens) for (const tok of ev.tokens) t.push(ev.side + '-' + tok);
+    }
+    return t.slice(0, 16);
+  },
+  domainRules: () => [
+    { when: {}, then: 'meta-quiet' },
+    { when: { aActive: 'low', bActive: 'quiet' }, then: 'meta-a-developing' },
+    { when: { aActive: 'quiet', bActive: 'low' }, then: 'meta-b-developing' },
+    { when: { aActive: 'active', bActive: 'quiet' }, then: 'meta-a-pulling-ahead' },
+    { when: { aActive: 'quiet', bActive: 'active' }, then: 'meta-b-pulling-ahead' },
+    { when: { aActive: 'active', bActive: 'active' }, then: 'meta-mutual-arms-race' },
+    { when: { aActive: 'low', bActive: 'low' }, then: 'meta-mutual-developing' },
+    { when: { balance: 'a-leads' }, then: 'meta-a-leads' },
+    { when: { balance: 'b-leads' }, then: 'meta-b-leads' }
+  ],
+  onRatify: (c, F) => {
+    // Meta-substrate ratifying its own predictions about cross-lattice patterns
+    if (game) game.log('meta', '[meta] ratified ' + c.pattern.a + '+' + c.pattern.b, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    if (game) game.log('meta', '[meta] sub-cascade promoted: ' + sc.name, 'promote');
+  }
+};
+
+// ============================================================================
+// CROSSED COORDINATION LAYER — TEACHING ARCHITECTURE (CROSS-CONCERN PAIRING)
+// Every substrate watches the opposite side's substrate that is structurally
+// positioned to threaten or exploit it:
+//   pres-A   ↔   exploit-B   (defensive-commitment ↔ offensive-opportunity)
+//   exploit-A ↔   pres-B
+//   threat-A ↔   abecon-B    (strategic-balance ↔ tactical-readiness)
+//   abecon-A ↔   threat-B
+// No same-concern coupling. The factored same-concern run (rich-duel-factored)
+// produced lock because both sides watched mirror-image state and converged on
+// mutual-survival Nash equilibria. Cross-concern pairing breaks that symmetry:
+// each substrate now watches the substrate that would naturally counter or
+// complement its own job, producing predator-prey-style dynamics rather than
+// mirror convergence. Channels remain stateless, origin-tagged (opp- prefix),
+// external to substrates.
+// ============================================================================
+function crossToken(side, substrateName) {
+  const opp = side === 'a' ? 'b' : 'a';
+  const oppLat = opp === 'a' ? game.latticeA : game.latticeB;
+  if (!oppLat || !oppLat[substrateName]) return null;
+  const out = oppLat[substrateName].field.lastOutput;
+  if (!out) return null;
+  return 'opp-' + out;
+}
+
+// ============================================================================
+// LATTICE FACTORY
+// Builds a complete lattice for one player. Same structure as the dual-
+// lattice game but with input adapters extended to incorporate (a) the
+// rich ability set, (b) cooldown state, (c) active effects, (d) the
+// FACTORED cross-side coordination tokens (origin-tagged, stateless).
+// ============================================================================
+function makeLattice(side, gameRef) {
+  const oppSide = side === 'a' ? 'b' : 'a';
+  const lat = { side: side };
+
+  // Each substrate sees: own/opp HP bands, cooldown summary, factored
+  // cross-side origin-tagged token, and its own concern-specific tokens.
+  const ownHpBand = () => game.hpBand(game[side].hp);
+  const oppHpBand = () => game.hpBand(game[oppSide].hp);
+
+  // Helper: produce an invention from a ratifying primitive, log it, attach.
+  // Called from each primitive's onRatify/onPromote.
+  function inventFromContext(primitiveName, contextOutput) {
+    const turn = gameRef ? gameRef.totalSteps : 0;
+    const v = inventAbility(side, primitiveName, contextOutput || 'threat-even', turn);
+    game[side].inventory.push(v);
+    game[side].cooldownMap[v.id] = 0;
+    game[side].inventedThisRound = (game[side].inventedThisRound || 0) + 1;
+    if (gameRef && gameRef.log) {
+      gameRef.log('sys', '↯ ' + side.toUpperCase() + ' ' + primitiveName + ' invented ' + v.id +
+                  ' [tag=' + v.tag + ' tgt=' + v.target + ' dmg=' + v.damage +
+                  ' eff=' + v.effect + (v.effectMag ? '/' + v.effectMag.toFixed(1) : '') +
+                  ' cd=' + v.cooldown + ' hit=' + v.hitProb.toFixed(2) + ']', 'invent');
+    }
+    return v;
+  }
+
+  // PRESERVATION (first in sequential chain — no prior-primitive tokens)
+  // PRESERVATION (LAST in chain — modulator, reacts to combat context.
+  // Reads all three prior outputs. Trigger thresholds RAISED so single hits
+  // at healthy HP don't snap into preservation mode and poison the selector.)
+  const presSpec = {
+    name: side + '-pres',
+    seedId: 'seed::' + side + '::pres',
+    probeId: 'probe-' + side + '-pres',
+    styleId: 'cascade-' + side + '-pres',
+    outputVar: '--pres',
+    defaultOutput: 'pres-none',
+    dimsFn: () => ({
+      shp: ownHpBand(),
+      php: oppHpBand(),
+      hit: game[side].justTookDamage ? 'yes' : 'no',
+      shielded: game[side].shieldHp > 0 ? 'yes' : 'no',
+      threat:  (lat.threat  && lat.threat.field.lastOutput)  || 'threat-even',
+      exploit: (lat.exploit && lat.exploit.field.lastOutput) || 'exploit-none',
+      abecon:  (lat.dbecon  && lat.dbecon.field.lastOutput)  || 'ab-default'
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      if (game[side].justTookDamage) t.push('took-damage');
+      if (game[side].shieldHp > 0) t.push('have-shield');
+      // CROSSED: pres watches opposite-side exploit
+      const cross = crossToken(side, 'exploit');
+      if (cross) t.push(cross);
+      // SEQUENTIAL: all three prior outputs (pres is last in chain)
+      if (lat.threat  && lat.threat.field.lastOutput)  t.push('priorthreat-' + lat.threat.field.lastOutput);
+      if (lat.exploit && lat.exploit.field.lastOutput) t.push('priorexploit-' + lat.exploit.field.lastOutput);
+      if (lat.dbecon  && lat.dbecon.field.lastOutput)  t.push('priorabecon-' + lat.dbecon.field.lastOutput);
+      return t.slice(0, 14);
+    },
+    domainRules: () => [
+      { when: { shp: 'full' }, then: 'pres-none' },
+      { when: { shp: 'ok' }, then: 'pres-none' },          // healthy = no preservation pressure
+      { when: { shp: 'low' }, then: 'pres-watch' },        // low HP = monitor, not panic
+      { when: { shp: 'low', hit: 'yes' }, then: 'pres-pull' },
+      { when: { shp: 'crit' }, then: 'pres-pull' },
+      { when: { shp: 'crit', hit: 'yes' }, then: 'pres-urgent' },
+      // Shielded states relax pressure one level
+      { when: { shp: 'low', shielded: 'yes' }, then: 'pres-none' },
+      { when: { shp: 'crit', shielded: 'yes' }, then: 'pres-watch' },
+      // Threat-aware: if losing the threat read, escalate pres regardless of HP
+      { when: { threat: 'threat-losing', shp: 'ok' }, then: 'pres-watch' },
+      { when: { threat: 'threat-losing', shp: 'low' }, then: 'pres-pull' }
+    ],
+    onRatify: (c, F) => {
+      F.ctRules.push({ selector: '#probe-' + side + '-pres[data-rat="' + c.id + '"]', decls: ['--pres: "pres-pull"'] });
+      pushMetaEvent(side, 'rat', 'pres', c);
+      inventFromContext(side + '-pres', F.lastOutput);
+    },
+    onPromote: (sc, idMap, F) => {
+      F.ctRules.push({ selector: '#probe-' + side + '-pres[data-sub="' + sc.name + '"]', decls: ['--pres: "pres-urgent"'] });
+      pushMetaEvent(side, 'promote', 'pres', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+      inventFromContext(side + '-pres', 'pres-urgent');
+    }
+  };
+
+  // THREAT (FIRST in chain — establishes combat read, no priors)
+  const threatSpec = {
+    name: side + '-threat',
+    seedId: 'seed::' + side + '::threat',
+    probeId: 'probe-' + side + '-threat',
+    styleId: 'cascade-' + side + '-threat',
+    outputVar: '--threat',
+    defaultOutput: 'threat-even',
+    dimsFn: () => ({
+      shp: ownHpBand(), php: oppHpBand(),
+      buffs: game[side].activeEffects.length > 0 ? 'yes' : 'no',
+      oppBuffs: game[oppSide].activeEffects.length > 0 ? 'yes' : 'no'
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      for (const e of game[side].activeEffects) t.push('own-' + (e.effect || e.id));
+      for (const e of game[oppSide].activeEffects) t.push('opp-' + (e.effect || e.id));
+      // CROSSED: threat watches opposite-side abecon
+      const cross = crossToken(side, 'dbecon');
+      if (cross) t.push(cross);
+      return t.slice(0, 14);
+    },
+    domainRules: () => [
+      { when: {}, then: 'threat-even' },
+      { when: { shp: 'crit' }, then: 'threat-rising' },
+      { when: { shp: 'low' }, then: 'threat-rising' },
+      { when: { shp: 'full', php: 'crit' }, then: 'threat-winning-bad' },
+      { when: { shp: 'full', php: 'low' }, then: 'threat-winning' },
+      { when: { shp: 'ok', php: 'low' }, then: 'threat-winning' },
+      { when: { shp: 'ok', php: 'crit' }, then: 'threat-winning-bad' },
+      // Buff differential
+      { when: { buffs: 'yes', oppBuffs: 'no' }, then: 'threat-winning' },
+      { when: { buffs: 'no', oppBuffs: 'yes' }, then: 'threat-losing' }
+    ],
+    onRatify: (c, F) => {
+      pushMetaEvent(side, 'rat', 'threat', c);
+      inventFromContext(side + '-threat', F.lastOutput);
+    },
+    onPromote: (sc, idMap, F) => {
+      pushMetaEvent(side, 'promote', 'threat', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+      inventFromContext(side + '-threat', F.lastOutput || 'threat-rising');
+    }
+  };
+
+  // ABILITY ECONOMY (sees pres + threat prior outputs)
+  const abeconSpec = {
+    name: side + '-abecon',
+    seedId: 'seed::' + side + '::abecon',
+    probeId: 'probe-' + side + '-dbecon',
+    styleId: 'cascade-' + side + '-dbecon',
+    outputVar: '--abecon',
+    defaultOutput: 'ab-default',
+    dimsFn: () => {
+      const cdReady = (id) => (game[side].cooldownMap[id] || 0) > 0 ? 'cd' : 'ready';
+      return {
+        shp: ownHpBand(), php: oppHpBand(),
+        execReady: cdReady('execute'),
+        critReady: ((game[side].cooldownMap.critch || 0) === 0 || (game[side].cooldownMap.critdmg || 0) === 0) ? 'ready' : 'cd',
+        healReady: cdReady('heal'),
+        bigReady: cdReady('heavy'),
+        shieldReady: cdReady('shield'),
+        blindReady: cdReady('blind'),
+        threat:  (lat.threat  && lat.threat.field.lastOutput)  || 'threat-even',
+        exploit: (lat.exploit && lat.exploit.field.lastOutput) || 'exploit-none'
+      };
+    },
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      // Tokenize what's ready in inventory (sample to avoid token blowout as inventory grows).
+      const inv = game[side].inventory;
+      const cdMap = game[side].cooldownMap;
+      const ready = inv.filter(v => (cdMap[v.id] || 0) === 0);
+      const sampleN = Math.min(ready.length, 6);
+      for (let i = 0; i < sampleN; i++) {
+        const v = ready[Math.floor(Math.random() * ready.length)];
+        t.push(v.tag + '-ready');
+      }
+      // CROSSED: abecon watches opposite-side threat
+      const cross = crossToken(side, 'threat');
+      if (cross) t.push(cross);
+      // SEQUENTIAL: prior threat + exploit outputs (combat-first chain)
+      if (lat.threat  && lat.threat.field.lastOutput)  t.push('priorthreat-' + lat.threat.field.lastOutput);
+      if (lat.exploit && lat.exploit.field.lastOutput) t.push('priorexploit-' + lat.exploit.field.lastOutput);
+      return t.slice(0, 14);
+    },
+    domainRules: () => [
+      { when: {}, then: 'ab-default' },
+      // Burst windows
+      { when: { critReady: 'ready', php: 'full' }, then: 'ab-burst-window' },
+      { when: { critReady: 'ready', php: 'ok' }, then: 'ab-burst-window' },
+      // Execute opportunities
+      { when: { php: 'low', execReady: 'ready' }, then: 'ab-execute-opp' },
+      { when: { php: 'crit', execReady: 'ready' }, then: 'ab-execute-opp' },
+      { when: { php: 'crit' }, then: 'ab-finish-window' },
+      // Heavy strike when opp is softened
+      { when: { php: 'low', bigReady: 'ready' }, then: 'ab-finish-window' },
+      { when: { php: 'ok', bigReady: 'ready' }, then: 'ab-finish-window' },
+      // Threat-aware: defensive readiness when rising
+      { when: { threat: 'threat-rising', shieldReady: 'ready' }, then: 'ab-defensive-tools' },
+      { when: { threat: 'threat-winning-bad' }, then: 'ab-finish-window' },
+      // Exploit-aware: align ability windows with the offensive read
+      { when: { exploit: 'exploit-pressure-defense', execReady: 'ready' }, then: 'ab-execute-opp' },
+      { when: { exploit: 'exploit-disrupt-setup', blindReady: 'ready' }, then: 'ab-setup-window' },
+      // Defensive windows (shp-driven)
+      { when: { shp: 'low', healReady: 'ready' }, then: 'ab-defensive-tools' },
+      { when: { shp: 'crit', shieldReady: 'ready' }, then: 'ab-defensive-tools' },
+      { when: { shp: 'crit', healReady: 'ready' }, then: 'ab-defensive-tools' }
+    ],
+    onRatify: (c, F) => {
+      pushMetaEvent(side, 'rat', 'abecon', c);
+      inventFromContext(side + '-abecon', F.lastOutput);
+    },
+    onPromote: (sc, idMap, F) => {
+      pushMetaEvent(side, 'promote', 'abecon', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+      inventFromContext(side + '-abecon', F.lastOutput || 'ab-default');
+    }
+  };
+
+  // EXPLOITATION (sees threat's prior output — second in chain)
+  const exploitSpec = {
+    name: side + '-exploit',
+    seedId: 'seed::' + side + '::exploit',
+    probeId: 'probe-' + side + '-exploit',
+    styleId: 'cascade-' + side + '-exploit',
+    outputVar: '--exploit',
+    defaultOutput: 'exploit-none',
+    dimsFn: () => {
+      // oppRecentActions now holds tag strings (not seed ids) so dom analysis
+      // works uniformly across seeds and inventions.
+      const recent = game[side].oppRecentActions.slice(-6);
+      let counts = {};
+      for (const a of recent) counts[a] = (counts[a] || 0) + 1;
+      let dom = 'mixed';
+      if (recent.length < 3) dom = 'unknown';
+      else {
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (top && top[1] >= 3) {
+          const tag = top[0];
+          if (tag === 'threat-even' || tag === 'ab-finish-window' || tag === 'threat-winning' || tag === 'threat-winning-bad' || tag === 'exploit-pressure-defense') dom = 'damage-heavy';
+          else if (tag === 'pres-pull' || tag === 'pres-urgent' || tag === 'pres-watch') dom = 'heal-heavy';
+          else if (tag === 'ab-defensive-tools') dom = 'defensive';
+          else if (tag === 'ab-setup-window' || tag === 'exploit-preempt-attack' || tag === 'exploit-disrupt-setup') dom = 'control-heavy';
+          else if (tag === 'ab-burst-window') dom = 'buff-heavy';
+          else dom = 'mixed';
+        }
+      }
+      return {
+        dom,
+        threat: (lat.threat && lat.threat.field.lastOutput) || 'threat-even'
+      };
+    },
+    tokensFn: () => {
+      const last = game[side].oppRecentActions[game[side].oppRecentActions.length - 1];
+      const t = [];
+      if (last) t.push(last);
+      t.push('php-' + oppHpBand(), 'shp-' + ownHpBand());
+      for (const e of game[oppSide].activeEffects) t.push('opp-' + (e.effect || e.id));
+      // CROSSED: exploit watches opposite-side pres
+      const cross = crossToken(side, 'pres');
+      if (cross) t.push(cross);
+      // SEQUENTIAL: only threat's prior output (exploit is 2nd in chain now)
+      if (lat.threat && lat.threat.field.lastOutput) t.push('priorthreat-' + lat.threat.field.lastOutput);
+      return t.slice(0, 16);
+    },
+    domainRules: () => [
+      { when: {}, then: 'exploit-none' },
+      { when: { dom: 'unknown' }, then: 'exploit-none' },
+      { when: { dom: 'mixed' }, then: 'exploit-none' },
+      { when: { dom: 'damage-heavy' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'heal-heavy' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'defensive' }, then: 'exploit-pressure-defense' },
+      { when: { dom: 'control-heavy' }, then: 'exploit-capitalize-debuff' },
+      { when: { dom: 'buff-heavy' }, then: 'exploit-disrupt-setup' },
+      // Threat-driven: exploit aligns with combat read
+      { when: { threat: 'threat-winning' }, then: 'exploit-pressure-defense' },
+      { when: { threat: 'threat-winning-bad' }, then: 'exploit-pressure-defense' }
+    ],
+    onRatify: (c, F) => {
+      let counter = 'exploit-preempt-attack';
+      const has = t => c.pattern.a === t || c.pattern.b === t;
+      if (has('heal') || has('hot') || has('sustain') || has('pres-pull') || has('pres-urgent')) counter = 'exploit-pressure-defense';
+      else if (has('shield') || has('evade')) counter = 'exploit-pressure-defense';
+      else if (has('debuff') || has('blind') || has('exploit-preempt-attack')) counter = 'exploit-capitalize-debuff';
+      else if (has('critch') || has('critdmg') || has('ab-burst-window')) counter = 'exploit-disrupt-setup';
+      F.ctRules.push({ selector: '#probe-' + side + '-exploit[data-rat="' + c.id + '"]', decls: ['--exploit: ' + Guards.cssEscapeString(counter)] });
+      pushMetaEvent(side, 'rat', 'exploit', c);
+      inventFromContext(side + '-exploit', counter);
+    },
+    onPromote: (sc, idMap, F) => {
+      const toks = new Set();
+      for (const id of sc.members) {
+        const c = idMap[id];
+        if (!c || !c.pattern) continue;
+        if (c.pattern.kind === 'has-token') toks.add(c.pattern.token);
+        else if (c.pattern.kind === 'co-occurs') { toks.add(c.pattern.a); toks.add(c.pattern.b); }
+      }
+      let counter = 'exploit-preempt-attack';
+      if (toks.has('heal') || toks.has('hot') || toks.has('pres-pull') || toks.has('pres-urgent')) counter = 'exploit-pressure-defense';
+      else if (toks.has('shield')) counter = 'exploit-pressure-defense';
+      else if (toks.has('debuff') || toks.has('blind')) counter = 'exploit-capitalize-debuff';
+      else if (toks.has('critch') || toks.has('critdmg')) counter = 'exploit-disrupt-setup';
+      F.ctRules.push({ selector: '#probe-' + side + '-exploit[data-sub="' + sc.name + '"]', decls: ['--exploit: ' + Guards.cssEscapeString(counter)] });
+      pushMetaEvent(side, 'promote', 'exploit', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+      inventFromContext(side + '-exploit', counter);
+    }
+  };
+
+  lat.pres = makeSubstrate(presSpec);
+  lat.threat = makeSubstrate(threatSpec);
+  lat.dbecon = makeSubstrate(abeconSpec);
+  lat.exploit = makeSubstrate(exploitSpec);
+
+  // SELECTOR SUBSTRATE
+  // Reads all four primitive outputs and picks which primitive owns this turn.
+  // Default rules give plausible behavior at game start; the substrate accretes
+  // its own ratifications as the game progresses, biasing future selection
+  // toward primitives whose votes have repeatedly co-occurred with favorable
+  // structural events. Selectability of each primitive's vote is itself the
+  // selector's input — the selector learns which primitive to defer to under
+  // which integrated state.
+  const selectorSpec = {
+    name: side + '-selector',
+    seedId: 'seed::' + side + '::selector',
+    probeId: 'probe-' + side + '-router',  // reuse the router probe DOM element
+    styleId: 'cascade-' + side + '-selector',
+    outputVar: '--owner',
+    defaultOutput: 'sel-threat',
+    dimsFn: () => ({
+      pres:    (lat.pres    && lat.pres.field.lastOutput)    || 'pres-none',
+      threat:  (lat.threat  && lat.threat.field.lastOutput)  || 'threat-even',
+      abecon:  (lat.dbecon  && lat.dbecon.field.lastOutput)  || 'ab-default',
+      exploit: (lat.exploit && lat.exploit.field.lastOutput) || 'exploit-none',
+      shp: ownHpBand(), php: oppHpBand()
+    }),
+    tokensFn: () => {
+      const t = ['shp-' + ownHpBand(), 'php-' + oppHpBand()];
+      if (lat.pres    && lat.pres.field.lastOutput)    t.push(lat.pres.field.lastOutput);
+      if (lat.threat  && lat.threat.field.lastOutput)  t.push(lat.threat.field.lastOutput);
+      if (lat.dbecon  && lat.dbecon.field.lastOutput)  t.push(lat.dbecon.field.lastOutput);
+      if (lat.exploit && lat.exploit.field.lastOutput) t.push(lat.exploit.field.lastOutput);
+      return t;
+    },
+    domainRules: () => [
+      // DEFAULT: combat. The standing posture is to fight.
+      { when: {}, then: 'sel-threat' },
+      // Threat reads route through threat itself (Attack lives here)
+      { when: { threat: 'threat-even' }, then: 'sel-threat' },
+      { when: { threat: 'threat-winning' }, then: 'sel-exploit' },
+      { when: { threat: 'threat-winning-bad' }, then: 'sel-abecon' },
+      // Abecon's clear opportunity windows take priority over generic combat
+      { when: { abecon: 'ab-execute-opp' }, then: 'sel-abecon' },
+      { when: { abecon: 'ab-finish-window' }, then: 'sel-abecon' },
+      { when: { abecon: 'ab-burst-window' }, then: 'sel-abecon' },
+      // Exploit's signal-driven outputs (NOT exploit-none, NOT defaults)
+      { when: { exploit: 'exploit-pressure-defense' }, then: 'sel-exploit' },
+      { when: { exploit: 'exploit-capitalize-debuff' }, then: 'sel-exploit' },
+      { when: { exploit: 'exploit-disrupt-setup' }, then: 'sel-exploit' },
+      // Defensive routing only when actually hurt
+      { when: { pres: 'pres-pull', shp: 'crit' }, then: 'sel-pres' },
+      { when: { pres: 'pres-urgent' }, then: 'sel-pres' },
+      { when: { pres: 'pres-pull', abecon: 'ab-defensive-tools' }, then: 'sel-abecon' }
+    ],
+    onRatify: (c, F) => {
+      // Selector ratifications are silent (no invention) — they shape future
+      // primitive selection by accumulating selector-side structure only.
+      pushMetaEvent(side, 'rat', 'selector', c);
+    },
+    onPromote: (sc, idMap, F) => {
+      pushMetaEvent(side, 'promote', 'selector', { id: sc.name, pattern: { a: sc.name, b: 'sub' } });
+    }
+  };
+  lat.selector = makeSubstrate(selectorSpec);
+
+  // The router is now a thin shim that asks the selector which primitive owns
+  // this turn, then queries that primitive's vote from inventory. The router
+  // exists only to bridge the orchestration in doTurn; it owns no rules.
+  lat.router = {
+    side: side,
+    decide() {
+      const ownerOutput = lat.selector.field.lastOutput || 'sel-pres';
+      // Map selector output to primitive name and lastOutput.
+      let primName = 'pres';
+      let primOutput = 'pres-none';
+      switch (ownerOutput) {
+        case 'sel-pres':
+          primName = 'pres';
+          primOutput = lat.pres.field.lastOutput || 'pres-none';
+          break;
+        case 'sel-threat':
+          primName = 'threat';
+          primOutput = lat.threat.field.lastOutput || 'threat-even';
+          break;
+        case 'sel-abecon':
+          primName = 'abecon';
+          primOutput = lat.dbecon.field.lastOutput || 'ab-default';
+          break;
+        case 'sel-exploit':
+          primName = 'exploit';
+          primOutput = lat.exploit.field.lastOutput || 'exploit-none';
+          break;
+        default:
+          primName = 'pres';
+          primOutput = lat.pres.field.lastOutput || 'pres-none';
+      }
+      // Query that primitive's preferred ability from the per-side inventory.
+      let vote = voteFromInventory(side, primOutput);
+      // Fallback chain: try other primitives if this one has no ready abilities tagged.
+      if (!vote) {
+        for (const fallbackOutput of [
+          lat.pres.field.lastOutput, lat.threat.field.lastOutput,
+          lat.dbecon.field.lastOutput, lat.exploit.field.lastOutput
+        ]) {
+          vote = voteFromInventory(side, fallbackOutput || '');
+          if (vote) break;
+        }
+      }
+      if (!vote) {
+        // Last resort: any ready vector at all.
+        const ready = game[side].inventory.filter(v => (game[side].cooldownMap[v.id] || 0) === 0);
+        vote = ready.length ? ready[Math.floor(Math.random() * ready.length)] : game[side].inventory[0];
+      }
+      return { vec: vote, owner: primName, ownerOutput: primOutput, selectorOutput: ownerOutput };
+    }
+  };
+
+  return lat;
+}
+
+// ============================================================================
+// META EVENT BUFFERING
+// When any substrate ratifies or promotes, an event is pushed to the meta-
+// substrate's buffer. The meta-substrate's input adapter reads from this
+// buffer when constructing tokens for its step. This is the wire-level
+// coupling: ratifications on either side become input for a third party
+// that observes both sides without commanding either.
+// ============================================================================
+function pushMetaEvent(side, type, subName, c) {
+  if (!meta) return;
+  if (!meta.eventBuffer) meta.eventBuffer = [];
+  const tokens = [];
+  if (c && c.pattern) {
+    if (c.pattern.kind === 'co-occurs') { tokens.push(c.pattern.a); tokens.push(c.pattern.b); }
+    else if (c.pattern.kind === 'has-token') tokens.push(c.pattern.token);
+  }
+  meta.eventBuffer.push({
+    side, type, subName, tokens, step: game ? game.totalSteps : 0
+  });
+  if (meta.eventBuffer.length > 16) meta.eventBuffer.shift();
+  meta.recentARats = (meta.recentARats || 0) * 0.9 + (side === 'a' ? 1 : 0);
+  meta.recentBRats = (meta.recentBRats || 0) * 0.9 + (side === 'b' ? 1 : 0);
+}
+
+// ============================================================================
+// ABILITY EXECUTION
+// Each action is a vector. The execution path is generic — there are no
+// hardcoded ability handlers anymore. A vector specifies its own targeting,
+// damage shape, hit probability, cooldown, and effect; applyVector reads
+// these and mutates state accordingly. Seed abilities and inventions share
+// this single pipeline.
+// ============================================================================
+
+// Pick from an actor's inventory the best vote for a given primitive output.
+// Filter by tag-match (preferred) then by readiness, then weighted by
+// selectability. Tie-breaks resolve via uniform random — this is the only
+// place the architecture's randomness enters action choice.
+function voteFromInventory(side, output) {
+  const inv = game[side].inventory;
+  const cdMap = game[side].cooldownMap;
+  const ready = inv.filter(v => (cdMap[v.id] || 0) === 0);
+  if (!ready.length) return null;
+
+  // Prefer tag-matched abilities. Fall back to any ready ability if none match.
+  const tagMatch = ready.filter(v => v.tag === output);
+  const pool = tagMatch.length ? tagMatch : ready;
+
+  // Weighted sample by selectability + 1 (so zero-selectability abilities still draw).
+  let total = 0;
+  for (const v of pool) total += Math.max(0.1, v.selectability + 1);
+  let r = Math.random() * total;
+  for (const v of pool) {
+    r -= Math.max(0.1, v.selectability + 1);
+    if (r <= 0) return v;
+  }
+  return pool[pool.length - 1];
+}
+
+// Apply a vector. Mutates actor/target state. Returns a result descriptor
+// for the log.
+function applyVector(actor, target, vec) {
+  // Cooldown is set on the actor for this vector's id, regardless of outcome.
+  actor.cooldownMap[vec.id] = vec.cooldown;
+
+  // Cleanse is a special operation — clears actor's debuffs and resets miss state.
+  if (vec.effect === 'cleanse') {
+    actor.dots = [];
+    actor.activeEffects = (actor.activeEffects || []).filter(e => e.kind !== 'debuff');
+    actor.incomingMiss = 0;
+    actor.willMissNext = false;
+    return { kind: 'cleansed', vec };
+  }
+
+  // Self-targeted: heal, hot, shield, evade, counter, sustain, critch, critdmg.
+  if (vec.target === 'self') {
+    let totalHeal = 0;
+    if (vec.effect === 'heal' || (vec.damage > 0 && vec.damageType === 'instant')) {
+      const h = Math.max(0, Math.round(vec.effectMag || vec.damage));
+      actor.hp = Math.min(200, actor.hp + h);
+      totalHeal += h;
+    }
+    if (vec.effect === 'hot' && vec.effectMag > 0 && vec.effectDuration > 0) {
+      actor.hots.push({ remaining: vec.effectDuration, perTick: Math.max(1, Math.round(vec.effectMag)) });
+    }
+    if (vec.effect === 'shield' && vec.effectMag > 0) {
+      actor.shieldHp = (actor.shieldHp || 0) + Math.round(vec.effectMag);
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'shield', mag: Math.round(vec.effectMag), remaining: vec.effectDuration || 4 });
+    }
+    if (vec.effect === 'evade' && vec.effectMag > 0) {
+      actor.incomingMiss = Math.min(0.7, (actor.incomingMiss || 0) + vec.effectMag);
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'evade', mag: vec.effectMag, remaining: vec.effectDuration || 4 });
+    }
+    if (vec.effect === 'counter' && vec.effectMag > 0) {
+      actor.counterActive = (actor.counterActive || 0) + (vec.effectDuration || 2);
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'counter', mag: vec.effectMag, remaining: vec.effectDuration || 2 });
+    }
+    if (vec.effect === 'sustain') {
+      actor.sustainActive = true;
+      if (vec.effectMag > 0) actor.hots.push({ remaining: vec.effectDuration || 4, perTick: Math.round(vec.effectMag) });
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'sustain', mag: 0, remaining: vec.effectDuration || 4 });
+    }
+    if (vec.effect === 'critch') {
+      actor.critChanceBuff = Math.max(actor.critChanceBuff || 0, vec.effectMag || 0.3);
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'critch', mag: vec.effectMag || 0.3, remaining: vec.effectDuration || 3 });
+    }
+    if (vec.effect === 'critdmg') {
+      actor.critDmgBuff = Math.max(actor.critDmgBuff || 0, vec.effectMag || 0.75);
+      actor.activeEffects.push({ id: vec.id, kind: 'buff', effect: 'critdmg', mag: vec.effectMag || 0.75, remaining: vec.effectDuration || 3 });
+    }
+    return { kind: 'self', heal: totalHeal, vec };
+  }
+
+  // Opp-targeted: damage, dot, drain, blind, debuff.
+  // Blind override (target's prior turn was blinded): the actor itself misses.
+  if (target.willMissNext && vec.damage > 0) {
+    target.willMissNext = false;
+    return { kind: 'blinded-miss', vec };
+  }
+
+  // Hit roll. Combine vec.hitProb with actor's evadeMiss and target's incomingMiss.
+  const baseMissEnv = (actor.evadeMiss || 0) + (target.incomingMiss || 0);
+  const effectiveHit = Math.max(0.05, vec.hitProb * (1 - baseMissEnv));
+  if (Math.random() > effectiveHit) {
+    return { miss: true, vec };
+  }
+
+  // Apply damage of the appropriate type.
+  let dmgResult = null;
+  if (vec.damageType === 'instant' && vec.damage > 0) {
+    const critChance = 0.10 + (actor.critChanceBuff || 0);
+    const critMul = 1.75 + (actor.critDmgBuff || 0);
+    const crit = Math.random() < critChance;
+    let dmg = Math.round(vec.damage + gaussian() * Math.sqrt(vec.damage));
+    if (dmg < 1) dmg = 1;
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    if (crit) dmg = Math.round(dmg * critMul);
+    dmgResult = applyDamage(actor, target, dmg, crit, vec.name.toUpperCase());
+  } else if (vec.damageType === 'dot' && (vec.effectMag > 0 || vec.damage > 0)) {
+    const perTick = Math.max(1, Math.round(vec.effectMag || vec.damage));
+    const ticks = Math.max(1, vec.effectDuration || 4);
+    target.dots.push({ remaining: ticks, perTick, decay: true });
+    dmgResult = { kind: 'dot-applied', vec };
+  } else if (vec.damageType === 'drain' && vec.damage > 0) {
+    let dmg = Math.round(vec.damage + gaussian() * Math.sqrt(vec.damage));
+    if (dmg < 1) dmg = 1;
+    if (actor.sustainActive) dmg = Math.floor(dmg * 0.5);
+    const r = applyDamage(actor, target, dmg, false, vec.name.toUpperCase());
+    if (r && !r.miss) {
+      const heal = Math.floor(dmg / 2);
+      actor.hp = Math.min(200, actor.hp + heal);
+      r.heal = heal;
+    }
+    dmgResult = r;
+  }
+
+  // Apply opp-side effects (blind, debuff) on top of damage if landed.
+  if (vec.effect === 'blind') {
+    target.willMissNext = true;
+    target.activeEffects.push({ id: vec.id, kind: 'debuff', effect: 'blind', mag: 1, remaining: 1 });
+  }
+  if (vec.effect === 'debuff' && vec.effectMag > 0) {
+    target.incomingMiss = Math.min(0.7, (target.incomingMiss || 0) + vec.effectMag);
+    target.activeEffects.push({ id: vec.id, kind: 'debuff', effect: 'debuff', mag: vec.effectMag, remaining: vec.effectDuration || 5 });
+  }
+
+  if (dmgResult) { dmgResult.vec = vec; return dmgResult; }
+  return { kind: 'effect-only', vec };
+}
+
+
+function applyDamage(actor, target, rawDmg, crit, label) {
+  // Counter stance: half damage reflects back
+  if (target.counterActive > 0 && rawDmg > 0) {
+    const reflect = Math.floor(rawDmg / 2);
+    const remaining = rawDmg - reflect;
+    actor.hp = Math.max(0, actor.hp - reflect);
+    target.justTookDamage = true;
+    rawDmg = remaining;
+  }
+  // Shield absorbs first
+  let absorbed = 0;
+  if (target.shieldHp > 0) {
+    absorbed = Math.min(target.shieldHp, rawDmg);
+    target.shieldHp -= absorbed;
+    rawDmg -= absorbed;
+  }
+  if (rawDmg > 0) {
+    target.hp = Math.max(0, target.hp - rawDmg);
+    target.justTookDamage = true;
+  }
+  return { kind: 'damage', dmg: rawDmg, absorbed, crit, label };
+}
+
+// ============================================================================
+// GAME LOOP
+// ============================================================================
+function makePlayerState() {
+  // Inventory is a fresh deep-copy of the seed vectors so per-side selectability
+  // accumulates independently. Inventions added during play extend this list.
+  const inventory = SEED_ABILITIES.map(v => Object.assign({}, v, { selectability: 0 }));
+  const cooldownMap = {};
+  for (const v of inventory) cooldownMap[v.id] = 0;
+  return {
+    hp: 200,
+    inventory, cooldownMap,
+    // Legacy-shaped fields kept so the rest of the game state plumbing keeps
+    // working unchanged. The melting-pot pipeline goes through cooldownMap
+    // and applyVector; these legacy fields are still touched by tickEffects
+    // and applyDamage.
+    cooldowns: {},  // unused now but tickEffects may reference it; left empty
+    dots: [], hots: [],
+    activeEffects: [],
+    incomingMiss: 0, evadeMiss: 0,
+    critChanceBuff: 0, critDmgBuff: 0,
+    shieldHp: 0, counterActive: 0, sustainActive: false,
+    willMissNext: false,
+    justTookDamage: false,
+    oppRecentActions: [],
+    // Per-round invention counter for diagnostics.
+    inventedThisRound: 0
+  };
+}
+
+// Symmetric start: both sides begin every round at 200/200 HP.
+function makeWoundedBState() {
+  const s = makePlayerState();
+  s.hp = 20;
+  return s;
+}
+
+game = {
+  round: 1, maxRounds: 10,
+  scoreA: 0, scoreB: 0,
+  a: makePlayerState(), b: makePlayerState(),
+  totalSteps: 0,
+  active: 'a',
+  running: false, paused: false, gameOver: false,
+  speed: 20,
+  reports: [],
+  latticeA: null, latticeB: null,
+
+  hpBand(hp) {
+    if (hp <= 50) return 'crit';
+    if (hp <= 100) return 'low';
+    if (hp <= 150) return 'ok';
+    return 'full';
+  },
+
+  log(who, text, cls) {
+    const l = document.getElementById('log');
+    const div = document.createElement('div');
+    div.className = cls || (who === 'a' ? 'a' : (who === 'b' ? 'b' : (who === 'meta' ? 'meta' : 'sys')));
+    const p = who === 'a' ? '▸ A · ' : (who === 'b' ? '◂ B · ' : (who === 'meta' ? '◆ ' : '· '));
+    div.textContent = p + text;
+    l.appendChild(div);
+    l.scrollTop = l.scrollHeight;
+  },
+
+  tickEffects(p) {
+    // DoTs
+    for (let i = p.dots.length - 1; i >= 0; i--) {
+      const d = p.dots[i];
+      let amt = d.perTick;
+      if (d.decay) amt = Math.max(2, d.perTick - (4 - d.remaining));
+      p.hp = Math.max(0, p.hp - amt);
+      p.justTookDamage = true;
+      d.remaining--;
+      if (d.remaining <= 0) p.dots.splice(i, 1);
+    }
+    // HoTs
+    for (let i = p.hots.length - 1; i >= 0; i--) {
+      const h = p.hots[i];
+      p.hp = Math.min(200, p.hp + h.perTick);
+      h.remaining--;
+      if (h.remaining <= 0) p.hots.splice(i, 1);
+    }
+    // Effect timers — generic rollback driven by stored effect+mag.
+    for (let i = p.activeEffects.length - 1; i >= 0; i--) {
+      const e = p.activeEffects[i];
+      e.remaining--;
+      if (e.remaining <= 0) {
+        if (e.effect === 'critch')   p.critChanceBuff = Math.max(0, (p.critChanceBuff || 0) - (e.mag || 0));
+        if (e.effect === 'critdmg')  p.critDmgBuff    = Math.max(0, (p.critDmgBuff || 0)    - (e.mag || 0));
+        if (e.effect === 'evade')    p.incomingMiss   = Math.max(0, (p.incomingMiss || 0)   - (e.mag || 0));
+        if (e.effect === 'shield')   p.shieldHp       = 0;  // shield is consumable; clear remaining
+        if (e.effect === 'counter')  p.counterActive  = 0;
+        if (e.effect === 'sustain')  p.sustainActive  = false;
+        if (e.effect === 'debuff')   p.incomingMiss   = Math.max(0, (p.incomingMiss || 0) - (e.mag || 0));
+        // 'blind' has no rollback — it consumes itself in willMissNext on next attack
+        p.activeEffects.splice(i, 1);
+      }
+    }
+    if (p.counterActive > 0) p.counterActive--;
+    // Cooldowns — single map covering seeds and inventions.
+    for (const id of Object.keys(p.cooldownMap)) {
+      if (p.cooldownMap[id] > 0) p.cooldownMap[id]--;
+    }
+  },
+
+  doTurn() {
+    if (this.gameOver) return false;
+    const side = this.active;
+    const oppSide = side === 'a' ? 'b' : 'a';
+    const actor = this[side];
+    const target = this[oppSide];
+    const lat = side === 'a' ? this.latticeA : this.latticeB;
+
+    actor.justTookDamage = false; target.justTookDamage = false;
+
+    // Sequential pass: COMBAT-FIRST ordering. Threat establishes the combat
+    // read with no priors; exploit builds on threat; abecon reads both;
+    // pres comes LAST as a modulator that reacts to the offensive context
+    // rather than poisoning it. Selector sees full post-pass state.
+    lat.threat.step();  lat.threat.evaluate();
+    lat.exploit.step(); lat.exploit.evaluate();
+    lat.dbecon.step();  lat.dbecon.evaluate();
+    lat.pres.step();    lat.pres.evaluate();
+    lat.selector.step();lat.selector.evaluate();
+
+    // Selector + per-primitive vote = action
+    const decision = lat.router.decide();
+    const vec = decision.vec;
+    const tier = decision.selectorOutput + '/' + decision.ownerOutput;
+
+    // Snapshot pre-action state for selectability scoring
+    const preSelfHp = actor.hp;
+    const preOppHp  = target.hp;
+
+    // Generic execution path
+    const result = applyVector(actor, target, vec);
+
+    // Build log line. Inventions show their full vector descriptor on first
+    // appearance; seed abilities show their familiar name.
+    const isInv = vec.id.startsWith('inv-');
+    const label = vec.name + (isInv ? ' [' + vec.tag + '/' + vec.target + '/' + vec.effect + ']' : '');
+    let logMsg = label + ' [' + tier + ']';
+    let logCls = null;
+
+    if (result) {
+      if (result.miss) {
+        logMsg = label + ' missed [' + tier + ']';
+        logCls = 'miss';
+      } else if (result.kind === 'blinded-miss') {
+        logMsg = label + ' BLINDED [' + tier + ']';
+        logCls = 'miss';
+      } else if (result.kind === 'damage') {
+        const lbl = result.label ? result.label + ' for ' : '';
+        logMsg = label + ' — ' + lbl + result.dmg + ' dmg' +
+                 (result.absorbed ? ' (' + result.absorbed + ' absorbed)' : '') +
+                 (result.crit ? ' CRIT' : '') +
+                 (result.heal ? ' (drained ' + result.heal + ')' : '') +
+                 ' [' + tier + ']';
+        if (result.crit) logCls = 'crit';
+      } else if (result.kind === 'self') {
+        if (result.heal > 0) logMsg = 'heal +' + result.heal + ' hp via ' + label + ' [' + tier + ']';
+      } else if (result.kind === 'cleansed') {
+        logMsg = label + ' cleansed [' + tier + ']';
+      } else if (result.kind === 'dot-applied') {
+        logMsg = label + ' applied dot [' + tier + ']';
+      } else if (result.kind === 'effect-only') {
+        logMsg = label + ' [' + tier + ']';
+      }
+    }
+    this.log(side, logMsg, logCls);
+
+    // Selectability accumulation. The substrate's monotonic accretion shapes
+    // primitive structure; selectability is the analogous accretion on the
+    // ability vectors themselves. Net favorable change increments, net
+    // unfavorable decrements (slowly).
+    const selfDelta = actor.hp - preSelfHp;
+    const oppDelta  = preOppHp - target.hp;
+    let payoff = 0;
+    if (vec.target === 'self') payoff = selfDelta * 0.05;          // healed: +; took damage: -
+    else                       payoff = oppDelta * 0.05;           // dealt damage: +; opp healed: -
+    if (result && result.miss) payoff -= 0.5;
+    if (result && result.kind === 'blinded-miss') payoff -= 0.5;
+    vec.selectability = (vec.selectability || 0) * 0.98 + payoff;  // gentle decay so old structure can fade
+    // Bound to keep math stable.
+    if (vec.selectability >  20) vec.selectability =  20;
+    if (vec.selectability < -20) vec.selectability = -20;
+
+    // Track opp's action by TAG (not seed id) so dom analysis works on
+    // both seed and invented vectors uniformly.
+    target.oppRecentActions.push(vec.tag || 'threat-even');
+    if (target.oppRecentActions.length > 10) target.oppRecentActions.shift();
+
+    // Tick effects on both sides
+    this.tickEffects(actor);
+    this.tickEffects(target);
+
+    this.totalSteps++;
+
+    // Check round end
+    if (this.a.hp <= 0) {
+      this.scoreB++;
+      this.endRound('b', this.totalSteps);
+      return true;
+    }
+    if (this.b.hp <= 0) {
+      this.scoreA++;
+      this.endRound('a', this.totalSteps);
+      return true;
+    }
+
+    this.active = oppSide;
+    return false;
+  },
+
+  endRound(winner, totalSteps) {
+    const lat = this.latticeA, lab = this.latticeB;
+    this.reports.push({
+      round: this.reports.length,
+      winner: winner,
+      turns: totalSteps - (this.reports.reduce((s, r) => s + r.turns, 0)),
+      a: lat.pres.field.constraints.length + lat.threat.field.constraints.length + lat.dbecon.field.constraints.length + lat.exploit.field.constraints.length +
+         ' / ' + (lat.pres.field.ratified + lat.threat.field.ratified + lat.dbecon.field.ratified + lat.exploit.field.ratified) +
+         ' / ' + (lat.pres.field.subcascades.length + lat.threat.field.subcascades.length + lat.dbecon.field.subcascades.length + lat.exploit.field.subcascades.length),
+      b: lab.pres.field.constraints.length + lab.threat.field.constraints.length + lab.dbecon.field.constraints.length + lab.exploit.field.constraints.length +
+         ' / ' + (lab.pres.field.ratified + lab.threat.field.ratified + lab.dbecon.field.ratified + lab.exploit.field.ratified) +
+         ' / ' + (lab.pres.field.subcascades.length + lab.threat.field.subcascades.length + lab.dbecon.field.subcascades.length + lab.exploit.field.subcascades.length),
+      meta: '— / — / —'
+    });
+    this.log('sys', '═ Round ' + this.round + ' ended · ' + (winner === 'a' ? 'A' : 'B') + ' wins ═');
+    this.renderReport();
+    if (this.round >= this.maxRounds) {
+      this.gameOver = true;
+      const result = this.scoreA > this.scoreB ? 'A WINS' : this.scoreA < this.scoreB ? 'B WINS' : 'TIE';
+      this.log('sys', '═══ SIMULATION COMPLETE · A=' + this.scoreA + ' B=' + this.scoreB + ' · ' + result + ' ═══');
+      document.getElementById('btn-run').disabled = false;
+      document.getElementById('btn-step').disabled = false;
+      return;
+    }
+    this.round++;
+    this.a = makePlayerState(); this.b = makePlayerState();
+    this.active = Math.random() < 0.5 ? 'a' : 'b';
+    this.log('sys', '─── Round ' + this.round + ' begins · ' + (this.active === 'a' ? 'A' : 'B') + ' acts first ───');
+    this.render();
+  },
+
+  render() {
+    document.getElementById('round').textContent = this.round;
+    document.getElementById('score-a').textContent = this.scoreA;
+    document.getElementById('score-b').textContent = this.scoreB;
+    document.getElementById('a-hp').textContent = this.a.hp;
+    document.getElementById('b-hp').textContent = this.b.hp;
+    document.getElementById('a-bar').style.width = (this.a.hp / 200 * 100) + '%';
+    document.getElementById('b-bar').style.width = (this.b.hp / 200 * 100) + '%';
+
+    const renderEffects = (p, id) => {
+      const el = document.getElementById(id);
+      if (p.activeEffects.length === 0 && p.dots.length === 0 && p.hots.length === 0 && p.shieldHp === 0) {
+        el.innerHTML = '&nbsp;';
+        return;
+      }
+      let h = '';
+      for (const e of p.activeEffects) h += '<span class="effect-active">' + e.id + ' ' + e.remaining + 't</span>';
+      for (let i = 0; i < p.dots.length; i++) h += '<span class="effect-active">DoT ' + p.dots[i].remaining + 't</span>';
+      for (let i = 0; i < p.hots.length; i++) h += '<span class="effect-active">HoT ' + p.hots[i].remaining + 't</span>';
+      if (p.shieldHp > 0) h += '<span class="effect-active">Shield ' + p.shieldHp + '</span>';
+      el.innerHTML = h;
+    };
+    renderEffects(this.a, 'a-effects'); renderEffects(this.b, 'b-effects');
+
+    const renderAbilities = (p, id) => {
+      const el = document.getElementById(id);
+      let h = '';
+      // Show seed abilities first (always present), then any inventions, with
+      // a count summary at top. Inventory grows during play; cap visible to
+      // avoid runaway DOM if the substrate gets very generative.
+      const seeds = p.inventory.filter(v => !v.id.startsWith('inv-'));
+      const inventions = p.inventory.filter(v => v.id.startsWith('inv-'));
+      h += '<div class="ability-cell ready" style="grid-column: 1 / -1; text-align: center;">' +
+           '<div class="ability-name">' + seeds.length + ' seed · ' + inventions.length + ' invented</div>' +
+           '<div class="ability-state">selectability max ' + Math.max(0, ...p.inventory.map(v => v.selectability || 0)).toFixed(1) + '</div></div>';
+      for (const v of seeds) {
+        const cd = p.cooldownMap[v.id] || 0;
+        const cls = cd > 0 ? 'cd' : 'ready';
+        h += '<div class="ability-cell ' + cls + '">' +
+             '<div class="ability-name">' + v.name + '</div>' +
+             '<div class="ability-state">' + (cd > 0 ? cd + 't' : 'ready') +
+             ' · sel ' + (v.selectability || 0).toFixed(1) + '</div></div>';
+      }
+      // Show top-selectability inventions (max 8 to keep DOM bounded)
+      const topInventions = inventions.slice().sort((a, b) => (b.selectability || 0) - (a.selectability || 0)).slice(0, 8);
+      for (const v of topInventions) {
+        const cd = p.cooldownMap[v.id] || 0;
+        const cls = cd > 0 ? 'cd' : 'ready';
+        h += '<div class="ability-cell ' + cls + '" title="' + v.tag + ' / ' + v.target + ' / dmg=' + v.damage + ' / eff=' + v.effect + '">' +
+             '<div class="ability-name" style="font-size:0.7em">' + v.id.slice(-8) + '</div>' +
+             '<div class="ability-state">' + (cd > 0 ? cd + 't' : 'rdy') +
+             ' · sel ' + (v.selectability || 0).toFixed(1) + '</div></div>';
+      }
+      el.innerHTML = h;
+    };
+    renderAbilities(this.a, 'a-abilities'); renderAbilities(this.b, 'b-abilities');
+
+    const renderSubs = (lat, id) => {
+      const el = document.getElementById(id);
+      const subs = ['pres', 'threat', 'dbecon', 'exploit', 'selector'];
+      let h = '';
+      for (const s of subs) {
+        const sub = lat[s];
+        if (!sub) continue;
+        const F = sub.field;
+        h += '<div class="substrate-box"><h2>' + s + '</h2>' +
+             '<span class="out">' + (F.lastOutput || F.spec.defaultOutput) + '</span> ' +
+             '<span class="stats">cons ' + F.constraints.length + ' · rat ' + F.ratified + ' · sub ' + F.subcascades.length + '</span></div>';
+      }
+      el.innerHTML = h;
+    };
+    renderSubs(this.latticeA, 'a-subs');
+    renderSubs(this.latticeB, 'b-subs');
+
+    // Coordination panel — CROSSED in this variant
+    const metaEl = document.getElementById('meta-sub');
+    let panel = '<div class="substrate-box meta"><h2>coordination</h2>' +
+      '<span class="out">CROSSED</span> ' +
+      '<span class="stats">cross-concern · stateless · origin-tagged</span>';
+    // Show the current cross-concern projections being seen by each substrate
+    if (this.latticeA && this.latticeB) {
+      const aSees = {
+        pres: 'opp-' + (this.latticeB.exploit.field.lastOutput || '?'),
+        threat: 'opp-' + (this.latticeB.dbecon.field.lastOutput || '?'),
+        abecon: 'opp-' + (this.latticeB.threat.field.lastOutput || '?'),
+        exploit: 'opp-' + (this.latticeB.pres.field.lastOutput || '?')
+      };
+      const bSees = {
+        pres: 'opp-' + (this.latticeA.exploit.field.lastOutput || '?'),
+        threat: 'opp-' + (this.latticeA.dbecon.field.lastOutput || '?'),
+        abecon: 'opp-' + (this.latticeA.threat.field.lastOutput || '?'),
+        exploit: 'opp-' + (this.latticeA.pres.field.lastOutput || '?')
+      };
+      panel += '<div class="stats" style="margin-top:6px;font-size:11px">' +
+        '<b>A.pres←</b>' + aSees.pres + ' · <b>A.threat←</b>' + aSees.threat + '<br>' +
+        '<b>A.abecon←</b>' + aSees.abecon + ' · <b>A.exploit←</b>' + aSees.exploit + '<br>' +
+        '<b>B.pres←</b>' + bSees.pres + ' · <b>B.threat←</b>' + bSees.threat + '<br>' +
+        '<b>B.abecon←</b>' + bSees.abecon + ' · <b>B.exploit←</b>' + bSees.exploit +
+        '</div>';
+    }
+    panel += '</div>';
+    metaEl.innerHTML = panel;
+
+    // Router displays
+    const decA = this.latticeA.router.decide();
+    const decB = this.latticeB.router.decide();
+    document.getElementById('a-router-out').textContent = decA.action;
+    document.getElementById('a-router-tier').textContent = decA.tier;
+    document.getElementById('b-router-out').textContent = decB.action;
+    document.getElementById('b-router-tier').textContent = decB.tier;
+  },
+
+  renderReport() {
+    const tbody = document.getElementById('report-body');
+    tbody.innerHTML = '';
+    for (const r of this.reports) {
+      const tr = document.createElement('tr');
+      tr.className = r.winner === 'a' ? 'winner-a' : 'winner-b';
+      tr.innerHTML = '<td>' + r.round + '</td>' +
+                     '<td>' + (r.winner === 'a' ? 'A' : 'B') + '</td>' +
+                     '<td>' + r.turns + '</td>' +
+                     '<td>' + r.a + '</td>' +
+                     '<td>' + r.b + '</td>' +
+                     '<td>' + r.meta + '</td>';
+      tbody.appendChild(tr);
+    }
+  },
+
+  async runFull() {
+    if (this.running) return;
+    this.running = true;
+    document.getElementById('btn-run').disabled = true;
+    document.getElementById('btn-step').disabled = true;
+    document.getElementById('status').textContent = 'simulating...';
+    while (!this.gameOver) {
+      this.doTurn();
+      if (this.totalSteps % 10 === 0) {
+        this.render();
+        if (this.speed > 0) await new Promise(r => setTimeout(r, this.speed));
+        else await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    this.render();
+    this.running = false;
+    document.getElementById('status').textContent = 'complete';
+  },
+
+  doStep() {
+    if (this.running || this.gameOver) return;
+    this.doTurn();
+    this.render();
+  },
+
+  reset() {
+    this.round = 1; this.scoreA = 0; this.scoreB = 0; this.totalSteps = 0;
+    this.a = makePlayerState(); this.b = makePlayerState();
+    this.active = Math.random() < 0.5 ? 'a' : 'b';
+    this.gameOver = false; this.running = false;
+    this.reports = [];
+    this.latticeA = makeLattice('a', this);
+    this.latticeB = makeLattice('b', this);
+    meta = null;  // META DISABLED — no cross-lattice coupling
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-step').disabled = false;
+    document.getElementById('status').textContent = 'ready';
+    this.log('sys', 'reset · SYMMETRIC · 200/200 both sides · ' + SEED_ABILITIES.length + ' seed abilities (inventory grows during play) · crossed channels');
+    this.renderReport();
+    this.render();
+  },
+
+  copyRunData() {
+    const lines = [];
+    lines.push('# RICH SUBSTRATE DUEL · SYMMETRIC · CROSSED COORDINATION · RUN DATA');
+    lines.push('');
+    lines.push('Generated: ' + new Date().toISOString());
+    lines.push('Seed abilities: ' + SEED_ABILITIES.length);
+    lines.push('Start: SYMMETRIC · both sides 200/200 · no swap');
+    lines.push('Coordination: CROSSED · cross-concern pairing · pres↔exploit · threat↔abecon · stateless · origin-tagged');
+    lines.push('Score: A=' + this.scoreA + ' · B=' + this.scoreB);
+    lines.push('Total turns: ' + this.totalSteps);
+    lines.push('');
+    lines.push('## Round metrics');
+    lines.push('Round\tWinner\tTurns\tA cons/rat/sub\tB cons/rat/sub');
+    for (const r of this.reports) {
+      lines.push(r.round + '\t' + (r.winner === 'a' ? 'A' : 'B') + '\t' + r.turns + '\t' + r.a + '\t' + r.b);
+    }
+    lines.push('');
+    lines.push('## Substrate end-state');
+    const latRender = (label, lat) => {
+      lines.push('### ' + label);
+      for (const s of ['pres', 'threat', 'dbecon', 'exploit']) {
+        const F = lat[s].field;
+        lines.push(s + ': cons=' + F.constraints.length + ' rat=' + F.ratified +
+          ' sub=' + F.subcascades.length + ' delta=' + F.vectorDelta.scalar.toFixed(3) +
+          ' lastOut=' + (F.lastOutput || F.spec.defaultOutput));
+      }
+    };
+    latRender('Player A', this.latticeA);
+    lines.push('');
+    latRender('Player B', this.latticeB);
+    lines.push('');
+    lines.push('### Coordination layer');
+    lines.push('CROSSED — cross-concern pairing, stateless origin-tagged channels');
+    lines.push('  pres-A ↔ exploit-B   (defensive-commitment ↔ offensive-opportunity)');
+    lines.push('  exploit-A ↔ pres-B');
+    lines.push('  threat-A ↔ abecon-B  (strategic-balance ↔ tactical-readiness)');
+    lines.push('  abecon-A ↔ threat-B');
+    lines.push('No same-concern coupling. No mirror-image symmetry.');
+    lines.push('');
+    lines.push('## Combat log');
+    lines.push('');
+    const logEl = document.getElementById('log');
+    for (const child of logEl.children) lines.push(child.textContent || '');
+    const payload = lines.join('\n');
+
+    const showConfirm = (msg, ok) => {
+      const el = document.getElementById('copy-confirm');
+      el.textContent = msg;
+      el.style.color = ok ? '#2c8a4a' : '#b13030';
+      setTimeout(() => { el.textContent = ''; }, 2400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload).then(
+        () => showConfirm('copied · ' + payload.length + ' chars', true),
+        () => {
+          const ta = document.createElement('textarea');
+          ta.value = payload; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+          document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); showConfirm('copied (fallback)', true); }
+          catch (e) { showConfirm('copy failed', false); console.log(payload); }
+          document.body.removeChild(ta);
+        });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = payload; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showConfirm('copied (legacy)', true); }
+      catch (e) { showConfirm('copy failed', false); console.log(payload); }
+      document.body.removeChild(ta);
+    }
+  },
+
+  init() {
+    this.latticeA = makeLattice('a', this);
+    this.latticeB = makeLattice('b', this);
+    meta = null;  // META DISABLED
+    document.getElementById('btn-run').addEventListener('click', () => this.runFull());
+    document.getElementById('btn-step').addEventListener('click', () => this.doStep());
+    document.getElementById('btn-reset').addEventListener('click', () => this.reset());
+    document.getElementById('btn-copy').addEventListener('click', () => this.copyRunData());
+    const slider = document.getElementById('speed-slider');
+    slider.addEventListener('input', () => {
+      this.speed = parseInt(slider.value, 10);
+      document.getElementById('speed-val').textContent = this.speed + 'ms';
+    });
+    this.log('sys', 'rich substrate duel · SYMMETRIC · CROSSED COORDINATION');
+    this.log('sys', '· both sides start every round at 200/200 hp');
+    this.log('sys', '· no swap, no asymmetric perturbation');
+    this.log('sys', '· seed abilities=' + SEED_ABILITIES.length);
+    this.log('sys', '· crossed channels: pres↔exploit · threat↔abecon (cross-concern)');
+    this.log('sys', '· stateless · origin-tagged · external to substrates');
+    this.log('sys', 'press RUN SIMULATION to play 10 rounds');
+    this.render();
+  }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => game.init());
+else game.init();
+
+})();
+</script>
+</body>
+</html>

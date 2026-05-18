@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Substrate Lattice Duel</title>
+<style>
+  /* ---------------------------------------------------------------------
+     UI styles. Plain white background, simple boxes, monospace text.
+     The visualization needs to make the four upstream substrates and
+     the router each individually legible. We give each substrate its
+     own panel so the player can see when each one's structural state
+     changes — that is what makes the lattice's operation observable.
+     --------------------------------------------------------------------- */
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: white; color: #111;
+    padding: 14px; max-width: 1100px; margin: 0 auto;
+    font-size: 12px; line-height: 1.45;
+  }
+  h1 { font-size: 13px; letter-spacing: 2px; margin: 0 0 12px 0; }
+  h2 { font-size: 10px; letter-spacing: 1px; margin: 0 0 6px 0; color: #555; text-transform: uppercase; }
+  h3 { font-size: 9px; letter-spacing: 1px; margin: 6px 0 4px 0; color: #777; }
+  .box { border: 1px solid #999; padding: 10px 12px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; }
+  .col { flex: 1; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+  .hp-bar { height: 16px; border: 1px solid #999; background: #f0f0f0; margin-top: 2px; }
+  .hp-fill { height: 100%; transition: width 0.25s; }
+  .hp-fill.you { background: #2c8a4a; }
+  .hp-fill.opp { background: #b13030; }
+  .log {
+    height: 240px; overflow-y: auto;
+    background: #fafafa; padding: 8px;
+    font-size: 11px; line-height: 1.5;
+    border: 1px solid #ccc;
+  }
+  .log div { margin-bottom: 1px; }
+  .log .you { color: #1b6e3a; }
+  .log .opp { color: #9a2828; }
+  .log .sys { color: #666; }
+  .log .crit { color: #c25500; font-weight: 700; }
+  .log .miss { color: #888; font-style: italic; }
+  .log .promote { color: #5a2a8a; font-weight: 700; }
+  .log .ratify { color: #1a4f8a; font-weight: 700; }
+  .log .router { color: #2a5a8a; }
+  button {
+    font-family: inherit; font-size: 11px; padding: 8px 16px; margin-right: 6px;
+    border: 1px solid #888; background: #f8f8f8; cursor: pointer; letter-spacing: 1px;
+  }
+  button:hover:not(:disabled) { background: #e8e8e8; }
+  button:disabled { color: #aaa; cursor: not-allowed; background: #fcfcfc; }
+  .stat { font-size: 10px; color: #777; }
+  .note { font-size: 9px; color: #999; margin-top: 6px; }
+  .substrate-box {
+    border: 1px solid #bbb; padding: 8px; background: #fbfbfd;
+    font-size: 10px;
+  }
+  .substrate-box h2 { color: #444; margin-bottom: 4px; }
+  .substrate-box .out {
+    font-weight: 700; color: #222; margin: 4px 0;
+    padding: 2px 4px; background: #f0f0f4; display: inline-block;
+  }
+  .substrate-box table { width: 100%; font-size: 9px; }
+  .substrate-box td { padding: 1px 4px; }
+  .substrate-box td.k { color: #888; }
+  .substrate-box td.v { color: #222; text-align: right; }
+  .router-box {
+    border: 2px solid #888; padding: 10px; background: #f5f5fa;
+  }
+  .router-box .out {
+    font-weight: 700; color: #222; font-size: 11px;
+    padding: 3px 6px; background: #e0e0ea; display: inline-block;
+  }
+  .lattice-arrow {
+    text-align: center; font-size: 14px; color: #999; padding: 4px 0;
+  }
+</style>
+</head>
+<body>
+
+<!--
+  Each upstream substrate has its own probe element. The cascade rules for
+  each substrate target only that substrate's probe via a unique id, which
+  means there is no cross-talk between cascades — exactly what the
+  separation-of-concerns commitment in the lattice design requires.
+
+  Each substrate also has its own <style> element where its compiled CSS
+  rules are injected. CT-side updates write to that style element only.
+-->
+<div style="position:absolute;left:-9999px;top:-9999px;">
+  <div id="probe-pres"></div>
+  <div id="probe-threat"></div>
+  <div id="probe-dbecon"></div>
+  <div id="probe-exploit"></div>
+  <div id="probe-router"></div>
+</div>
+<style id="cascade-pres"></style>
+<style id="cascade-threat"></style>
+<style id="cascade-dbecon"></style>
+<style id="cascade-exploit"></style>
+<style id="cascade-router"></style>
+
+<h1>SUBSTRATE LATTICE DUEL · FOUR CONCERNS, ONE ROUTER</h1>
+
+<div class="box">
+  <div class="row">
+    <div class="col">
+      Round <strong id="round">1</strong> of 10 ·
+      you <strong id="score-you">0</strong> ·
+      opp <strong id="score-opp">0</strong>
+    </div>
+    <div class="col" style="text-align:right;">
+      <span class="stat" id="status">your move</span>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col box">
+    <h2>You</h2>
+    <div>HP: <strong id="you-hp">200</strong> / 200</div>
+    <div class="hp-bar"><div class="hp-fill you" id="you-bar" style="width:100%"></div></div>
+    <div class="stat" id="you-status">&nbsp;</div>
+  </div>
+  <div class="col box">
+    <h2>Opponent (the lattice)</h2>
+    <div>HP: <strong id="opp-hp">200</strong> / 200</div>
+    <div class="hp-bar"><div class="hp-fill opp" id="opp-bar" style="width:100%"></div></div>
+    <div class="stat" id="opp-status">&nbsp;</div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Your move</h2>
+  <button id="btn-attack">ATTACK</button>
+  <button id="btn-heal">HEAL</button>
+  <button id="btn-debuff">DEBUFF</button>
+  <div class="note">
+    Attack: 10 ±3 dmg, 10% miss, 10% crit (×1.75) · Heal: 7 ±3 hp ·
+    Debuff: cost 1 turn, +35% miss to opponent for 5 of their turns
+  </div>
+</div>
+
+<!-- The lattice visualization. Four upstream panels show each substrate's
+     current output token and structural state. The router panel below
+     them shows which rule fired and what the final action was. -->
+
+<div class="box">
+  <h2>Substrate lattice · upstream layer</h2>
+  <div class="row-4">
+    <div class="substrate-box">
+      <h2>Preservation</h2>
+      <div>output: <span class="out" id="pres-out">pres-none</span></div>
+      <table>
+        <tr><td class="k">step</td><td class="v" id="pres-step">0</td></tr>
+        <tr><td class="k">δ scalar</td><td class="v" id="pres-scalar">1.00</td></tr>
+        <tr><td class="k">δ gap</td><td class="v" id="pres-gap">0.00</td></tr>
+        <tr><td class="k">constraints</td><td class="v" id="pres-cons">1</td></tr>
+        <tr><td class="k">ratified</td><td class="v" id="pres-rat">0</td></tr>
+        <tr><td class="k">sub-cascades</td><td class="v" id="pres-sub">0</td></tr>
+      </table>
+    </div>
+    <div class="substrate-box">
+      <h2>Threat assessment</h2>
+      <div>output: <span class="out" id="threat-out">threat-even</span></div>
+      <table>
+        <tr><td class="k">step</td><td class="v" id="threat-step">0</td></tr>
+        <tr><td class="k">δ scalar</td><td class="v" id="threat-scalar">1.00</td></tr>
+        <tr><td class="k">δ gap</td><td class="v" id="threat-gap">0.00</td></tr>
+        <tr><td class="k">constraints</td><td class="v" id="threat-cons">1</td></tr>
+        <tr><td class="k">ratified</td><td class="v" id="threat-rat">0</td></tr>
+        <tr><td class="k">sub-cascades</td><td class="v" id="threat-sub">0</td></tr>
+      </table>
+    </div>
+    <div class="substrate-box">
+      <h2>Debuff economy</h2>
+      <div>output: <span class="out" id="dbecon-out">db-neutral</span></div>
+      <table>
+        <tr><td class="k">step</td><td class="v" id="dbecon-step">0</td></tr>
+        <tr><td class="k">δ scalar</td><td class="v" id="dbecon-scalar">1.00</td></tr>
+        <tr><td class="k">δ gap</td><td class="v" id="dbecon-gap">0.00</td></tr>
+        <tr><td class="k">constraints</td><td class="v" id="dbecon-cons">1</td></tr>
+        <tr><td class="k">ratified</td><td class="v" id="dbecon-rat">0</td></tr>
+        <tr><td class="k">sub-cascades</td><td class="v" id="dbecon-sub">0</td></tr>
+      </table>
+    </div>
+    <div class="substrate-box">
+      <h2>Exploitation pattern</h2>
+      <div>output: <span class="out" id="exploit-out">exploit-none</span></div>
+      <table>
+        <tr><td class="k">step</td><td class="v" id="exploit-step">0</td></tr>
+        <tr><td class="k">δ scalar</td><td class="v" id="exploit-scalar">1.00</td></tr>
+        <tr><td class="k">δ gap</td><td class="v" id="exploit-gap">0.00</td></tr>
+        <tr><td class="k">constraints</td><td class="v" id="exploit-cons">1</td></tr>
+        <tr><td class="k">ratified</td><td class="v" id="exploit-rat">0</td></tr>
+        <tr><td class="k">sub-cascades</td><td class="v" id="exploit-sub">0</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="lattice-arrow">↓ ↓ ↓ ↓</div>
+
+  <div class="router-box">
+    <h2>Router · chokepoint integration</h2>
+    <div>action: <span class="out" id="router-out">—</span> · tier fired: <span id="router-tier">—</span></div>
+    <div class="note" id="router-inputs">inputs: pres=— threat=— dbecon=— exploit=—</div>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Combat log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+// ============================================================================
+// SHARED INFRASTRUCTURE
+// All four upstream substrates use the same implementation of:
+//   - field structure (constraints, aged, trace, correlations, sub-cascades)
+//   - delta computation (algorithm 02, scale-free)
+//   - substrate modulation (SE-03, two layers)
+//   - CT primitives (tokenize, novelty, generate, ratify, age, match)
+//   - sub-cascade promotion (K1, fidelity-based)
+//
+// What varies per substrate:
+//   - the seed (each substrate has its own seed question)
+//   - the domain rules emitted into the cascade
+//   - the input-stream construction (what slice of game state the
+//     substrate observes, and how it tokenizes)
+//   - the output token enum (what the cascade resolves to)
+//
+// This separation matters: the dynamics are universal across substrates,
+// but the concerns are not. Putting the dynamics in shared code keeps
+// the architecture honest. There is one delta formula, one modulation
+// rule, one promotion mechanism, used by all four upstream substrates.
+// ============================================================================
+
+const CFG = {
+  FIELD_LIVE_CAP: 60, FIELD_AGED_CAP: 30, TRACE_CAP: 150,
+  CORR_CAP: 80, SUB_CASCADE_CAP: 8,
+  FAST_WINDOW: 6, FAST_DECAY: 0.85, SLOW_STEP: 0.005,
+  GEN_NOVELTY_THRESH: 0.25, GAP_PREDICT_THRESH: 0.10,
+  PRED_MAX_NEW_PER_STEP: 1, PRED_AGE_LIMIT: 12, PRED_WEIGHT_BOOST: 1.8,
+  CORR_MIN_USES: 2, CORR_THRESH: 0.30, FAMILY_MIN_SIZE: 2,
+  FIDELITY_WINDOW: 4, FIDELITY_PROMOTE: 0.012, FIDELITY_MIN_FIRES: 2
+};
+
+// Defense stack (algorithm 14). Every CSS-bound string passes through here.
+const Guards = {
+  ATTR_VALUE: /^[A-Za-z0-9_.-]{1,64}$/,
+  cssEscapeString(s) {
+    s = String(s == null ? '' : s);
+    if (s.length > 256) s = s.slice(0, 256);
+    let out = '"';
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x20 || c === 0x7F) out += '\\' + c.toString(16) + ' ';
+      else if (c === 0x22 || c === 0x5C) out += '\\' + s.charAt(i);
+      else if (c > 0x7E) out += '\\' + c.toString(16) + ' ';
+      else out += s.charAt(i);
+    }
+    return out + '"';
+  },
+  clamp01(n) { n = +n; if (!isFinite(n)) return 0; return n < 0 ? 0 : (n > 1 ? 1 : n); }
+};
+
+// ----------------------------------------------------------------------------
+// makeSubstrate: factory producing a fresh substrate instance.
+// Each upstream substrate calls this with its own configuration to receive
+// an object with a field, a step function, and the CT machinery.
+// The router does NOT use this. The router has no field, no CT engine, no
+// learning. It is a pure cascade resolver with fixed domain rules.
+// ----------------------------------------------------------------------------
+function makeSubstrate(spec) {
+  const SEED = Object.freeze({
+    id: spec.seedId, kind: 'seed', pattern: null,
+    birth: 0, uses: 0, weight: 1.0, permanent: true
+  });
+
+  const Field = {
+    name: spec.name,
+    step: 0,
+    constraints: [Object.assign({}, SEED, { id: SEED.id })],
+    aged: [], nextId: 1,
+    substrate: { fast: 0, slow: 0 },
+    vectorDelta: { scalar: 1.0, fast: 1.0, slow: 1.0, gap: 0 },
+    recentOps: [], trace: [],
+    subcascades: [], familyFidelity: {}, correlations: {},
+    ctRules: [], ratified: 0, evicted: 0,
+    lastOutput: null, spec: spec
+  };
+
+  function computeDelta(pop) {
+    if (!pop || !pop.length) return 1.0;
+    let unresolved = 0, total = 0;
+    for (const c of pop) {
+      total++;
+      if (c.kind === 'seed') continue;
+      if (c.kind === 'predictive') { unresolved++; continue; }
+      if (c.uses === 0) unresolved++;
+    }
+    return total === 0 ? 1.0 : unresolved / total;
+  }
+  function computeFastDelta() {
+    if (!Field.recentOps.length) return Field.vectorDelta.fast;
+    let u = 0;
+    for (const op of Field.recentOps) if (!op.matched || !op.matched.length) u++;
+    return u / Field.recentOps.length;
+  }
+  function refreshVectorDelta() {
+    const s = computeDelta(Field.constraints);
+    const f = computeFastDelta();
+    Field.vectorDelta.scalar = s;
+    Field.vectorDelta.fast = f;
+    Field.vectorDelta.slow = Guards.clamp01(
+      Field.vectorDelta.slow + (s - Field.vectorDelta.slow) * (CFG.SLOW_STEP * 10)
+    );
+    Field.vectorDelta.gap = Math.abs(f - Field.vectorDelta.slow);
+  }
+  function tickSubstrate() {
+    Field.substrate.fast = Field.substrate.slow + (Field.substrate.fast - Field.substrate.slow) * CFG.FAST_DECAY;
+  }
+  function modulate(deltaContribution) {
+    const sign = -Math.sign(deltaContribution);
+    const mag = Math.min(Math.abs(deltaContribution), 0.15);
+    Field.substrate.fast = Guards.clamp01(Field.substrate.fast + sign * mag);
+    Field.substrate.slow = Guards.clamp01(Field.substrate.slow + sign * CFG.SLOW_STEP);
+  }
+  function appendTrace(op, detail) {
+    Field.trace.push({ step: Field.step, op, detail });
+    if (Field.trace.length > CFG.TRACE_CAP) Field.trace.shift();
+  }
+
+  function tokenize(text) {
+    if (!text) return [];
+    return text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).slice(0, 16);
+  }
+  function inputNovelty(input) {
+    if (!input.tokens.length) return 0;
+    let novel = 0;
+    for (const t of input.tokens) {
+      let known = false;
+      for (const c of Field.constraints) {
+        if (!c.pattern) continue;
+        if (c.pattern.kind === 'has-token' && c.pattern.token === t) { known = true; break; }
+        if (c.pattern.kind === 'co-occurs' && (c.pattern.a === t || c.pattern.b === t)) { known = true; break; }
+      }
+      if (!known) novel++;
+    }
+    return novel / input.tokens.length;
+  }
+  function issueId(kind) { return spec.name + '-c' + (Field.nextId++) + '-' + kind.slice(0, 4); }
+
+  function addConstraint(c) {
+    if (Field.constraints.length >= CFG.FIELD_LIVE_CAP) {
+      let evictIdx = -1, evictW = Infinity;
+      for (let i = 1; i < Field.constraints.length; i++) {
+        const x = Field.constraints[i];
+        if (x.permanent || x.kind === 'predictive') continue;
+        if (x.weight < evictW) { evictW = x.weight; evictIdx = i; }
+      }
+      if (evictIdx >= 0) {
+        Field.aged.push(Field.constraints.splice(evictIdx, 1)[0]);
+        if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+      }
+    }
+    Field.constraints.push(c);
+  }
+  function generateDerived(input) {
+    for (const tok of input.tokens) {
+      if (!Guards.ATTR_VALUE.test(tok)) continue;
+      let exists = false;
+      for (const c of Field.constraints) {
+        if (c.pattern && c.pattern.kind === 'has-token' && c.pattern.token === tok) { exists = true; break; }
+      }
+      if (exists) continue;
+      addConstraint({
+        id: issueId('derived'), kind: 'derived',
+        pattern: { kind: 'has-token', token: tok },
+        birth: Field.step, uses: 0, weight: 1.0
+      });
+      appendTrace('gen-derived', tok);
+      return;
+    }
+  }
+  function generatePredictive(input) {
+    if (Field.vectorDelta.gap < CFG.GAP_PREDICT_THRESH) return;
+    let made = 0;
+    const recent = Field.constraints.filter(c =>
+      c.kind === 'derived' && c.pattern && c.pattern.kind === 'has-token' && Field.step - c.birth < 8
+    );
+    for (const seed of recent) {
+      if (made >= CFG.PRED_MAX_NEW_PER_STEP) break;
+      const tokA = seed.pattern.token;
+      const seen = [];
+      for (const op of Field.recentOps) {
+        for (const t of (op.input.tokens || [])) {
+          if (t !== tokA && seen.indexOf(t) === -1) seen.push(t);
+        }
+      }
+      if (!seen.length) continue;
+      const tokB = seen[Math.floor(Math.random() * seen.length)];
+      if (!Guards.ATTR_VALUE.test(tokB)) continue;
+      let dup = false;
+      for (const c of Field.constraints) {
+        if (c.kind === 'predictive' && c.pattern && c.pattern.kind === 'co-occurs' &&
+            ((c.pattern.a === tokA && c.pattern.b === tokB) || (c.pattern.a === tokB && c.pattern.b === tokA))) {
+          dup = true; break;
+        }
+      }
+      if (dup) continue;
+      addConstraint({
+        id: issueId('predictive'), kind: 'predictive',
+        pattern: { kind: 'co-occurs', a: tokA, b: tokB },
+        birth: Field.step, uses: 0, weight: 1.0,
+        ageLimit: Field.step + CFG.PRED_AGE_LIMIT
+      });
+      appendTrace('gen-predict', tokA + '+' + tokB);
+      made++;
+    }
+  }
+  function evaluatePattern(c, input) {
+    if (!c.pattern) return false;
+    const p = c.pattern;
+    if (p.kind === 'has-token') return input.tokens.indexOf(p.token) !== -1;
+    if (p.kind === 'co-occurs') return input.tokens.indexOf(p.a) !== -1 && input.tokens.indexOf(p.b) !== -1;
+    return false;
+  }
+  function ratifyMatched(input) {
+    for (const c of Field.constraints) {
+      if (c.kind !== 'predictive') continue;
+      if (evaluatePattern(c, input)) {
+        c.kind = 'ratified';
+        c.weight = Math.min(c.weight * CFG.PRED_WEIGHT_BOOST, 5.0);
+        c.uses++; c.lastUsed = Field.step;
+        Field.ratified++;
+        appendTrace('ratify', c.id);
+        if (spec.onRatify) spec.onRatify(c, Field);
+      }
+    }
+  }
+  function ageOutPredictions() {
+    for (let i = Field.constraints.length - 1; i >= 1; i--) {
+      const c = Field.constraints[i];
+      if (c.kind !== 'predictive') continue;
+      if (c.ageLimit && Field.step >= c.ageLimit) {
+        Field.aged.push(Field.constraints.splice(i, 1)[0]);
+        if (Field.aged.length > CFG.FIELD_AGED_CAP) Field.aged.shift();
+        Field.evicted++;
+        appendTrace('evict', c.id);
+      }
+    }
+  }
+  function matchAgainstField(input) {
+    const matched = [];
+    for (const c of Field.constraints) {
+      if (c.kind === 'seed') { matched.push(c); c.uses++; continue; }
+      if (!c.pattern) continue;
+      if (evaluatePattern(c, input)) {
+        matched.push(c); c.uses++; c.lastUsed = Field.step;
+        c.weight = Math.min(c.weight + 0.05, 5.0);
+      }
+    }
+    if (matched.length >= 2) {
+      for (let i = 0; i < matched.length; i++) {
+        for (let j = i + 1; j < matched.length; j++) {
+          const a = matched[i].id, b = matched[j].id;
+          const key = a < b ? a + '|' + b : b + '|' + a;
+          if (!Field.correlations[key]) Field.correlations[key] = { count: 0, last: Field.step };
+          Field.correlations[key].count++;
+          Field.correlations[key].last = Field.step;
+        }
+      }
+      const keys = Object.keys(Field.correlations);
+      if (keys.length > CFG.CORR_CAP) {
+        keys.sort((a, b) => Field.correlations[a].count - Field.correlations[b].count);
+        for (let i = 0; i < keys.length - CFG.CORR_CAP; i++) delete Field.correlations[keys[i]];
+      }
+    }
+    return matched;
+  }
+
+  function detectAndPromoteFamilies() {
+    const idMap = {};
+    for (const c of Field.constraints) idMap[c.id] = c;
+    const edges = [];
+    for (const key of Object.keys(Field.correlations)) {
+      const corr = Field.correlations[key];
+      if (corr.count < CFG.CORR_MIN_USES) continue;
+      const parts = key.split('|');
+      const a = idMap[parts[0]], b = idMap[parts[1]];
+      if (!a || !b || !a.uses || !b.uses) continue;
+      if (Math.min(corr.count / a.uses, corr.count / b.uses) >= CFG.CORR_THRESH) {
+        edges.push({ a: parts[0], b: parts[1] });
+      }
+    }
+    const adj = {};
+    for (const e of edges) {
+      (adj[e.a] = adj[e.a] || []).push(e.b);
+      (adj[e.b] = adj[e.b] || []).push(e.a);
+    }
+    const visited = {}, families = [];
+    for (const id of Object.keys(adj)) {
+      if (visited[id]) continue;
+      const stack = [id], comp = [];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (visited[cur]) continue;
+        visited[cur] = true;
+        comp.push(cur);
+        for (const n of (adj[cur] || [])) if (!visited[n]) stack.push(n);
+      }
+      if (comp.length >= CFG.FAMILY_MIN_SIZE) families.push(comp);
+    }
+    for (const comp of families) {
+      const fk = comp.slice().sort().join(',');
+      if (!Field.familyFidelity[fk]) {
+        Field.familyFidelity[fk] = { fires: 0, totalDrop: 0, deltaBefore: Field.vectorDelta.scalar };
+      }
+      const fid = Field.familyFidelity[fk];
+      fid.totalDrop += Math.max(0, fid.deltaBefore - Field.vectorDelta.scalar);
+      fid.fires++;
+      fid.deltaBefore = Field.vectorDelta.scalar;
+      if (fid.fires >= CFG.FIDELITY_MIN_FIRES && fid.fires >= CFG.FIDELITY_WINDOW) {
+        const avg = fid.totalDrop / fid.fires;
+        const already = Field.subcascades.some(sc => sc.familyKey === fk);
+        if (!already && avg >= CFG.FIDELITY_PROMOTE) {
+          let dom = null, dw = -1;
+          for (const id of comp) {
+            const c = idMap[id];
+            if (c && c.weight > dw) { dom = c; dw = c.weight; }
+          }
+          if (dom && Field.subcascades.length < CFG.SUB_CASCADE_CAP) {
+            const name = dom.pattern && dom.pattern.kind === 'has-token'
+              ? dom.pattern.token : (spec.name + '-sub-' + (Field.subcascades.length + 1));
+            const sc = { name, members: comp, familyKey: fk, promotedAt: Field.step, fires: fid.fires, avgDrop: avg };
+            Field.subcascades.push(sc);
+            appendTrace('promote', name);
+            if (spec.onPromote) spec.onPromote(sc, idMap, Field);
+          }
+        }
+      }
+    }
+  }
+
+  function rebuildCascade() {
+    let css = '@layer base, strategic;\n@layer base {\n';
+    css += '#' + spec.probeId + ' {\n  ' + spec.outputVar + ': ' +
+           Guards.cssEscapeString(spec.defaultOutput) + ';\n}\n';
+    const rules = spec.domainRules();
+    const sorted = rules.slice().sort((a, b) => Object.keys(a.when).length - Object.keys(b.when).length);
+    for (const r of sorted) {
+      const tail = Object.keys(r.when).map(d => '[data-' + d + '="' + r.when[d] + '"]').join('');
+      css += '#' + spec.probeId + tail + ' {\n  ' + spec.outputVar + ': ' +
+             Guards.cssEscapeString(r.then) + ';\n}\n';
+    }
+    css += '}\n';
+    if (Field.ctRules.length) {
+      css += '@layer strategic {\n';
+      for (const r of Field.ctRules) css += r.selector + ' {\n  ' + r.decls.join(';\n  ') + ';\n}\n';
+      css += '}\n';
+    }
+    document.getElementById(spec.styleId).textContent = css;
+  }
+
+  function evaluate() {
+    const probe = document.getElementById(spec.probeId);
+    const coord = spec.dimsFn();
+    for (const k of Object.keys(coord)) probe.setAttribute('data-' + k, coord[k]);
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    let ratHit = null, subHit = null;
+    for (const c of Field.constraints) {
+      if (c.kind !== 'ratified') continue;
+      if (evaluatePattern(c, { tokens })) { ratHit = c.id; break; }
+    }
+    for (const sc of Field.subcascades) {
+      if (tokens.indexOf(sc.name) !== -1) { subHit = sc.name; break; }
+    }
+    if (ratHit) probe.setAttribute('data-rat', ratHit); else probe.removeAttribute('data-rat');
+    if (subHit) probe.setAttribute('data-sub', subHit); else probe.removeAttribute('data-sub');
+    const cs = getComputedStyle(probe);
+    const out = cs.getPropertyValue(spec.outputVar).trim().replace(/^"|"$/g, '');
+    Field.lastOutput = out;
+    return out;
+  }
+
+  function step() {
+    const before = Field.vectorDelta.scalar;
+    Field.step++;
+    const tokens = spec.tokensFn ? spec.tokensFn() : [];
+    const input = { text: tokens.join(' '), tokens };
+    if (input.tokens.length) appendTrace('input', input.text.slice(0, 40));
+    const matched = matchAgainstField(input);
+    if (input.tokens.length) ratifyMatched(input);
+    if (input.tokens.length && inputNovelty(input) >= CFG.GEN_NOVELTY_THRESH) generateDerived(input);
+    generatePredictive(input);
+    ageOutPredictions();
+    Field.recentOps.push({ step: Field.step, input, matched: matched.map(c => c.id) });
+    if (Field.recentOps.length > CFG.FAST_WINDOW) Field.recentOps.shift();
+    refreshVectorDelta();
+    modulate(Field.vectorDelta.scalar - before);
+    tickSubstrate();
+    if (Field.step % 2 === 0) detectAndPromoteFamilies();
+    rebuildCascade();
+  }
+
+  rebuildCascade();
+  return { field: Field, step, evaluate, rebuildCascade };
+}
+
+// ============================================================================
+// THE FOUR UPSTREAM SUBSTRATES
+// Each one observes its own slice of game state and resolves its own output
+// token. They have no awareness of each other; they operate in parallel and
+// the router reads all four outputs each turn.
+// ============================================================================
+
+// `game` is referenced by the substrate dimsFn and tokensFn closures below.
+// We forward-declare it here and assign it after the game object is built,
+// so the closures resolve correctly when called by step()/evaluate(). This
+// is a small bit of mutual recursion: substrates need game state, game
+// loop needs substrates. The forward-declaration keeps the structure clean.
+let game;
+
+// ----------------------------------------------------------------------------
+// PRESERVATION
+// Concern: don't die. Observes own HP band, recent damage, HP trajectory.
+// Output: pres-none | pres-watch | pres-pull | pres-urgent
+// ----------------------------------------------------------------------------
+const presSpec = {
+  name: 'pres',
+  seedId: 'seed::pres::what-is-survival',
+  probeId: 'probe-pres',
+  styleId: 'cascade-pres',
+  outputVar: '--pres',
+  defaultOutput: 'pres-none',
+  dimsFn: () => ({
+    shp:  game.hpBand(game.opp.hp),
+    traj: game.hpTrajectory('opp'),
+    hit:  game.opp.justTookDamage ? 'yes' : 'no'
+  }),
+  tokensFn: () => {
+    const t = ['shp-' + game.hpBand(game.opp.hp), 'traj-' + game.hpTrajectory('opp')];
+    if (game.opp.justTookDamage) t.push('took-damage');
+    if (game.opp.hp <= 50) t.push('crit-zone');
+    return t;
+  },
+  domainRules: () => [
+    { when: { shp: 'full' }, then: 'pres-none' },
+    { when: { shp: 'full', traj: 'falling' }, then: 'pres-none' },
+    { when: { shp: 'ok' }, then: 'pres-none' },
+    { when: { shp: 'ok', traj: 'falling' }, then: 'pres-watch' },
+    { when: { shp: 'ok', hit: 'yes' }, then: 'pres-watch' },
+    { when: { shp: 'ok', traj: 'falling', hit: 'yes' }, then: 'pres-pull' },
+    { when: { shp: 'low' }, then: 'pres-pull' },
+    { when: { shp: 'low', traj: 'falling' }, then: 'pres-urgent' },
+    { when: { shp: 'low', hit: 'yes' }, then: 'pres-urgent' },
+    { when: { shp: 'crit' }, then: 'pres-urgent' }
+  ],
+  onRatify: (c, F) => {
+    F.ctRules.push({
+      selector: '#probe-pres[data-rat="' + c.id + '"]',
+      decls: ['--pres: "pres-pull"']
+    });
+    if (game) game.log('sys', '[pres] ratified ' + c.pattern.a + '+' + c.pattern.b, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    F.ctRules.push({
+      selector: '#probe-pres[data-sub="' + sc.name + '"]',
+      decls: ['--pres: "pres-urgent"']
+    });
+    if (game) game.log('sys', '[pres] sub-cascade promoted: ' + sc.name, 'promote');
+  }
+};
+
+// ----------------------------------------------------------------------------
+// THREAT ASSESSMENT
+// Output: threat-losing-bad | threat-losing | threat-even | threat-winning | threat-winning-bad
+// ----------------------------------------------------------------------------
+const threatSpec = {
+  name: 'threat',
+  seedId: 'seed::threat::who-is-winning',
+  probeId: 'probe-threat',
+  styleId: 'cascade-threat',
+  outputVar: '--threat',
+  defaultOutput: 'threat-even',
+  dimsFn: () => ({
+    shp:  game.hpBand(game.opp.hp),
+    php:  game.hpBand(game.you.hp),
+    tempo: game.exchangeTempo()
+  }),
+  tokensFn: () => [
+    'shp-' + game.hpBand(game.opp.hp),
+    'php-' + game.hpBand(game.you.hp),
+    'tempo-' + game.exchangeTempo()
+  ],
+  domainRules: () => [
+    { when: {}, then: 'threat-even' },
+    { when: { shp: 'full', php: 'full' }, then: 'threat-even' },
+    { when: { shp: 'ok', php: 'ok' }, then: 'threat-even' },
+    { when: { shp: 'low', php: 'low' }, then: 'threat-even' },
+    { when: { shp: 'full', php: 'ok' }, then: 'threat-winning' },
+    { when: { shp: 'full', php: 'low' }, then: 'threat-winning-bad' },
+    { when: { shp: 'full', php: 'crit' }, then: 'threat-winning-bad' },
+    { when: { shp: 'ok', php: 'low' }, then: 'threat-winning' },
+    { when: { shp: 'ok', php: 'crit' }, then: 'threat-winning-bad' },
+    { when: { shp: 'low', php: 'crit' }, then: 'threat-winning' },
+    { when: { shp: 'ok', php: 'full' }, then: 'threat-losing' },
+    { when: { shp: 'low', php: 'full' }, then: 'threat-losing-bad' },
+    { when: { shp: 'crit', php: 'full' }, then: 'threat-losing-bad' },
+    { when: { shp: 'low', php: 'ok' }, then: 'threat-losing' },
+    { when: { shp: 'crit', php: 'ok' }, then: 'threat-losing-bad' },
+    { when: { shp: 'crit', php: 'low' }, then: 'threat-losing' },
+    { when: { shp: 'ok', php: 'ok', tempo: 'opp' }, then: 'threat-winning' },
+    { when: { shp: 'ok', php: 'ok', tempo: 'player' }, then: 'threat-losing' },
+    { when: { shp: 'full', php: 'full', tempo: 'opp' }, then: 'threat-winning' },
+    { when: { shp: 'full', php: 'full', tempo: 'player' }, then: 'threat-losing' }
+  ],
+  onRatify: (c, F) => {
+    if (game) game.log('sys', '[threat] ratified ' + c.pattern.a + '+' + c.pattern.b, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    if (game) game.log('sys', '[threat] sub-cascade promoted: ' + sc.name, 'promote');
+  }
+};
+
+// ----------------------------------------------------------------------------
+// DEBUFF ECONOMY
+// Output: db-bad | db-neutral | db-good | db-excellent
+// ----------------------------------------------------------------------------
+const dbeconSpec = {
+  name: 'dbecon',
+  seedId: 'seed::dbecon::is-debuff-worth-it',
+  probeId: 'probe-dbecon',
+  styleId: 'cascade-dbecon',
+  outputVar: '--dbecon',
+  defaultOutput: 'db-neutral',
+  dimsFn: () => ({
+    om:  game.opp.debuffedTurns > 0 ? 'yes' : 'no',
+    pm:  game.you.debuffedTurns > 0 ? 'yes' : 'no',
+    shp: game.hpBand(game.opp.hp),
+    php: game.hpBand(game.you.hp),
+    last: game.yourLastAction
+  }),
+  tokensFn: () => {
+    const t = [
+      'shp-' + game.hpBand(game.opp.hp),
+      'php-' + game.hpBand(game.you.hp),
+      'last-' + game.yourLastAction
+    ];
+    if (game.opp.debuffedTurns > 0) t.push('opp-debuffed');
+    if (game.you.debuffedTurns > 0) t.push('you-debuffed');
+    return t;
+  },
+  domainRules: () => [
+    { when: {}, then: 'db-neutral' },
+    { when: { om: 'yes' }, then: 'db-bad' },
+    { when: { pm: 'yes' }, then: 'db-bad' },
+    { when: { shp: 'crit' }, then: 'db-bad' },
+    { when: { php: 'crit' }, then: 'db-bad' },
+    { when: { php: 'low' }, then: 'db-bad' },
+    { when: { om: 'no', pm: 'no', shp: 'full', php: 'full' }, then: 'db-excellent' },
+    { when: { om: 'no', pm: 'no', shp: 'full', php: 'ok' }, then: 'db-good' },
+    { when: { om: 'no', pm: 'no', shp: 'ok', php: 'full' }, then: 'db-good' },
+    { when: { om: 'no', last: 'atk', shp: 'full' }, then: 'db-good' },
+    { when: { om: 'no', last: 'atk', shp: 'ok' }, then: 'db-good' },
+    { when: { om: 'no', last: 'atk', shp: 'full', php: 'full' }, then: 'db-excellent' }
+  ],
+  onRatify: (c, F) => {
+    if (game) game.log('sys', '[dbecon] ratified ' + c.pattern.a + '+' + c.pattern.b, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    if (game) game.log('sys', '[dbecon] sub-cascade promoted: ' + sc.name, 'promote');
+  }
+};
+
+// ----------------------------------------------------------------------------
+// EXPLOITATION PATTERN
+// Output: exploit-none | exploit-preempt-attack | exploit-pressure-defense |
+//         exploit-capitalize-debuff | exploit-mixed-no-signal
+// ----------------------------------------------------------------------------
+const exploitSpec = {
+  name: 'exploit',
+  seedId: 'seed::exploit::what-is-the-pattern',
+  probeId: 'probe-exploit',
+  styleId: 'cascade-exploit',
+  outputVar: '--exploit',
+  defaultOutput: 'exploit-none',
+  dimsFn: () => {
+    const recent = game.recentPlayerActions.slice(-5);
+    const atks = recent.filter(a => a === 'atk').length;
+    const hls  = recent.filter(a => a === 'hl').length;
+    const dbs  = recent.filter(a => a === 'db').length;
+    let dom = 'mixed';
+    if (atks >= 3) dom = 'atk-heavy';
+    else if (hls >= 3) dom = 'hl-heavy';
+    else if (dbs >= 2) dom = 'db-heavy';
+    else if (recent.length >= 4) dom = 'mixed';
+    else dom = 'unknown';
+    return { dom };
+  },
+  tokensFn: () => {
+    if (game.yourLastAction === 'none') return [];
+    const t = [game.yourLastAction];
+    t.push('php-' + game.hpBand(game.you.hp));
+    t.push('shp-' + game.hpBand(game.opp.hp));
+    if (game.you.debuffedTurns > 0) t.push('you-debuffed');
+    if (game.opp.debuffedTurns > 0) t.push('opp-debuffed');
+    return t;
+  },
+  domainRules: () => [
+    { when: {}, then: 'exploit-none' },
+    { when: { dom: 'unknown' }, then: 'exploit-none' },
+    { when: { dom: 'mixed' }, then: 'exploit-mixed-no-signal' },
+    { when: { dom: 'atk-heavy' }, then: 'exploit-preempt-attack' },
+    { when: { dom: 'hl-heavy' }, then: 'exploit-pressure-defense' },
+    { when: { dom: 'db-heavy' }, then: 'exploit-capitalize-debuff' }
+  ],
+  onRatify: (c, F) => {
+    let counter = 'exploit-preempt-attack';
+    const has = t => c.pattern.a === t || c.pattern.b === t;
+    if (has('hl')) counter = 'exploit-pressure-defense';
+    else if (has('db')) counter = 'exploit-capitalize-debuff';
+    else if (has('atk')) counter = 'exploit-preempt-attack';
+    F.ctRules.push({
+      selector: '#probe-exploit[data-rat="' + c.id + '"]',
+      decls: ['--exploit: ' + Guards.cssEscapeString(counter)]
+    });
+    if (game) game.log('sys', '[exploit] ratified ' + c.pattern.a + '+' + c.pattern.b + ' -> ' + counter, 'ratify');
+  },
+  onPromote: (sc, idMap, F) => {
+    const toks = new Set();
+    for (const id of sc.members) {
+      const c = idMap[id];
+      if (!c || !c.pattern) continue;
+      if (c.pattern.kind === 'has-token') toks.add(c.pattern.token);
+      else if (c.pattern.kind === 'co-occurs') { toks.add(c.pattern.a); toks.add(c.pattern.b); }
+    }
+    let counter = 'exploit-preempt-attack';
+    if (toks.has('hl')) counter = 'exploit-pressure-defense';
+    else if (toks.has('db')) counter = 'exploit-capitalize-debuff';
+    else if (toks.has('atk')) counter = 'exploit-preempt-attack';
+    F.ctRules.push({
+      selector: '#probe-exploit[data-sub="' + sc.name + '"]',
+      decls: ['--exploit: ' + Guards.cssEscapeString(counter)]
+    });
+    if (game) game.log('sys', '[exploit] sub-cascade promoted: ' + sc.name + ' -> ' + counter, 'promote');
+  }
+};
+
+const pres    = makeSubstrate(presSpec);
+const threat  = makeSubstrate(threatSpec);
+const dbecon  = makeSubstrate(dbeconSpec);
+const exploit = makeSubstrate(exploitSpec);
+
+// ============================================================================
+// THE ROUTER
+// No field, no CT engine, no learning. Pure cascade resolver with fixed
+// domain rules. The router reads the four upstream outputs as attributes
+// on its probe and resolves a single action plus a tier marker that tells
+// us which rule fired (useful for visualization and debugging).
+//
+// Tier ordering matters. The cascade resolves rules in source order with
+// later rules overriding earlier ones, so we put the most-permissive rules
+// first (the default attack), then the increasingly specific tiers, with
+// the preservation veto LAST so it overrides everything else when active.
+// ============================================================================
+
+const Router = {
+  evaluate() {
+    const probe = document.getElementById('probe-router');
+    probe.setAttribute('data-pres',    pres.field.lastOutput || 'pres-none');
+    probe.setAttribute('data-threat',  threat.field.lastOutput || 'threat-even');
+    probe.setAttribute('data-dbecon',  dbecon.field.lastOutput || 'db-neutral');
+    probe.setAttribute('data-exploit', exploit.field.lastOutput || 'exploit-none');
+    const cs = getComputedStyle(probe);
+    const action = cs.getPropertyValue('--action').trim().replace(/^"|"$/g, '');
+    const tier = cs.getPropertyValue('--tier').trim().replace(/^"|"$/g, '');
+    return { action, tier };
+  },
+  build() {
+    // Tier 5 (default, lowest priority): attack.
+    let css = '#probe-router {\n  --action: "atk";\n  --tier: "default-attack";\n}\n';
+
+    // Tier 4: exploitation counters when no other concern dominates.
+    css += '#probe-router[data-exploit="exploit-preempt-attack"] {\n  --action: "db";\n  --tier: "exploit-preempt";\n}\n';
+    css += '#probe-router[data-exploit="exploit-pressure-defense"] {\n  --action: "atk";\n  --tier: "exploit-pressure";\n}\n';
+    css += '#probe-router[data-exploit="exploit-capitalize-debuff"] {\n  --action: "atk";\n  --tier: "exploit-capitalize";\n}\n';
+
+    // Tier 3: debuff openings.
+    css += '#probe-router[data-dbecon="db-good"][data-exploit="exploit-preempt-attack"] {\n  --action: "db";\n  --tier: "db-good-aligned";\n}\n';
+    css += '#probe-router[data-dbecon="db-excellent"] {\n  --action: "db";\n  --tier: "db-excellent";\n}\n';
+
+    // Tier 2: winning conditions.
+    css += '#probe-router[data-threat="threat-winning"][data-exploit="exploit-pressure-defense"] {\n  --action: "atk";\n  --tier: "press-defense";\n}\n';
+    css += '#probe-router[data-threat="threat-winning-bad"] {\n  --action: "atk";\n  --tier: "winning-bad-press";\n}\n';
+    css += '#probe-router[data-threat="threat-winning-bad"][data-exploit="exploit-pressure-defense"] {\n  --action: "atk";\n  --tier: "close-out";\n}\n';
+
+    // Tier 1: preservation. Pull -> heal unless winning-bad and pressing makes more sense.
+    css += '#probe-router[data-pres="pres-pull"] {\n  --action: "hl";\n  --tier: "pres-pull";\n}\n';
+    css += '#probe-router[data-pres="pres-pull"][data-threat="threat-winning-bad"][data-exploit="exploit-preempt-attack"] {\n  --action: "atk";\n  --tier: "pres-pull-but-finish";\n}\n';
+
+    // Tier 0 (highest): preservation veto. Urgent -> heal, period.
+    css += '#probe-router[data-pres="pres-urgent"] {\n  --action: "hl";\n  --tier: "pres-urgent-veto";\n}\n';
+
+    document.getElementById('cascade-router').textContent = css;
+  }
+};
+Router.build();
+
+// ============================================================================
+// GAME STATE AND TURN LOOP
+// The lattice runs each turn in a deterministic order:
+//   1. Player acts; HP and debuff state mutate.
+//   2. Each upstream substrate runs step() to observe the current state.
+//   3. Each upstream substrate runs evaluate() to read its cascade output.
+//   4. The router runs evaluate() to integrate the four outputs.
+//   5. Opponent action executes per router decision; HP and debuff state mutate.
+//   6. Each upstream substrate runs step()+evaluate() again so they
+//      observe the post-opponent-action state.
+// Round transitions reset HP only. Substrate fields persist.
+// ============================================================================
+
+game = {
+  round: 1, maxRounds: 10,
+  scoreYou: 0, scoreOpp: 0,
+  you: { hp: 200, debuffedTurns: 0 },
+  opp: { hp: 200, debuffedTurns: 0, justTookDamage: false },
+  yourLastAction: 'none',
+  recentPlayerActions: [],   // for exploit substrate's dimsFn
+  recentDamageExchange: [],  // {turn, dealt, taken} for tempo computation
+  lastHpOpp: [200, 200, 200],
+  lastHpYou: [200, 200, 200],
+  awaitingPlayer: true, gameOver: false,
+
+  log(who, text, cls) {
+    const l = document.getElementById('log');
+    const div = document.createElement('div');
+    div.className = cls || (who === 'you' ? 'you' : (who === 'opp' ? 'opp' : 'sys'));
+    const p = who === 'you' ? '▸ you · ' : (who === 'opp' ? '◂ opp · ' : '· ');
+    div.textContent = p + text;
+    l.appendChild(div);
+    l.scrollTop = l.scrollHeight;
+  },
+  hpBand(hp) {
+    if (hp <= 50) return 'crit';
+    if (hp <= 100) return 'low';
+    if (hp <= 150) return 'ok';
+    return 'full';
+  },
+  hpTrajectory(who) {
+    const arr = who === 'opp' ? this.lastHpOpp : this.lastHpYou;
+    if (arr.length < 2) return 'steady';
+    const recent = arr[arr.length - 1];
+    const past   = arr[0];
+    const diff = recent - past;
+    if (diff < -8) return 'falling';
+    if (diff > 8)  return 'rising';
+    return 'steady';
+  },
+  exchangeTempo() {
+    if (this.recentDamageExchange.length < 2) return 'even';
+    let dealt = 0, taken = 0;
+    for (const x of this.recentDamageExchange) { dealt += x.dealt; taken += x.taken; }
+    const diff = dealt - taken;
+    if (diff > 8)  return 'opp';
+    if (diff < -8) return 'player';
+    return 'even';
+  },
+  recordHp() {
+    this.lastHpOpp.push(this.opp.hp);
+    this.lastHpYou.push(this.you.hp);
+    if (this.lastHpOpp.length > 4) this.lastHpOpp.shift();
+    if (this.lastHpYou.length > 4) this.lastHpYou.shift();
+  },
+  recordExchange(dealt, taken) {
+    this.recentDamageExchange.push({ dealt, taken });
+    if (this.recentDamageExchange.length > 4) this.recentDamageExchange.shift();
+  },
+
+  rollAttack(attackerDebuffed) {
+    const missChance = 0.10 + (attackerDebuffed ? 0.35 : 0);
+    if (Math.random() < missChance) return { miss: true };
+    const crit = Math.random() < 0.10;
+    let dmg = 10 + Math.floor(Math.random() * 7) - 3;
+    if (crit) dmg = Math.round(dmg * 1.75);
+    return { miss: false, crit, dmg: Math.max(1, dmg) };
+  },
+  rollHeal() { return Math.max(1, 7 + Math.floor(Math.random() * 7) - 3); },
+
+  // Run all four upstream substrates: step (CT cycle) then evaluate (read
+  // the cascade's resolution at the current coord). After all four resolve,
+  // the router can read their outputs.
+  runUpstream() {
+    pres.step();    pres.evaluate();
+    threat.step();  threat.evaluate();
+    dbecon.step();  dbecon.evaluate();
+    exploit.step(); exploit.evaluate();
+  },
+
+  playerAction(action) {
+    if (!this.awaitingPlayer || this.gameOver) return;
+    this.awaitingPlayer = false;
+    this.disableButtons();
+
+    let dealt = 0, taken = 0;
+    this.opp.justTookDamage = false;
+
+    if (action === 'atk') {
+      const r = this.rollAttack(this.you.debuffedTurns > 0);
+      if (r.miss) this.log('you', 'attack missed', 'miss');
+      else if (r.crit) {
+        this.opp.hp = Math.max(0, this.opp.hp - r.dmg);
+        this.opp.justTookDamage = true; dealt = r.dmg;
+        this.log('you', 'CRIT for ' + r.dmg, 'crit');
+      } else {
+        this.opp.hp = Math.max(0, this.opp.hp - r.dmg);
+        this.opp.justTookDamage = true; dealt = r.dmg;
+        this.log('you', 'attack — ' + r.dmg + ' dmg');
+      }
+      if (this.you.debuffedTurns > 0) this.you.debuffedTurns--;
+    } else if (action === 'hl') {
+      const h = this.rollHeal();
+      this.you.hp = Math.min(200, this.you.hp + h);
+      this.log('you', 'heal — +' + h + ' hp');
+      if (this.you.debuffedTurns > 0) this.you.debuffedTurns--;
+    } else if (action === 'db') {
+      this.opp.debuffedTurns = 5;
+      this.log('you', 'debuff cast — opp +35% miss for 5 turns');
+      if (this.you.debuffedTurns > 0) this.you.debuffedTurns--;
+    }
+
+    this.yourLastAction = action;
+    this.recentPlayerActions.push(action);
+    if (this.recentPlayerActions.length > 8) this.recentPlayerActions.shift();
+    this.recordHp();
+    this.recordExchange(dealt, taken);
+
+    // Upstream substrates observe the player's just-completed action.
+    this.runUpstream();
+    this.render();
+
+    if (this.opp.hp <= 0) {
+      this.scoreYou++;
+      this.log('sys', '═ round ' + this.round + ' — you win ═');
+      setTimeout(() => this.nextRound(), 700);
+      return;
+    }
+    setTimeout(() => this.opponentTurn(), 450);
+  },
+
+  opponentTurn() {
+    if (this.gameOver) return;
+
+    // Router consults the four upstream outputs and resolves an action.
+    const decision = Router.evaluate();
+    let action = decision.action;
+
+    // Validity gates: even with strong recommendations, a few moves are
+    // structurally invalid. Debuff cannot stack; heal at full HP is wasted.
+    if (action === 'db' && this.you.debuffedTurns > 0) action = 'atk';
+    if (action === 'hl' && this.opp.hp >= 195) action = 'atk';
+
+    let dealt = 0, taken = 0;
+    this.you.justTookDamage = false;
+
+    if (action === 'atk') {
+      const r = this.rollAttack(this.opp.debuffedTurns > 0);
+      if (r.miss) this.log('opp', 'attack missed [' + decision.tier + ']', 'miss');
+      else if (r.crit) {
+        this.you.hp = Math.max(0, this.you.hp - r.dmg);
+        taken = r.dmg;
+        this.log('opp', 'CRIT for ' + r.dmg + ' [' + decision.tier + ']', 'crit');
+      } else {
+        this.you.hp = Math.max(0, this.you.hp - r.dmg);
+        taken = r.dmg;
+        this.log('opp', 'attack — ' + r.dmg + ' dmg [' + decision.tier + ']', 'router');
+      }
+      if (this.opp.debuffedTurns > 0) this.opp.debuffedTurns--;
+    } else if (action === 'hl') {
+      const h = this.rollHeal();
+      this.opp.hp = Math.min(200, this.opp.hp + h);
+      this.log('opp', 'heal — +' + h + ' hp [' + decision.tier + ']', 'router');
+      if (this.opp.debuffedTurns > 0) this.opp.debuffedTurns--;
+    } else if (action === 'db') {
+      this.you.debuffedTurns = 5;
+      this.log('opp', 'debuff cast — you +35% miss for 5 turns [' + decision.tier + ']', 'router');
+      if (this.opp.debuffedTurns > 0) this.opp.debuffedTurns--;
+    }
+
+    this.recordHp();
+    this.recordExchange(dealt, taken);
+
+    // Upstream substrates observe the post-opp state. This is what lets
+    // them learn from the consequences of opp's actions, not just the
+    // player's. (Note: exploit's tokenize is gated on yourLastAction, so
+    // it'll repeat-observe the player's last action, but that's OK — the
+    // dedup logic in generateDerived prevents double-counting.)
+    this.runUpstream();
+    this.render();
+
+    if (this.you.hp <= 0) {
+      this.scoreOpp++;
+      this.log('sys', '═ round ' + this.round + ' — opp wins ═');
+      setTimeout(() => this.nextRound(), 700);
+      return;
+    }
+    this.awaitingPlayer = true;
+    this.enableButtons();
+    document.getElementById('status').textContent = 'your move';
+  },
+
+  nextRound() {
+    if (this.round >= this.maxRounds) { this.endGame(); return; }
+    this.round++;
+    this.you.hp = 200; this.opp.hp = 200;
+    this.you.debuffedTurns = 0; this.opp.debuffedTurns = 0;
+    this.opp.justTookDamage = false;
+    this.you.justTookDamage = false;
+    this.yourLastAction = 'none';
+    this.lastHpOpp = [200, 200, 200];
+    this.lastHpYou = [200, 200, 200];
+    this.recentDamageExchange = [];
+    // Substrates' fields persist - operational irreversibility (SE-09).
+    this.log('sys', '─── round ' + this.round + ' ───');
+    this.awaitingPlayer = true;
+    this.enableButtons();
+    this.render();
+    document.getElementById('status').textContent = 'your move';
+  },
+  endGame() {
+    this.gameOver = true;
+    this.disableButtons();
+    const result = this.scoreYou > this.scoreOpp ? 'YOU WIN' :
+                   this.scoreYou < this.scoreOpp ? 'OPP WINS' : 'TIE';
+    this.log('sys', '═══════ game over ═══════');
+    this.log('sys', 'final · you ' + this.scoreYou + ' — opp ' + this.scoreOpp + '   ' + result);
+    document.getElementById('status').textContent = 'game complete · ' + result.toLowerCase();
+  },
+
+  disableButtons() {
+    ['btn-attack', 'btn-heal', 'btn-debuff'].forEach(id => document.getElementById(id).disabled = true);
+  },
+  enableButtons() {
+    ['btn-attack', 'btn-heal', 'btn-debuff'].forEach(id => document.getElementById(id).disabled = false);
+  },
+
+  render() {
+    document.getElementById('round').textContent = this.round;
+    document.getElementById('score-you').textContent = this.scoreYou;
+    document.getElementById('score-opp').textContent = this.scoreOpp;
+    document.getElementById('you-hp').textContent = this.you.hp;
+    document.getElementById('opp-hp').textContent = this.opp.hp;
+    document.getElementById('you-bar').style.width = (this.you.hp / 200 * 100) + '%';
+    document.getElementById('opp-bar').style.width = (this.opp.hp / 200 * 100) + '%';
+    document.getElementById('you-status').innerHTML = this.you.debuffedTurns > 0
+      ? '<span class="opp">debuffed: ' + this.you.debuffedTurns + 't</span>' : '&nbsp;';
+    document.getElementById('opp-status').innerHTML = this.opp.debuffedTurns > 0
+      ? '<span class="you">debuffed: ' + this.opp.debuffedTurns + 't</span>' : '&nbsp;';
+
+    // Render each substrate panel
+    const subs = [
+      { name: 'pres',    sub: pres },
+      { name: 'threat',  sub: threat },
+      { name: 'dbecon',  sub: dbecon },
+      { name: 'exploit', sub: exploit }
+    ];
+    for (const s of subs) {
+      document.getElementById(s.name + '-out').textContent = s.sub.field.lastOutput || s.sub.field.spec.defaultOutput;
+      document.getElementById(s.name + '-step').textContent = s.sub.field.step;
+      document.getElementById(s.name + '-scalar').textContent = s.sub.field.vectorDelta.scalar.toFixed(2);
+      document.getElementById(s.name + '-gap').textContent = s.sub.field.vectorDelta.gap.toFixed(2);
+      document.getElementById(s.name + '-cons').textContent = s.sub.field.constraints.length;
+      document.getElementById(s.name + '-rat').textContent = s.sub.field.ratified;
+      document.getElementById(s.name + '-sub').textContent = s.sub.field.subcascades.length;
+    }
+
+    // Render the router's last decision
+    const decision = Router.evaluate();
+    document.getElementById('router-out').textContent = decision.action;
+    document.getElementById('router-tier').textContent = decision.tier || '—';
+    document.getElementById('router-inputs').textContent =
+      'inputs: pres=' + (pres.field.lastOutput || '—') +
+      ' · threat=' + (threat.field.lastOutput || '—') +
+      ' · dbecon=' + (dbecon.field.lastOutput || '—') +
+      ' · exploit=' + (exploit.field.lastOutput || '—');
+  },
+
+  init() {
+    document.getElementById('btn-attack').addEventListener('click', () => this.playerAction('atk'));
+    document.getElementById('btn-heal').addEventListener('click', () => this.playerAction('hl'));
+    document.getElementById('btn-debuff').addEventListener('click', () => this.playerAction('db'));
+    // Initial substrate evaluation so all panels show meaningful state on load.
+    pres.evaluate(); threat.evaluate(); dbecon.evaluate(); exploit.evaluate();
+    this.log('sys', 'lattice initialized · 4 upstream substrates + router');
+    this.log('sys', 'each substrate has its own seed · all fields persist across rounds');
+    this.log('sys', '─── round 1 ───');
+    this.render();
+  }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => game.init());
+else game.init();
+
+})();
+</script>
+</body>
+</html>

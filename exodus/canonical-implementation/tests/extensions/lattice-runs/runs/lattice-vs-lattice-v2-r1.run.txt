@@ -1,0 +1,433 @@
+# LATTICE vs LATTICE · FAST HEAT UP VS SLOW BURN
+
+Generated: 2026-05-18T01:58:01.116Z
+Score: A=1 · B=10
+
+## Round metrics
+round	winner	turns	a	b
+0	B	734	145 / 97 / 6	52 / 0 / 2
+1	B	1115	145 / 97 / 6	52 / 0 / 2
+2	B	535	145 / 97 / 6	52 / 0 / 2
+3	B	293	145 / 97 / 6	52 / 0 / 2
+4	B	292	145 / 97 / 6	52 / 0 / 2
+5	B	1814	145 / 97 / 6	52 / 0 / 2
+6	B	1213	145 / 97 / 6	52 / 0 / 2
+7	A	511	145 / 97 / 6	52 / 0 / 2
+8	B	763	145 / 97 / 6	52 / 0 / 2
+9	B	1964	145 / 97 / 6	52 / 0 / 2
+10	B	1264	145 / 97 / 6	52 / 0 / 2
+
+## Substrate end-state
+### Player A
+pres: cons=27 rat=17 sub=2 delta=0.000 lastOut=pres-urgent
+threat: cons=30 rat=20 sub=2 delta=0.000 lastOut=threat-even
+dbecon: cons=43 rat=29 sub=1 delta=0.000 lastOut=db-bad
+exploit: cons=45 rat=31 sub=1 delta=0.000 lastOut=exploit-preempt-attack
+### Player B
+pres: cons=11 rat=0 sub=0 delta=0.000 lastOut=pres-pull
+threat: cons=12 rat=0 sub=1 delta=0.000 lastOut=threat-even
+dbecon: cons=15 rat=0 sub=1 delta=0.000 lastOut=db-bad
+exploit: cons=14 rat=0 sub=0 delta=0.000 lastOut=exploit-preempt-attack
+
+## Combat log
+
+◂ B · attack — 11 dmg
+▸ A · decides db [db-good-aligned]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides hl [pres-pull]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides atk [pres-pull]
+▸ A · attack — 10 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 12 dmg
+▸ A · decides db [db-good-aligned]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [exploit-preempt]
+◂ B · CRIT for 18
+▸ A · decides hl [pres-pull]
+▸ A · heal — +15 hp (cd 3t)
+◂ B · decides hl [pres-pull]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides db [db-good-aligned]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +20 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides db [db-good-aligned]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides hl [pres-pull]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides db [db-good-aligned]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [default-attack]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-pull]
+▸ A · CRIT for 16
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 10 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 10 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [exploit-pressure]
+▸ A · attack — 8 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 8 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [exploit-capitalize]
+▸ A · CRIT for 18
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 8 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides db [exploit-preempt]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [default-attack]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 8 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides atk [exploit-preempt]
+▸ A · attack missed
+◂ B · decides hl [pres-pull]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides hl [pres-pull]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [exploit-pressure]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · CRIT for 18
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [exploit-capitalize]
+▸ A · attack — 12 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 11 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 12 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 7 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +18 hp (cd 3t)
+▸ A · decides db [exploit-preempt]
+▸ A · debuff cast — opp +35% miss for 5t
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-pull]
+▸ A · heal — +15 hp (cd 3t)
+◂ B · decides atk [default-attack]
+◂ B · CRIT for 21
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides atk [exploit-preempt]
+▸ A · attack missed
+◂ B · decides hl [pres-pull]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · CRIT for 16
+◂ B · decides atk [exploit-preempt]
+◂ B · attack missed
+▸ A · decides hl [pres-pull]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 7 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides hl [pres-pull]
+◂ B · heal — +16 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 12 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +18 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides hl [pres-pull]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 9 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · CRIT for 14
+▸ A · decides hl [pres-pull]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 9 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 7 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 10 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +20 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 11 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +19 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +19 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack missed
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 9 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +17 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 7 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 7 dmg
+▸ A · decides hl [pres-urgent-veto]
+▸ A · heal — +15 hp (cd 3t)
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 13 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +20 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 10 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +17 hp (cd 3t)
+◂ B · decides atk [exploit-preempt]
+◂ B · attack — 8 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides db [exploit-preempt]
+◂ B · debuff cast — opp +35% miss for 5t
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +15 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 13 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack — 10 dmg
+▸ A · decides hl [pres-pull]
+▸ A · heal — +16 hp (cd 3t)
+◂ B · decides atk [pres-pull]
+◂ B · attack — 10 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 7 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack — 12 dmg
+▸ A · decides atk [pres-pull]
+▸ A · attack — 12 dmg
+◂ B · decides hl [pres-urgent-veto]
+◂ B · heal — +16 hp (cd 3t)
+▸ A · decides atk [pres-pull]
+▸ A · attack — 11 dmg
+◂ B · decides atk [pres-pull]
+◂ B · attack — 10 dmg
+· ═ Round 10 ended after 1264 turns · B wins ═
+· ═══════ SIMULATION COMPLETE ═══════
+· final · A 1 — B 10   B WINS (slow-burn)
