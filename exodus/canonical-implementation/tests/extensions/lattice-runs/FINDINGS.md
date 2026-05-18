@@ -3,23 +3,40 @@
 **Status.** Reference material. Empirical results from running all 7
 autonomous Phase 6 duel variants headlessly via Puppeteer.
 
-**Date.** 2026-05-18
+**Reframe note (2026-05-17).** A second pass on these runs reframes
+the headline finding. The lock pattern reported in §4 is a property
+of the *coupled system* (substrate + router + game-state loop), not
+a property of the substrate alone. The substrate-intrinsic vs router-
+mediated distinction is developed in
+[canon/UTF/research/substrate-intrinsic-vs-router-mediated.md](../../../../canon/UTF/research/substrate-intrinsic-vs-router-mediated.md).
+The empirical data below is preserved unchanged; the interpretation
+in §4-5 should be read alongside the reframe.
 
-**Method.** A Puppeteer-driven Chromium loads each duel HTML, patches
-its IIFE to expose closure-local `game` and `meta` on `window`, sets
-the speed throttle to 0, invokes `runFull()`, polls until completion,
-and harvests the run data via `copyRunData()` or DOM scrape. Real
-cascade resolution, real substrate dynamics — the same code paths a
-human running the duel in their browser would trigger, just without
-a UI throttle.
+**Date.** 2026-05-17
+
+**Method (historical).** A Puppeteer-driven Chromium loaded each duel
+HTML, patched its IIFE to expose closure-local `game` and `meta` on
+`window`, set the speed throttle to 0, invoked `runFull()`, polled
+until completion, and harvested the run data via `copyRunData()` or
+DOM scrape. Real cascade resolution, real substrate dynamics — the
+same code paths a human running the duel in their browser would
+trigger, just without a UI throttle. The harness has been removed;
+the captured logs in `runs/` remain as the empirical record.
 
 **See also.**
 
-- [run-duel.js](run-duel.js) — single-run driver
-- [run-batch.js](run-batch.js) — batch driver across variants and replicates
 - [runs/](runs/) — captured per-run logs (50-200 KB each)
 - [runs/_summary.tsv](runs/_summary.tsv) — tabular summary across all runs
 - [canon/UTF/research/phase-6-substrate-duels-analysis.md](../../../../canon/UTF/research/phase-6-substrate-duels-analysis.md) — the structural analysis these runs were collected against
+- [canon/UTF/research/substrate-intrinsic-vs-router-mediated.md](../../../../canon/UTF/research/substrate-intrinsic-vs-router-mediated.md) — the reframe these runs ultimately produced
+
+**Tooling note.** These runs were captured via a Puppeteer-driven
+headless Chromium harness (`run-duel.js` + `run-batch.js`) that has
+since been removed from the repository. The captured logs in
+`runs/` are the persisted empirical record; the harness was a
+one-time investigation tool, not infrastructure. Future re-runs
+would require rebuilding equivalent tooling, but should not be
+needed unless the substrate's mechanisms change.
 
 -----
 
@@ -58,8 +75,8 @@ The two failing variants exhibit a precise empirical signature:
 ### `rich-duel _crossed` (CROSSED coordination variant)
 
 - **Rounds 0-4 resolved quickly (1 turn each!), all A wins.**
-- This is suspect: A winning 5 rounds in a row with 1 turn per round means the substrate state initialized in a way that gave A immediate kill capability — possibly an artifact of the variant's seed-ability set or initial centroid configuration.
-- **Round 5 deadlocked at 4370+ steps.** A's structures dominated; B couldn't counter; A also couldn't finish.
+- **Substrate-internal: ZERO ratifications, ZERO sub-cascades across all 5 rounds.** Constraint count grew slightly (7 → 19) but no constraint ever ratified and no emergent kind ever formed. This is critical evidence — see [substrate-intrinsic-vs-router-mediated.md §3](../../../../canon/UTF/research/substrate-intrinsic-vs-router-mediated.md). The five round-wins occurred entirely through the router's action-extraction over an initial-state asymmetry; the substrate played essentially no role.
+- **Round 5 deadlocked at 4370+ steps.** The router could no longer extract a discriminating action from the substrate's near-empty resolved state and the game stuck.
 - The CROSSED predator-prey channel pairing did not prevent deadlock; it shifted *when* deadlock occurred (round 5 instead of round 1).
 
 ### `rich-duel-asymettry` and `rich-duel_swap` crashes
@@ -108,7 +125,15 @@ This is the "ChatGPT confirmation-gating" experiment from the README. **Empirica
 
 ## 4. What this empirically establishes
 
-Four findings, ordered by load-bearingness for UTF / architecture decisions:
+Four findings, ordered by load-bearingness for UTF / architecture decisions.
+
+**Read these with the reframe in mind.** Each finding is empirically
+solid as a coupled-system observation — what the substrate-plus-
+router-plus-game-state-loop does in the duel configuration. None of
+them are claims about substrate-intrinsic behavior in general. The
+companion article
+[substrate-intrinsic-vs-router-mediated.md](../../../../canon/UTF/research/substrate-intrinsic-vs-router-mediated.md)
+develops this distinction in detail.
 
 ### Finding 1: Substrate lock is the dominant outcome, not the exception
 
@@ -181,4 +206,5 @@ These empirical findings sharpen but do not contradict the structural commitment
 
 | Date (yyyy-mm-dd) | Action |
 |---|---|
-| 2026-05-18 | First pass complete (1 replicate per variant). 5/7 variants completed; 2 crashed during deadlock. Four findings documented. |
+| 2026-05-17 | First pass complete (1 replicate per variant). 5/7 variants completed; 2 crashed during deadlock. Four findings documented. |
+| 2026-05-17 | Reframe added at head and in §4. Substrate-intrinsic vs router-mediated distinction surfaced from the rich-duel _crossed zero-ratification observation. Companion article published at canon/UTF/research/substrate-intrinsic-vs-router-mediated.md. |
