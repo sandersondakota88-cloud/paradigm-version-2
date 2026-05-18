@@ -77,8 +77,5 @@ temp/
 .cache/
 *.tmp
 
-# --- Puppeteer-driver patched HTML temp files (lattice-runs) ---------------
-__pup_*.html
-
 # --- Claude Code session artifacts (if any) ---------------------------------
 .claude/
