@@ -2,7 +2,7 @@
 
 **Role.** Reference material. This article analyzes the Phase 6
 substrate-duel artifacts at
-[exodus/canonical-implementation/Phase 6/](../../../exodus/canonical-implementation/Phase 6/)
+[exodus/canonical-implementation/Phase 6/](Phase 6/)
 in service of the UTF specification work. The duels are running
 experiments on questions UTF needs to answer about kind vocabulary,
 substrate composition, and emergence discipline.
@@ -65,7 +65,7 @@ The single-substrate baseline had to **hand-engineer HP guards into
 strategic-rule emission** to prevent learned constraints from
 overriding self-preservation.
 
-[substrate_duel.html:381-459](../../../exodus/canonical-implementation/Phase 6/substrate_duel.html)
+[substrate_duel.html:381-459](Phase 6/substrate_duel.html)
 contains the relevant code. Comment at line 384:
 
 > "Strategic rules are constrained by HP guards so they cannot
