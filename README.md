@@ -6,22 +6,40 @@ properties as typed channels — has crossed a structural threshold,
 becoming a constraint substrate with the architectural properties of
 an operating-system kernel.
 
-The work is evidence for a single structural observation:
-**language has become expressive enough to inherit the structure of
-the physical machinery it represents.** The web platform is the venue
-where this threshold-crossing is most legibly demonstrable. The
-substrate is structurally a kernel-and-adapter architecture; the
-cascade is the discretion router; existing browser substrates (CSS
-engine, V8, WebGPU, IndexedDB) are adapters; the universal
-serializable form (XML, JSON, stylesheet — three syntactic skins on
-one structure) is the firmware-equivalent protocol layer.
+Three big questions remain:
 
-This claim is supported empirically by ~45 million field-level
-comparisons across three substrates with zero divergence, byte-native
-WASM intake verified at Spearman ≥ 0.85, persistence demonstrated
-across page reload, and a precise boundary map showing where the
-substrate's expressive closure begins and ends. Proof gaps are named
-in plain text where the demonstrations do not yet reach the claims.
+- **Can we emit application behavior out of a richly represented state object?** &nbsp;&nbsp;→ [PREFACE.md](PREFACE.md)
+- **Can we now host application layer logic in the hardware it sits on?** &nbsp;&nbsp;→ [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Can we trust the math to do the verification work for us, if declared up front?** &nbsp;&nbsp;→ [RESEARCH-AGAINST-PREFACE.md](RESEARCH-AGAINST-PREFACE.md)
+
+The claim the work is evidence for:
+**language has become expressive enough to inherit the structure of
+the physical machinery it represents.**
+
+The web platform is the most legibly demonstrable ecosystem:
+
+- The substrate is a kernel-and-adapter wiring abstraction. It uses
+  mathematical constraint representation to stratify one compute
+  cycle across imperative, declarative, and stateful runtimes. VRAM
+  does the heavy lifting of organizing semantics into a geometric
+  state space. JavaScript becomes *set-and-forget* plumbing for
+  input. CSS becomes the semantic resolution surface that provokes
+  the substrate into configuration across views.
+- This is an application-specific observation. Any observational
+  surface outside this project's targeted domain needs its own proof
+  and procedure to claim the threshold has been crossed there.
+
+What's been demonstrated empirically:
+
+- ~45 million field-level comparisons across three substrates (CSS,
+  JS, GPU). Zero divergence.
+- Byte-native WASM intake verified at Spearman ≥ 0.85.
+- Persistence across page reload.
+- A precise boundary map of where the substrate's expressive closure
+  begins and ends.
+
+Where the demonstrations don't yet reach the claims, the gaps are
+named directly in the documents that make the claims.
 
 -----
 
@@ -31,11 +49,9 @@ Four documents at the project root, read in order:
 
 1. **[PREFACE.md](PREFACE.md)** — the structural claim the work is
    evidence for. Stand-alone; does not depend on the implementation.
-2. **[ARCHITECTURE.md](ARCHITECTURE.md)** — what the substrate
-   fundamentally *is*, structurally, named with the words that fit
-   it. Kernel, adapters, universal type format, hardware. Cites
-   canon at every load-bearing claim; names every proof gap in
-   plain text.
+2. **[ARCHITECTURE.md](ARCHITECTURE.md)** — what the substrate *is*.
+   Kernel, adapters, universal type format, hardware. Every claim
+   cites canon. Every gap is called out.
 3. **[RESEARCH-AGAINST-PREFACE.md](RESEARCH-AGAINST-PREFACE.md)** —
    live catalogue of evidence against four specific objections to
    the preface's framing.
@@ -102,22 +118,20 @@ node tests/serve.js
 
 ## Working name
 
-The substrate currently has the working name **constraint substrate**
-([canon/DEFINITION.md](canon/DEFINITION.md)). A more distinctive name
-will be chosen after implementations have revealed what the thing
-actually does at scale.
+The substrate's working name is **constraint substrate**
+([canon/DEFINITION.md](canon/DEFINITION.md)). A better one will get
+picked once the thing's been run at scale and shown what it actually
+is.
 
 -----
 
 ## Authorship and collaboration
 
-The structural claims, project direction, and final decisions are by
-Dakota Sanderson. AI (Claude, Anthropic) was used as a collaborator
-throughout — for drafting, structural analysis, test implementation,
-and the architecture recognition recorded in
-[ARCHITECTURE.md](ARCHITECTURE.md). Major recognitions and pivots are
-attributable to specific points in conversation; the project's
-git history is the timestamped record of that work.
+Dakota Sanderson — claims, direction, final decisions. Claude
+(Anthropic) collaborated throughout: drafting, structural analysis,
+test implementation, and the architecture recognition in
+[ARCHITECTURE.md](ARCHITECTURE.md). The git history timestamps the
+recognitions and pivots in the order they happened.
 
 -----
 
@@ -130,16 +144,14 @@ incorporate commercially, provided the copyright notice is retained.
 
 ## Status
 
-**Live work-in-progress.** The architecture recognition (kernel +
-adapters + universal type format + hardware) was made in May 2026.
-Four priority work items are named in
-[PROJECT-PLAN.md §8](PROJECT-PLAN.md):
+**Live work-in-progress.** The kernel + adapters + universal type
+format + hardware recognition was made in May 2026. Four priority
+items remain ([PROJECT-PLAN.md §8](PROJECT-PLAN.md)):
 
 1. Specify the universal type format as a canonical schema
 2. Specify the adapter protocol
 3. Implement the kernel as a discrete host-portable artifact
 4. Demonstrate substrate relocation across hosts
 
-Until those are complete, the architecture is a recognized structure
-with strong empirical support, not a specified artifact. The
-recognition matters; the specification matters more.
+Until those four ship, the architecture is a recognized structure
+with strong empirical support — not yet a specified artifact.
