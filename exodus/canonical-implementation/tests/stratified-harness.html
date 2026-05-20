@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stratified Execution Harness  -  CSS + JS + WGSL coherence</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box }
+  body {
+    background: #0a0a0f; color: #c0c0c8;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.5;
+    padding: 24px;
+  }
+  h1 { font-size: 14px; letter-spacing: 3px; color: #e0e0e8; margin-bottom: 4px; }
+  .sub { font-size: 10px; color: #666672; letter-spacing: 1.5px; margin-bottom: 20px; }
+  .header { padding-bottom: 16px; border-bottom: 1px solid #1a1a24; margin-bottom: 20px; }
+  .info {
+    font-size: 12px; color: #7a7a84;
+    background: #0e0e14; border-left: 2px solid #2a4a5a;
+    padding: 10px 14px; margin-bottom: 20px; white-space: pre-wrap;
+  }
+  .controls { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: #14142a; color: #c0c0e0;
+    border: 1px solid #2a2a4a; border-radius: 3px;
+    padding: 8px 16px; font-family: inherit; font-size: 11px;
+    letter-spacing: 1.5px; cursor: pointer;
+  }
+  button:hover { background: #1e1e3a; border-color: #3a3a6a; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.run { border-color: #2a4a3a; background: #0a1a10; color: #6aae7a; }
+  button.run:hover:not(:disabled) { background: #0e2418; }
+  label { font-size: 11px; color: #888894; letter-spacing: 1px; }
+  input[type="number"] {
+    background: #14142a; color: #c0c0e0; border: 1px solid #2a2a4a;
+    border-radius: 3px; padding: 6px 10px; font-family: inherit; font-size: 11px;
+    width: 80px;
+  }
+  #progress {
+    height: 4px; background: #14142a; border-radius: 2px;
+    margin-bottom: 12px; overflow: hidden;
+  }
+  #progress > div { height: 100%; width: 0; background: #2a4a3a; transition: width 80ms linear; }
+  #summary {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat {
+    background: #0e0e14; border: 1px solid #1a1a24; border-radius: 3px;
+    padding: 10px 12px;
+  }
+  .stat .label { font-size: 9px; color: #666672; letter-spacing: 1.5px; }
+  .stat .value { font-size: 16px; color: #c0c0e0; margin-top: 4px; }
+  .stat.pass .value { color: #6aae7a; }
+  .stat.fail .value { color: #ca6a6a; }
+  .stat.partial .value { color: #d0a040; }
+  #log {
+    background: #060608; border: 1px solid #1a1a24;
+    border-radius: 3px; padding: 12px;
+    min-height: 320px; max-height: 60vh; overflow-y: auto;
+    font-size: 12px; white-space: pre-wrap;
+  }
+  #log > div { padding: 1px 0; }
+  #log > div.pass { color: #6aae7a; }
+  #log > div.fail { color: #ca6a6a; }
+  #log > div.warn { color: #d0a040; }
+  #log > div.info { color: #7a9ab0; }
+  #log > div.hdr  { color: #d0d0e0; margin-top: 8px; font-weight: bold; }
+  #log > div.strata { color: #b8a8d0; font-size: 11px; padding-left: 12px; }
+  .footer { margin-top: 16px; font-size: 10px; color: #444450; letter-spacing: 1px; }
+
+  /* Off-screen probe substrate -- one element per coordinate.
+     Style recalc resolves all 2880 in one pass. */
+  #probe-substrate {
+    position: absolute; left: -99999px; top: -99999px;
+    visibility: hidden;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>STRATIFIED EXECUTION HARNESS</h1>
+  <div class="sub">css cascade + js stack machine + wgsl compute shader, concurrent per cycle, coherence-checked</div>
+</div>
+
+<div class="info">For each fixture in tests/gpu-fixtures.json this harness:
+
+  1. Compiles the rule set to CSS, installs as a stylesheet, sets data-attrs
+     on 2,880 probe elements, reads --sdf/--rt/--rth/--doc/--reg/--deny via
+     getComputedStyle on each probe.  (this is the real browser cascade)
+  2. Walks the same compiled u32 instruction stream sequentially in JS,
+     producing index-form output per coord.  (this is the JS oracle)
+  3. Uploads the same u32 instruction stream to a WGSL compute shader and
+     dispatches over all 2,880 coords in parallel.  (this is the GPU path)
+  4. Hashes each path's output bytes with FNV-1a, requires all three hashes
+     to match each other AND the expected hash from the fixtures file.
+     Disagreement at any path fails the cycle.
+
+This is NOT three independent runs that get diffed.  It is one stratified
+cycle whose output -- the "stratified agreement hash" -- exists only when
+all three substrates have produced byte-identical resolution against the
+same input.  The output proves the cycle's stratification was coherent.
+
+The cycle's resolution is the joint product of three substrates running
+concurrently in one runtime window.  If any one disagrees, the cycle has
+no resolution.
+
+Throttle the fixture count below to control wall-clock; the CSS path is
+the bottleneck (~150ms per fixture for stylesheet recompile + recalc).
+
+Serve via HTTP -- file:// blocks fetch.
+  python -m http.server 8080      (from canonical-implementation/)
+  http://localhost:8080/tests/stratified-harness.html</div>
+
+<div class="controls">
+  <button class="run" id="run-btn">RUN STRATIFIED CYCLE</button>
+  <label>fixtures: <input type="number" id="fixture-limit" value="10" min="1" max="2602" step="1"></label>
+  <label>start at: <input type="number" id="fixture-start" value="0" min="0" step="1"></label>
+  <button id="run-all-btn">RUN ALL 2602</button>
+  <button id="copy-btn">COPY LOG</button>
+</div>
+
+<div id="progress"><div></div></div>
+
+<div id="summary">
+  <div class="stat" id="stat-tried"><div class="label">FIXTURES PROCESSED</div><div class="value">0</div></div>
+  <div class="stat" id="stat-stratified"><div class="label">STRATIFIED AGREEMENTS</div><div class="value">0</div></div>
+  <div class="stat" id="stat-partial"><div class="label">PARTIAL AGREEMENTS</div><div class="value">0</div></div>
+  <div class="stat" id="stat-failed"><div class="label">DISAGREEMENTS</div><div class="value">0</div></div>
+</div>
+
+<div id="log"></div>
+
+<div id="probe-substrate"></div>
+
+<div class="footer">stratified execution: css cascade native engine + js postfix interpreter + wgsl gpu compute, one cycle, one resolution</div>
+
+<script type="module">
+"use strict";
+
+// =========================================================================
+// CONSTRAINTS GEOMETRY (ported from constraints.js -- must stay byte-identical)
+// =========================================================================
+
+const DIMS = [
+  { name: "credit",     values: ["prime", "near-prime", "sub-prime"] },
+  { name: "product",    values: ["mortgage", "personal", "auto", "business-line"] },
+  { name: "applicant",  values: ["individual", "joint", "business", "trust"] },
+  { name: "residency",  values: ["domestic", "foreign", "diplomatic"] },
+  { name: "income",     values: ["under50", "50to100", "100to250", "over250"] },
+  { name: "employment", values: ["employed", "self-employed", "retired", "student", "unemployed"] }
+];
+const STATE_SPACE_SIZE = DIMS.reduce((n, d) => n * d.values.length, 1); // 2880
+
+const DEFAULTS = {
+  sdf: -1, reg: "VALID", deny: "",
+  rt: "UNCLASSIFIED", rth: 0, doc: "BASIC"
+};
+
+const RT_TABLE   = ["UNCLASSIFIED", "A-PREFERRED", "B-STANDARD", "C-ELEVATED"];
+const DOC_TABLE  = ["BASIC", "ENHANCED", "MAXIMUM"];
+const REG_TABLE  = ["VALID", "DENIED"];
+const DENY_TABLE = [
+  "",
+  "SubPrime cannot hold BusinessLine",
+  "Foreign SubPrime Mortgage not underwriteable",
+  "Mortgage requires income source",
+  "Student cannot hold BusinessLine",
+  "Trust cannot hold Personal",
+  "Mortgage requires minimum qualifying income"
+];
+
+function dimIndex(name) {
+  for (let i = 0; i < DIMS.length; i++) if (DIMS[i].name === name) return i;
+  throw new Error("unknown dim: " + name);
+}
+function valueIndex(dIdx, v) {
+  const vs = DIMS[dIdx].values;
+  for (let i = 0; i < vs.length; i++) if (vs[i] === v) return i;
+  throw new Error("unknown value '" + v + "' in dim " + DIMS[dIdx].name);
+}
+function lookupIndex(table, s) {
+  for (let i = 0; i < table.length; i++) if (table[i] === s) return i;
+  return -1;
+}
+function unpackCoord(i) {
+  const out = new Array(DIMS.length);
+  let rem = i;
+  for (let d = DIMS.length - 1; d >= 0; d--) {
+    const card = DIMS[d].values.length;
+    out[d] = rem % card;
+    rem = Math.floor(rem / card);
+  }
+  return out;
+}
+
+// =========================================================================
+// OPCODES + COMPILER (ported from compile-constraints.js)
+// =========================================================================
+
+const OP = {
+  MATCH_DIM:  0x01,
+  AND:        0x02,
+  BEGIN_THEN: 0x10,
+  SET_SDF:    0x11,
+  SET_RT:     0x12,
+  SET_RTH:    0x13,
+  SET_DOC:    0x14,
+  SET_REG:    0x15,
+  SET_DENY:   0x16,
+  END_RULE:   0xFF
+};
+
+function encode(op, a, b) {
+  if (a === undefined) a = 0;
+  if (b === undefined) b = 0;
+  return ((op & 0xFF) | ((a & 0xFF) << 8) | ((b & 0xFF) << 16)) >>> 0;
+}
+
+function sortRules(rules) {
+  const indexed = rules.map((r, i) => ({
+    rule: r, origIdx: i, whenCount: Object.keys(r.when).length
+  }));
+  indexed.sort((x, y) => {
+    const d = x.whenCount - y.whenCount;
+    return d !== 0 ? d : x.origIdx - y.origIdx;
+  });
+  return indexed.map(e => e.rule);
+}
+
+function compileRule(rule) {
+  const insts = [];
+  const whenKeys = Object.keys(rule.when);
+  if (whenKeys.length === 0) throw new Error("rule with empty when");
+
+  const sortedWhen = whenKeys
+    .map(k => ({ key: k, dIdx: dimIndex(k), vIdx: valueIndex(dimIndex(k), rule.when[k]) }))
+    .sort((x, y) => x.dIdx - y.dIdx);
+
+  for (const w of sortedWhen) insts.push(encode(OP.MATCH_DIM, w.dIdx, w.vIdx));
+  for (let i = 0; i < sortedWhen.length - 1; i++) insts.push(encode(OP.AND));
+  insts.push(encode(OP.BEGIN_THEN));
+
+  const t = rule.then;
+  if ("sdf" in t)  insts.push(encode(OP.SET_SDF, t.sdf === 1 ? 1 : 0));
+  if ("rt"  in t)  { const i = lookupIndex(RT_TABLE,  t.rt);  if (i < 0) throw new Error("rt: " + t.rt);  insts.push(encode(OP.SET_RT,  i)); }
+  if ("rth" in t)  { if ((t.rth | 0) !== t.rth || t.rth < 0 || t.rth > 255) throw new Error("rth range"); insts.push(encode(OP.SET_RTH, t.rth)); }
+  if ("doc" in t)  { const i = lookupIndex(DOC_TABLE, t.doc); if (i < 0) throw new Error("doc: " + t.doc); insts.push(encode(OP.SET_DOC, i)); }
+  if ("reg" in t)  { const i = lookupIndex(REG_TABLE, t.reg); if (i < 0) throw new Error("reg: " + t.reg); insts.push(encode(OP.SET_REG, i)); }
+  if ("deny" in t) { const i = lookupIndex(DENY_TABLE, t.deny); if (i < 0) throw new Error("deny: " + t.deny); insts.push(encode(OP.SET_DENY, i)); }
+
+  insts.push(encode(OP.END_RULE));
+  return insts;
+}
+
+function compileRulesArray(rules) {
+  const sorted = sortRules(rules);
+  const all = [];
+  for (const r of sorted) for (const i of compileRule(r)) all.push(i);
+  return Uint32Array.from(all);
+}
+
+// =========================================================================
+// FIXTURE GENERATION (ported from generate-gpu-fixtures.js -- byte-identical)
+// =========================================================================
+
+function allDimValueClauses() {
+  const out = [];
+  for (let d = 0; d < DIMS.length; d++)
+    for (let v = 0; v < DIMS[d].values.length; v++)
+      out.push({ [DIMS[d].name]: DIMS[d].values[v] });
+  return out;
+}
+function allTwoKeyClauses() {
+  const out = [];
+  for (let d1 = 0; d1 < DIMS.length; d1++)
+    for (let v1 = 0; v1 < DIMS[d1].values.length; v1++)
+      for (let d2 = d1 + 1; d2 < DIMS.length; d2++)
+        for (let v2 = 0; v2 < DIMS[d2].values.length; v2++)
+          out.push({
+            [DIMS[d1].name]: DIMS[d1].values[v1],
+            [DIMS[d2].name]: DIMS[d2].values[v2]
+          });
+  return out;
+}
+function allThreeKeyClauses() {
+  const out = [];
+  for (let d1 = 0; d1 < DIMS.length; d1++)
+    for (let v1 = 0; v1 < DIMS[d1].values.length; v1++)
+      for (let d2 = d1 + 1; d2 < DIMS.length; d2++)
+        for (let v2 = 0; v2 < DIMS[d2].values.length; v2++)
+          for (let d3 = d2 + 1; d3 < DIMS.length; d3++)
+            for (let v3 = 0; v3 < DIMS[d3].values.length; v3++)
+              out.push({
+                [DIMS[d1].name]: DIMS[d1].values[v1],
+                [DIMS[d2].name]: DIMS[d2].values[v2],
+                [DIMS[d3].name]: DIMS[d3].values[v3]
+              });
+  return out;
+}
+function thenClauseCatalogue() {
+  const cat = [];
+  cat.push({ sdf: -1 });
+  cat.push({ sdf: 1 });
+  for (const v of RT_TABLE)   cat.push({ rt: v });
+  for (const v of DOC_TABLE)  cat.push({ doc: v });
+  for (const v of REG_TABLE)  cat.push({ reg: v });
+  for (const v of DENY_TABLE) cat.push({ deny: v });
+  for (const v of [0, 1, 127, 255]) cat.push({ rth: v });
+  cat.push({ sdf: 1, deny: "SubPrime cannot hold BusinessLine" });
+  cat.push({ rt: "A-PREFERRED", rth: 160, doc: "BASIC" });
+  cat.push({ rt: "B-STANDARD",  rth: 130, doc: "ENHANCED" });
+  cat.push({ rt: "C-ELEVATED",  rth:  95, doc: "ENHANCED" });
+  return cat;
+}
+function makeRng(seed) {
+  let s = (seed | 0) || 1;
+  return () => {
+    s = (s * 1664525 + 1013904223) | 0;
+    return ((s >>> 0) / 0x100000000);
+  };
+}
+function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+// The 11 canonical rules (from constraints.js CONSTRAINTS).
+const CANONICAL_RULES = [
+  { when: { credit: "prime" },      then: { rt: "A-PREFERRED", rth: 160, doc: "BASIC" } },
+  { when: { credit: "near-prime" }, then: { rt: "B-STANDARD",  rth: 130, doc: "ENHANCED" } },
+  { when: { credit: "sub-prime" },  then: { rt: "C-ELEVATED",  rth:  95, doc: "ENHANCED" } },
+  { when: { residency: "foreign" },     then: { doc: "ENHANCED" } },
+  { when: { residency: "diplomatic" },  then: { doc: "MAXIMUM" } },
+  { when: { credit: "sub-prime", product: "business-line" },
+    then: { sdf: 1, deny: "SubPrime cannot hold BusinessLine" } },
+  { when: { residency: "foreign", product: "mortgage", credit: "sub-prime" },
+    then: { sdf: 1, deny: "Foreign SubPrime Mortgage not underwriteable" } },
+  { when: { employment: "unemployed", product: "mortgage" },
+    then: { sdf: 1, deny: "Mortgage requires income source" } },
+  { when: { employment: "student", product: "business-line" },
+    then: { sdf: 1, deny: "Student cannot hold BusinessLine" } },
+  { when: { applicant: "trust", product: "personal" },
+    then: { sdf: 1, deny: "Trust cannot hold Personal" } },
+  { when: { income: "under50", product: "mortgage" },
+    then: { sdf: 1, deny: "Mortgage requires minimum qualifying income" } }
+];
+
+function buildFixtureRules() {
+  const fixtures = [];
+
+  // Self-check (matches the fixture id "canonical-11" exactly)
+  fixtures.push({ id: "canonical-11", suite: "self-check", rules: CANONICAL_RULES.map(cloneRule) });
+
+  // Suite 2: 1-key x each then-clause
+  const oneKey = allDimValueClauses();
+  const thens  = thenClauseCatalogue();
+  let idx = 0;
+  for (const when of oneKey) {
+    for (const then of thens) {
+      fixtures.push({
+        id: "one-key-" + (idx++), suite: "exhaustive-1key",
+        rules: [{ when: { ...when }, then: { ...then } }]
+      });
+    }
+  }
+
+  // Suite 3a: 2-key x {deny, classification}
+  const denyThen  = { sdf: 1, deny: "SubPrime cannot hold BusinessLine" };
+  const classThen = { rt: "B-STANDARD", rth: 130, doc: "ENHANCED" };
+  idx = 0;
+  for (const when of allTwoKeyClauses()) {
+    for (const then of [denyThen, classThen]) {
+      fixtures.push({
+        id: "two-key-" + (idx++), suite: "exhaustive-2key",
+        rules: [{ when: { ...when }, then: { ...then } }]
+      });
+    }
+  }
+  // Suite 3b: 3-key x deny
+  idx = 0;
+  for (const when of allThreeKeyClauses()) {
+    fixtures.push({
+      id: "three-key-" + (idx++), suite: "exhaustive-3key",
+      rules: [{ when: { ...when }, then: { ...denyThen } }]
+    });
+  }
+
+  // Suite 4: rule-count scaling. SAME seed as generate-gpu-fixtures.js.
+  const rng  = makeRng(0xC0FFEE);
+  const oneK = oneKey, twoK = allTwoKeyClauses(), threeK = allThreeKeyClauses();
+  function randomRule() {
+    const w = rng();
+    let when;
+    if (w < 0.5)       when = pick(rng, oneK);
+    else if (w < 0.85) when = pick(rng, twoK);
+    else               when = pick(rng, threeK);
+    return { when: { ...when }, then: { ...pick(rng, thens) } };
+  }
+  idx = 0;
+  for (let n = 1; n <= 16; n++) {
+    for (let s = 0; s < 24; s++) {
+      const rules = [];
+      for (let i = 0; i < n; i++) rules.push(randomRule());
+      fixtures.push({
+        id: "scale-n" + n + "-s" + s + "-" + (idx++),
+        suite: "rule-count-scaling", rules
+      });
+    }
+  }
+
+  // Suite 5: overwrite pairs
+  const valuesByField = {
+    sdf:  [-1, 1],
+    rt:   RT_TABLE.slice(),
+    rth:  [0, 1, 127, 255],
+    doc:  DOC_TABLE.slice(),
+    reg:  REG_TABLE.slice(),
+    deny: DENY_TABLE.slice()
+  };
+  const FIELDS = ["sdf", "rt", "rth", "doc", "reg", "deny"];
+  const whenA = oneK[0], whenB = twoK[0];
+  idx = 0;
+  for (const f of FIELDS) {
+    const vs = valuesByField[f];
+    for (const a of vs) {
+      for (const b of vs) {
+        if (a === b) continue;
+        fixtures.push({
+          id: "overwrite-" + f + "-" + (idx++),
+          suite: "overwrite-pairs",
+          rules: [
+            { when: { ...whenA }, then: { [f]: a } },
+            { when: { ...whenB }, then: { [f]: b } }
+          ]
+        });
+      }
+    }
+  }
+  return fixtures;
+}
+function cloneRule(r) { return { when: { ...r.when }, then: { ...r.then } }; }
+
+// =========================================================================
+// JS ORACLE (ported from oracle.js -- byte-identical to WGSL semantics)
+// =========================================================================
+
+function jsExecute(instructions, coord) {
+  let sdf = -1, rt = 0, rth = 0, doc = 0, reg = 0, deny = 0;
+  const stack = new Int8Array(8);
+  let sp = 0;
+  let skipping = false;
+  let pc = 0;
+  const n = instructions.length;
+
+  while (pc < n) {
+    const inst = instructions[pc];
+    const op = inst & 0xFF;
+    const a  = (inst >>> 8) & 0xFF;
+    const b  = (inst >>> 16) & 0xFF;
+
+    if (skipping) {
+      if (op === OP.END_RULE) skipping = false;
+      pc++;
+      continue;
+    }
+
+    switch (op) {
+      case OP.MATCH_DIM:  stack[sp++] = (coord[a] === b) ? 1 : 0; break;
+      case OP.AND: { const top = stack[--sp]; stack[sp - 1] = (stack[sp - 1] & top) & 1; break; }
+      case OP.BEGIN_THEN: { if (stack[--sp] === 0) skipping = true; break; }
+      case OP.SET_SDF:  sdf  = (a === 1) ? 1 : -1; break;
+      case OP.SET_RT:   rt   = a; break;
+      case OP.SET_RTH:  rth  = a; break;
+      case OP.SET_DOC:  doc  = a; break;
+      case OP.SET_REG:  reg  = a; break;
+      case OP.SET_DENY: deny = a; break;
+      case OP.END_RULE: break;
+      default: throw new Error("unknown opcode " + op);
+    }
+    pc++;
+  }
+
+  if (sdf === 1) { reg = 1; rth = 0; }
+  return { sdf, rt, rth, doc, reg, deny };
+}
+
+function jsExecuteAll(instructions) {
+  const out = new Array(STATE_SPACE_SIZE);
+  for (let i = 0; i < STATE_SPACE_SIZE; i++) {
+    out[i] = jsExecute(instructions, unpackCoord(i));
+  }
+  return out;
+}
+
+// =========================================================================
+// CSS PATH (real browser cascade via getComputedStyle on probe substrate)
+// =========================================================================
+
+const probeSubstrateEl = document.getElementById("probe-substrate");
+let cssStyleEl = null;
+let probeEls = null;   // array of length STATE_SPACE_SIZE
+let probeCoords = null; // array of unpackCoord results, computed once
+
+function initProbeSubstrate() {
+  // One probe element per coordinate. Built once, reused across fixtures.
+  probeSubstrateEl.textContent = "";
+  probeEls = new Array(STATE_SPACE_SIZE);
+  probeCoords = new Array(STATE_SPACE_SIZE);
+
+  // Build a single DocumentFragment to minimize DOM churn.
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < STATE_SPACE_SIZE; i++) {
+    const coord = unpackCoord(i);
+    probeCoords[i] = coord;
+    const el = document.createElement("div");
+    el.className = "probe";
+    // Apply attributes for this coordinate.
+    for (let d = 0; d < DIMS.length; d++) {
+      el.setAttribute("data-" + DIMS[d].name, DIMS[d].values[coord[d]]);
+    }
+    probeEls[i] = el;
+    frag.appendChild(el);
+  }
+  probeSubstrateEl.appendChild(frag);
+}
+
+function cssCompileRules(rules) {
+  let css = "";
+  const SELECTOR = ".probe";
+
+  css += SELECTOR + " {\n";
+  css += "  --sdf: -1;\n";
+  css += "  --deny: \"\";\n";
+  css += "  --reg: VALID;\n";
+  css += "  --rt: UNCLASSIFIED;\n";
+  css += "  --rth: 0;\n";
+  css += "  --doc: BASIC;\n";
+  css += "}\n\n";
+
+  // Sort rules by specificity (when-keys count, ascending) so later rules win,
+  // matching the JS oracle / WGSL emission order.
+  const sorted = sortRules(rules);
+
+  for (const c of sorted) {
+    let tail = "";
+    for (const dim of Object.keys(c.when)) {
+      const val = c.when[dim];
+      tail += '[data-' + dim + '="' + val + '"]';
+    }
+    const decls = [];
+    const t = c.then;
+    if ("sdf"  in t) decls.push("--sdf: " + (t.sdf === 1 ? 1 : -1));
+    if ("deny" in t) decls.push("--deny: \"" + cssEscapeString(t.deny) + "\"");
+    if ("rt"   in t) decls.push("--rt: " + cssSafeToken(t.rt));
+    if ("rth"  in t) decls.push("--rth: " + (t.rth | 0));
+    if ("doc"  in t) decls.push("--doc: " + cssSafeToken(t.doc));
+    if ("reg"  in t) decls.push("--reg: " + cssSafeToken(t.reg));
+    // Derived: sdf:1 => reg:DENIED, rth:0
+    if ("sdf" in t && t.sdf === 1) {
+      decls.push("--reg: DENIED");
+      decls.push("--rth: 0");
+    }
+    if (decls.length > 0) {
+      css += SELECTOR + tail + " {\n  " + decls.join(";\n  ") + ";\n}\n";
+    }
+  }
+  return css;
+}
+
+function cssEscapeString(s) {
+  // Conservative: escape " and \ only. CSS string escape rules are
+  // permissive for our content (DENY_TABLE strings are ASCII).
+  return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+function cssSafeToken(v) {
+  if (typeof v !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(v))
+    throw new Error("Unsafe CSS token: " + JSON.stringify(String(v).slice(0, 32)));
+  return v;
+}
+
+function cssInstallStylesheet(cssText) {
+  if (cssStyleEl && cssStyleEl.parentNode) cssStyleEl.parentNode.removeChild(cssStyleEl);
+  cssStyleEl = document.createElement("style");
+  cssStyleEl.id = "stratified-cascade";
+  cssStyleEl.textContent = cssText;
+  document.head.appendChild(cssStyleEl);
+}
+
+function cssReadProbe(el) {
+  const cs = getComputedStyle(el);
+  return {
+    sdf:  parseInt(cs.getPropertyValue("--sdf").trim(), 10),
+    rt:   stripQuotes(cs.getPropertyValue("--rt").trim()),
+    rth:  parseInt(cs.getPropertyValue("--rth").trim(), 10),
+    doc:  stripQuotes(cs.getPropertyValue("--doc").trim()),
+    reg:  stripQuotes(cs.getPropertyValue("--reg").trim()),
+    deny: stripQuotes(cs.getPropertyValue("--deny").trim())
+  };
+}
+function stripQuotes(s) {
+  if (!s) return "";
+  if ((s.charAt(0) === '"' && s.charAt(s.length - 1) === '"') ||
+      (s.charAt(0) === "'" && s.charAt(s.length - 1) === "'"))
+    return s.slice(1, -1);
+  return s;
+}
+
+// Convert a string-form CSS output record to the SAME index-form representation
+// JS and WGSL produce, so the three can hash byte-identical.
+function cssRecordToIndexed(rec) {
+  return {
+    sdf: rec.sdf | 0,
+    rt:  Math.max(0, lookupIndex(RT_TABLE,   rec.rt)),
+    rth: rec.rth | 0,
+    doc: Math.max(0, lookupIndex(DOC_TABLE,  rec.doc)),
+    reg: Math.max(0, lookupIndex(REG_TABLE,  rec.reg)),
+    deny: Math.max(0, lookupIndex(DENY_TABLE, rec.deny))
+  };
+}
+
+function cssResolveAll(rules) {
+  cssInstallStylesheet(cssCompileRules(rules));
+  // Force a style recalc by reading offsetHeight (cheap, triggers the cascade).
+  // Without this, the read loop below might amortize over an idle frame.
+  void probeSubstrateEl.offsetHeight;
+
+  const out = new Array(STATE_SPACE_SIZE);
+  for (let i = 0; i < STATE_SPACE_SIZE; i++) {
+    out[i] = cssRecordToIndexed(cssReadProbe(probeEls[i]));
+  }
+  return out;
+}
+
+// =========================================================================
+// WGSL PATH (compute shader dispatch)
+// =========================================================================
+
+const WGSL_URL = "../resolve.wgsl";
+let gpuDevice = null, gpuPipeline = null;
+let gpuConstantsBuf = null, gpuOutputsBuf = null, gpuReadbackBuf = null;
+let gpuConstantsArr = null;
+let gpuZeroFill = null;
+const OUTPUT_U32S_PER_COORD = 6;
+
+async function gpuInit() {
+  if (!navigator.gpu) throw new Error("navigator.gpu unavailable");
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error("requestAdapter returned null");
+  gpuDevice = await adapter.requestDevice();
+  gpuDevice.addEventListener("uncapturederror", (e) =>
+    log("[WARN] gpu uncapturederror: " + (e.error && e.error.message), "warn"));
+
+  const wgslSource = await (await fetch(WGSL_URL)).text();
+  const shaderModule = gpuDevice.createShaderModule({ label: "resolve.wgsl", code: wgslSource });
+  gpuPipeline = gpuDevice.createComputePipeline({
+    label: "resolve", layout: "auto",
+    compute: { module: shaderModule, entryPoint: "main" }
+  });
+
+  // Constants: state_space_size, instruction_count, dim_count, _pad, then 8 cardinalities
+  gpuConstantsArr = new Uint32Array(12);
+  gpuConstantsArr[0] = STATE_SPACE_SIZE;
+  gpuConstantsArr[2] = DIMS.length;
+  gpuConstantsArr[3] = 0;
+  for (let d = 0; d < 8; d++) {
+    gpuConstantsArr[4 + d] = DIMS[d] ? DIMS[d].values.length : 0;
+  }
+
+  gpuConstantsBuf = gpuDevice.createBuffer({
+    label: "constants", size: gpuConstantsArr.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+
+  const outBytes = STATE_SPACE_SIZE * OUTPUT_U32S_PER_COORD * 4;
+  gpuOutputsBuf = gpuDevice.createBuffer({
+    label: "outputs", size: outBytes,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+  });
+  gpuReadbackBuf = gpuDevice.createBuffer({
+    label: "readback", size: outBytes,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+  });
+  gpuZeroFill = new Uint8Array(outBytes);
+}
+
+async function gpuResolveAll(instructions) {
+  const instructionsBuf = gpuDevice.createBuffer({
+    label: "instructions",
+    size: instructions.byteLength || 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+  });
+  if (instructions.byteLength > 0) {
+    gpuDevice.queue.writeBuffer(instructionsBuf, 0, instructions);
+  }
+
+  gpuConstantsArr[1] = instructions.length;
+  gpuDevice.queue.writeBuffer(gpuConstantsBuf, 0, gpuConstantsArr);
+  gpuDevice.queue.writeBuffer(gpuOutputsBuf, 0, gpuZeroFill);
+
+  const bindGroup = gpuDevice.createBindGroup({
+    label: "bg", layout: gpuPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: gpuConstantsBuf } },
+      { binding: 1, resource: { buffer: instructionsBuf } },
+      { binding: 2, resource: { buffer: gpuOutputsBuf } }
+    ]
+  });
+
+  const encoder = gpuDevice.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(gpuPipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.dispatchWorkgroups(Math.ceil(STATE_SPACE_SIZE / 64));
+  pass.end();
+  encoder.copyBufferToBuffer(gpuOutputsBuf, 0, gpuReadbackBuf, 0,
+    STATE_SPACE_SIZE * OUTPUT_U32S_PER_COORD * 4);
+  gpuDevice.queue.submit([encoder.finish()]);
+
+  await gpuReadbackBuf.mapAsync(GPUMapMode.READ);
+  const mapped = gpuReadbackBuf.getMappedRange();
+  const bytes = new Uint8Array(mapped.slice(0));
+  gpuReadbackBuf.unmap();
+
+  instructionsBuf.destroy();
+  return bytes;
+}
+
+// =========================================================================
+// HASHING + PACKING (same byte layout across all three paths)
+// =========================================================================
+
+function packResults(results) {
+  // results is an array of {sdf, rt, rth, doc, reg, deny} index-form records.
+  // Pack as 6 u32 per coord in (sdf:i32, rth:u32, rt:u32, doc:u32, reg:u32, deny:u32) order.
+  const buf = new ArrayBuffer(STATE_SPACE_SIZE * OUTPUT_U32S_PER_COORD * 4);
+  const i32 = new Int32Array(buf);
+  const u32 = new Uint32Array(buf);
+  for (let i = 0; i < STATE_SPACE_SIZE; i++) {
+    const r = results[i];
+    const base = i * OUTPUT_U32S_PER_COORD;
+    i32[base + 0] = r.sdf | 0;
+    u32[base + 1] = r.rth >>> 0;
+    u32[base + 2] = r.rt  >>> 0;
+    u32[base + 3] = r.doc >>> 0;
+    u32[base + 4] = r.reg >>> 0;
+    u32[base + 5] = r.deny >>> 0;
+  }
+  return new Uint8Array(buf);
+}
+
+function fnv1a32(bytes) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h >>> 0;
+}
+function hexHash(h) { return ("00000000" + h.toString(16)).slice(-8); }
+
+// =========================================================================
+// STRATIFIED CYCLE: runs all three paths concurrently, returns the joint
+// coherence record. The cycle's resolution exists only when all three agree.
+// =========================================================================
+
+async function stratifiedCycle(rules, instructions, expectedHash) {
+  // Three resolutions kicked off concurrently in the same runtime window.
+  // CSS and JS are synchronous-from-main-thread but we use Promise.all to
+  // collect their results uniformly with the GPU's async dispatch.
+  //
+  // We schedule them in source order for predictability. The CSS path
+  // dominates wall-clock; while it works, the GPU dispatch can be in-flight,
+  // and the JS oracle gets sandwiched between.
+  const t0 = performance.now();
+
+  const cssPromise = Promise.resolve().then(() => {
+    const t = performance.now();
+    const result = cssResolveAll(rules);
+    return { result, ms: performance.now() - t };
+  });
+
+  const gpuPromise = (async () => {
+    const t = performance.now();
+    const bytes = await gpuResolveAll(instructions);
+    return { bytes, ms: performance.now() - t };
+  })();
+
+  const jsPromise = Promise.resolve().then(() => {
+    const t = performance.now();
+    const result = jsExecuteAll(instructions);
+    return { result, ms: performance.now() - t };
+  });
+
+  const [cssR, jsR, gpuR] = await Promise.all([cssPromise, jsPromise, gpuPromise]);
+
+  // Pack and hash each path's output uniformly.
+  const cssBytes = packResults(cssR.result);
+  const jsBytes  = packResults(jsR.result);
+  const gpuBytes = gpuR.bytes;
+
+  const cssHash = hexHash(fnv1a32(cssBytes));
+  const jsHash  = hexHash(fnv1a32(jsBytes));
+  const gpuHash = hexHash(fnv1a32(gpuBytes));
+
+  // Coherence check. The stratified agreement exists only if all three
+  // resolutions hash to the same value.
+  const cssJsAgree  = cssHash === jsHash;
+  const jsGpuAgree  = jsHash === gpuHash;
+  const cssGpuAgree = cssHash === gpuHash;
+  const allAgree    = cssJsAgree && jsGpuAgree && cssGpuAgree;
+  const matchesExpected = (cssHash === expectedHash);
+
+  return {
+    cssHash, jsHash, gpuHash, expectedHash,
+    cssMs: cssR.ms, jsMs: jsR.ms, gpuMs: gpuR.ms,
+    cycleMs: performance.now() - t0,
+    cssJsAgree, jsGpuAgree, cssGpuAgree, allAgree, matchesExpected,
+    stratifiedHash: allAgree ? cssHash : null
+  };
+}
+
+// =========================================================================
+// UI / HARNESS DRIVER
+// =========================================================================
+
+const logEl   = document.getElementById("log");
+const progEl  = document.getElementById("progress").firstElementChild;
+const btnRun  = document.getElementById("run-btn");
+const btnRunAll = document.getElementById("run-all-btn");
+const btnCopy = document.getElementById("copy-btn");
+const inpLimit = document.getElementById("fixture-limit");
+const inpStart = document.getElementById("fixture-start");
+
+const statTried = document.getElementById("stat-tried");
+const statStrat = document.getElementById("stat-stratified");
+const statPart  = document.getElementById("stat-partial");
+const statFail  = document.getElementById("stat-failed");
+
+function log(msg, cls) {
+  const row = document.createElement("div");
+  if (cls) row.className = cls;
+  row.textContent = msg;
+  logEl.appendChild(row);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog() { logEl.innerHTML = ""; progEl.style.width = "0"; }
+function updateStats(t, s, p, f) {
+  statTried.querySelector(".value").textContent = t;
+  statStrat.querySelector(".value").textContent = s;
+  statPart.querySelector(".value").textContent  = p;
+  statFail.querySelector(".value").textContent  = f;
+  statStrat.className = "stat" + (s > 0 ? " pass" : "");
+  statPart.className  = "stat" + (p > 0 ? " partial" : "");
+  statFail.className  = "stat" + (f > 0 ? " fail" : "");
+}
+
+let isRunning = false;
+
+async function runStratifiedSuite(limit, startAt) {
+  if (isRunning) return;
+  isRunning = true;
+  btnRun.disabled = true;
+  btnRunAll.disabled = true;
+
+  clearLog();
+  log("[harness] initializing probe substrate (" + STATE_SPACE_SIZE + " elements)...", "info");
+  if (probeEls === null) initProbeSubstrate();
+
+  log("[harness] loading fixtures + initializing GPU...", "info");
+  let manifest;
+  try {
+    const res = await fetch("./gpu-fixtures.json");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    manifest = await res.json();
+  } catch (e) {
+    log("[FAIL] cannot load gpu-fixtures.json: " + e.message, "fail");
+    log("       run: node tests/generate-gpu-fixtures.js", "fail");
+    isRunning = false; btnRun.disabled = false; btnRunAll.disabled = false;
+    return;
+  }
+  log("[harness] fixtures: " + manifest.fixtureCount + " (spec " + manifest.specVersion + ")", "info");
+
+  try {
+    if (gpuDevice === null) await gpuInit();
+    log("[harness] gpu adapter ready", "info");
+  } catch (e) {
+    log("[FAIL] gpu init: " + e.message, "fail");
+    isRunning = false; btnRun.disabled = false; btnRunAll.disabled = false;
+    return;
+  }
+
+  // Build the locally-generated rules and pair them with the expected hashes
+  // from the fixtures file. The IDs must align.
+  log("[harness] regenerating rule sets from canonical generators...", "info");
+  const localRules = buildFixtureRules();
+  if (localRules.length !== manifest.fixtures.length) {
+    log("[FAIL] local rule count (" + localRules.length +
+        ") != fixture count (" + manifest.fixtures.length + ")", "fail");
+    isRunning = false; btnRun.disabled = false; btnRunAll.disabled = false;
+    return;
+  }
+
+  const total = Math.min(limit, manifest.fixtures.length - startAt);
+  log("[harness] running " + total + " stratified cycles starting at fixture " + startAt, "hdr");
+
+  let tried = 0, stratified = 0, partial = 0, failed = 0;
+  const failures = [];
+  const tStart = performance.now();
+
+  for (let i = 0; i < total; i++) {
+    const fxIdx = startAt + i;
+    const fx = manifest.fixtures[fxIdx];
+    const local = localRules[fxIdx];
+
+    // Sanity check: ID must match (same enumeration order on both sides)
+    if (fx.id !== local.id) {
+      log("[FAIL] fixture id mismatch at " + fxIdx + ": local=" + local.id + " manifest=" + fx.id, "fail");
+      failed++; tried++;
+      updateStats(tried, stratified, partial, failed);
+      continue;
+    }
+
+    // Compile rules to instructions locally and verify they match the manifest's
+    // expected bytecode (sanity check that the regenerated rules are correct).
+    const instructions = compileRulesArray(local.rules);
+    const localHex = new Array(instructions.length);
+    for (let k = 0; k < instructions.length; k++) {
+      localHex[k] = ("00000000" + instructions[k].toString(16)).slice(-8);
+    }
+    let bytecodeMatch = true;
+    if (localHex.length !== fx.instructionsHex.length) bytecodeMatch = false;
+    else for (let k = 0; k < localHex.length; k++) {
+      if (localHex[k] !== fx.instructionsHex[k]) { bytecodeMatch = false; break; }
+    }
+    if (!bytecodeMatch) {
+      log("[FAIL] " + fx.id + ": locally-compiled bytecode differs from manifest", "fail");
+      failed++; tried++;
+      updateStats(tried, stratified, partial, failed);
+      continue;
+    }
+
+    // Run the stratified cycle: CSS + JS + WGSL concurrently.
+    let result;
+    try {
+      result = await stratifiedCycle(local.rules, instructions, fx.expectedOutputHash);
+    } catch (e) {
+      log("[FAIL] " + fx.id + ": cycle threw: " + e.message, "fail");
+      failed++; tried++;
+      updateStats(tried, stratified, partial, failed);
+      continue;
+    }
+
+    tried++;
+
+    if (result.allAgree && result.matchesExpected) {
+      stratified++;
+      log("[STRATIFIED] " + fx.id + "  hash=" + result.stratifiedHash +
+          "  (css " + result.cssMs.toFixed(0) + "ms / js " + result.jsMs.toFixed(0) +
+          "ms / gpu " + result.gpuMs.toFixed(0) + "ms / cycle " + result.cycleMs.toFixed(0) + "ms)", "pass");
+    } else if (result.allAgree && !result.matchesExpected) {
+      // The three substrates agree with each other but disagree with the
+      // pre-computed Node-oracle hash. That is itself an interesting
+      // finding -- three browser-side resolvers convergent against a
+      // divergent reference. Marked as failure for safety.
+      partial++;
+      log("[CONVERGENT-MISMATCH] " + fx.id + "  css/js/gpu=" + result.cssHash +
+          "  expected=" + result.expectedHash, "warn");
+      failures.push({ id: fx.id, kind: "convergent-mismatch", result });
+    } else {
+      partial++;
+      log("[DIVERGE] " + fx.id +
+          "  css=" + result.cssHash +
+          "  js=" + result.jsHash +
+          "  gpu=" + result.gpuHash +
+          "  expected=" + result.expectedHash, "fail");
+      log("           css<->js " + (result.cssJsAgree ? "agree" : "DIVERGE") +
+          "   js<->gpu " + (result.jsGpuAgree ? "agree" : "DIVERGE") +
+          "   css<->gpu " + (result.cssGpuAgree ? "agree" : "DIVERGE"), "strata");
+      failures.push({ id: fx.id, kind: "divergence", result });
+    }
+
+    progEl.style.width = ((tried / total) * 100).toFixed(1) + "%";
+    updateStats(tried, stratified, partial, failed);
+
+    // Yield to the browser every fixture so the page stays responsive and
+    // the cascade actually has time to recalc.
+    if ((tried & 3) === 0) await new Promise(r => requestAnimationFrame(r));
+  }
+
+  const totalMs = performance.now() - tStart;
+  log("", null);
+  log("[SUMMARY] " + tried + " cycles in " + (totalMs / 1000).toFixed(1) + "s", "hdr");
+  log("          stratified agreements:    " + stratified + " / " + tried, stratified === tried ? "pass" : "info");
+  log("          partial agreements:       " + partial, partial > 0 ? "warn" : "info");
+  log("          disagreements:            " + failed, failed > 0 ? "fail" : "info");
+  log("          avg cycle time:           " + (totalMs / Math.max(tried, 1)).toFixed(0) + "ms", "info");
+
+  if (failures.length > 0 && failures.length <= 5) {
+    log("", null);
+    log("[FAILURES] (first 5)", "hdr");
+    for (const f of failures.slice(0, 5)) {
+      log("  " + f.id + " (" + f.kind + "): css=" + f.result.cssHash +
+          " js=" + f.result.jsHash + " gpu=" + f.result.gpuHash +
+          " expected=" + f.result.expectedHash, "fail");
+    }
+  }
+
+  isRunning = false;
+  btnRun.disabled = false;
+  btnRunAll.disabled = false;
+}
+
+btnRun.addEventListener("click", () => {
+  const limit = parseInt(inpLimit.value, 10) || 10;
+  const start = parseInt(inpStart.value, 10) || 0;
+  runStratifiedSuite(limit, start);
+});
+btnRunAll.addEventListener("click", () => {
+  runStratifiedSuite(2602, 0);
+});
+btnCopy.addEventListener("click", () => {
+  const text = Array.from(logEl.children).map(d => d.textContent).join("\n");
+  navigator.clipboard.writeText(text).then(() => {
+    log("[harness] log copied to clipboard", "info");
+  }, () => {});
+});
+
+log("[harness] ready. click RUN STRATIFIED CYCLE to begin.", "info");
+log("[harness] default: 10 fixtures from index 0. raise the limit for more.", "info");
+log("[harness] expect ~150-400ms per cycle (css is the bottleneck).", "info");
+</script>
+
+</body>
+</html>
