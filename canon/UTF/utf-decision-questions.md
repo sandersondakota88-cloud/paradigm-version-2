@@ -219,8 +219,78 @@ middle.
 **Your answer:**
 
 ```
-(to be written)
+Q3 as written presented A/B/C as a trichotomy — pick one reading.
+The reframe: a kind label is a packed value carrying all three
+mechanics (routing, structural identity, lifecycle position) in
+one slot. The architecture has been packing all three the whole
+time; the spec just hasn't named it as a structural commitment.
+
+The deeper refinement: the kind label doesn't encode information
+ABOUT the constraint. It carries the irreversible semantic
+mutation that would have been required to logically reach this
+value in the first place. The label is not metadata; it is the
+structural deposit of the mutation that produced the constraint's
+current state. Reading the kind reads the consequence of the
+procedure that produced it, not a separate description of the
+constraint's properties.
+
+This is consistent with F5 (observation produces irrecoverable
+structural change). The kind label IS one of those deposits.
+M5 (trace lives at the channel) records cross-constraint mutation
+ordering at the channel boundary; kinds record per-constraint
+mutation identity carried with the constraint itself. Same
+structural function, different scope.
+
+This is the architecture's mechanism for preserving the procedure
+after the procedure is over, without requiring external instru-
+mentation. Imperative software loses procedures the moment they
+finish, then recovers them via stack traces, debuggers, replays.
+The substrate preserves procedures structurally, in the value
+itself, by making the value's existence inseparable from the
+mutation that produced it.
+
+UTF commits to kinds as first-class trace residue. Every kind is
+the recorded consequence of the procedure that produced or last
+transitioned the constraint, structurally inseparable from the
+constraint's existence.
 ```
+
+**Status:** LOCKED 2026-05-19 as **packed mutation-deposit**.
+
+**Architectural commitment:** A kind label is a packed value
+carrying three structural dimensions (routing discrimination,
+structural commitment, lifecycle position) simultaneously, as the
+irreversible deposit of the mutation event that produced the
+constraint's current state. UTF treats kinds as first-class trace
+residue: the kind is not metadata about the constraint, it is the
+structural record of the procedure that produced it.
+
+**Sub-recognitions locked alongside:**
+
+1. **Kinds preserve retired procedures structurally.** The
+   substrate's history is readable from its current state because
+   kinds carry the deposited mutation that produced each
+   constraint's lifecycle position. No external instrumentation
+   (stack traces, debuggers, replay logs) is required to recover
+   procedure history.
+
+2. **C2 (misreadings do not change the architecture) lands more
+   sharply.** The substrate's state already contains its history
+   in the kind labels. External reading is irrelevant to what the
+   substrate actually is, because the substrate is what its
+   mutations left behind.
+
+3. **C1 (closure) is mechanically achievable.** External frames
+   cannot be load-bearing because they would import external
+   procedure history into the substrate's structural account. The
+   substrate can only carry retired procedures it actually ran;
+   kinds make this explicit.
+
+4. **Operation-to-kind mapping is implied but not yet specified.**
+   The spec will need a normative table: which operations produce
+   which kinds. (intake → derived, gap-divergence → predictive,
+   confirmation → ratified, family-promotion → meta, etc.) Held
+   as a child question for the next pass.
 
 -----
 
@@ -558,5 +628,6 @@ fixed.
 | 2026-05-17 | Questions written. Companion to `canon/UTF/research/phase-6-substrate-duels-analysis.md`. Each question is structurally grounded; answer at your own pace; UTF foundations revision proceeds as answers arrive. |
 | 2026-05-17 | Q1 locked as C (two layers: closed primitives + open emergent). Q11 added (substrate lifecycle commitment) — surfaced when Q1 answering revealed the original ten questions conflated architecture-shape with substrate-trajectory. Q4 deferred per user instruction. |
 | 2026-05-17 | Q2 locked at four kernel-closed primitives (seed, trace-entry, dispatch-event, field-state). Q2 as originally written asked about constraint-kind primitives; the answer reframed it: those are adapter-registered, not kernel-closed. Three-layer architecture (kernel-closed / adapter-registered / emergent-open) is now the explicit shape. Four sub-recognitions locked alongside: (1) field-state carries geometric description not executable syntax; (2) primitives provide scale-readiness not scale-solving; (3) the four form a rhythm of permanence/current; (4) adapters wrap host-environment parsers and do not reimplement parsing (the zero-maintenance path to spec-accurate ingest). |
+| 2026-05-19 | Q3 locked as packed mutation-deposit. The original A/B/C trichotomy was a false choice — kinds carry all three mechanics (routing, structural identity, lifecycle position) packed into one value, as the irreversible deposit of the mutation that produced the constraint's current state. Kinds are not metadata; they are first-class trace residue. Four sub-recognitions: (1) the substrate preserves retired procedures structurally without external instrumentation; (2) C2 lands more sharply (state contains its own history); (3) C1 is mechanically achievable (only ran-procedures get carried); (4) an operation-to-kind mapping is implied and needs to be specified as a normative table in a child question. |
 
 Updates appended as questions get answered or reformulated.
