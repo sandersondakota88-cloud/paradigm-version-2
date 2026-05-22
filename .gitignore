@@ -15,6 +15,13 @@ exodus/canonical-implementation/tests/gpu-fixtures.json
 *.log
 logs/
 
+# --- DevTools Performance traces --------------------------------------------
+# Edge/Chrome Performance panel exports. Local diagnostics, not source of truth.
+# Use tests/analyze-trace.js to inspect them; the analysis output is what
+# belongs in commits, not the raw multi-MB trace.
+Trace-*.json
+Trace-*.json.gz
+
 # --- OS metadata ------------------------------------------------------------
 # Windows
 Thumbs.db
