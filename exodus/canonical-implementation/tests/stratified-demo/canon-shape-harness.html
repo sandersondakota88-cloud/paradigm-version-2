@@ -114,7 +114,7 @@ non-canonical semantics.
 
 Serve via HTTP (file:// blocks fetch):
   python -m http.server 8080   (from canonical-implementation/)
-  http://localhost:8080/tests/extensions/canon-shape/canon-shape-harness.html</div>
+  http://localhost:8080/tests/stratified-demo/canon-shape-harness.html</div>
 
 <div class="controls">
   <button class="run" id="run-btn">RUN STRATIFIED CYCLE</button>
@@ -891,7 +891,7 @@ async function runStratifiedSuite(limit, startAt) {
     manifest = await res.json();
   } catch (e) {
     log("[FAIL] cannot load canon-fixtures.json: " + e.message, "fail");
-    log("       run: node tests/extensions/canon-shape/generate-canon-fixtures.js", "fail");
+    log("       run: node tests/stratified-demo/generate-canon-fixtures.js", "fail");
     isRunning = false; btnRun.disabled = false; btnRunAll.disabled = false;
     return;
   }

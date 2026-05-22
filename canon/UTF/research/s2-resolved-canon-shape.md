@@ -66,7 +66,7 @@ constraint that canon section 3 forbids by structural definition.
 ## 2. The test
 
 The canon-shape harness lives at
-[exodus/canonical-implementation/tests/extensions/canon-shape/](../../../exodus/canonical-implementation/tests/extensions/canon-shape/)
+[exodus/canonical-implementation/tests/stratified-demo/](../../../exodus/canonical-implementation/tests/stratified-demo/)
 and consists of three pieces:
 
 **`generate-canon-fixtures.js`** — fixture generator. Identical

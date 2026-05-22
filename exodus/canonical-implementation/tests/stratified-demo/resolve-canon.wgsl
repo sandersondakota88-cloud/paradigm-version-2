@@ -14,7 +14,7 @@
 // sets sdf:1 to also explicitly set reg:"DENIED" and rth:0. The commitment
 // moves from post-processing into the THEN where it belongs.
 //
-// Use with: tests/extensions/canon-shape/canon-fixtures.json
+// Use with: tests/stratified-demo/canon-fixtures.json
 // ============================================================================
 
 struct Constants {

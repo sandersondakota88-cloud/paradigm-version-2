@@ -21,16 +21,16 @@
 // non-canonical semantics that canon section 3 already forbids.
 //
 // Run with:
-//   node tests/extensions/canon-shape/generate-canon-fixtures.js
+//   node tests/stratified-demo/generate-canon-fixtures.js
 // Output:
-//   tests/extensions/canon-shape/canon-fixtures.json
+//   tests/stratified-demo/canon-fixtures.json
 // =============================================================================
 
 "use strict";
 
 const fs   = require("fs");
 const path = require("path");
-const ROOT = path.resolve(__dirname, "..", "..", "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const C        = require(path.join(ROOT, "constraints.js"));
 const compiler = require(path.join(ROOT, "compile-constraints.js"));
 
@@ -405,7 +405,7 @@ const manifest = {
     "Every THEN that sets sdf:1 also explicitly sets reg:'DENIED' and rth:0.",
     "Removes the spec's step-3 'derive at the end' rule from the test corpus.",
     "Conforms to canon/UTF/01-foundations.md section 3 (WHEN:THEN shape).",
-    "Generator: tests/extensions/canon-shape/generate-canon-fixtures.js"
+    "Generator: tests/stratified-demo/generate-canon-fixtures.js"
   ]
 };
 
