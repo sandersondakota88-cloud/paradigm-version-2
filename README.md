@@ -35,7 +35,7 @@ What's been demonstrated empirically:
   JS, GPU). Zero divergence.
 - Byte-native WASM intake verified at Spearman ≥ 0.85.
 - Persistence across page reload.
-- A precise boundary map of where the substrate's expressive closure
+- A precise boundary map of where the substrate's expressive reach
   begins and ends.
 
 Where the demonstrations don't yet reach the claims, the gaps are
@@ -60,7 +60,7 @@ Four documents at the project root, read in order:
 
 After those four, read [canon/](canon/) per its own
 [MANIFEST](meta/MANIFEST.md) reading order:
-[DEFINITION](canon/DEFINITION.md) (with §0.5) →
+[DEFINITION](canon/DEFINITION.md) →
 [INVARIANTS](canon/INVARIANTS.md) →
 [KERNEL](canon/KERNEL.md) →
 [algorithm catalog](canon/algorithm/00-INDEX.md) →

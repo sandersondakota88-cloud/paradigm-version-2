@@ -1,15 +1,13 @@
 # INVARIANTS
 
 What cannot be violated in any implementation that claims to
-instantiate the constraint substrate. Read DEFINITION.md section
-0.5 first; this document inherits that reading-mode.
+instantiate the constraint substrate.
 
-This document distills load-bearing commitments from the spec stack
-into a checklist form. It is not exhaustive (the spec contains more
-detail than fits a checklist); it is the minimum set such that an
-implementation honoring all of them can be considered a faithful
-instance of the architecture, and an implementation violating any
-of them cannot.
+This document distills load-bearing commitments from the spec
+stack into a checklist form. It is not exhaustive; it is the
+minimum set such that an implementation honoring all of them can
+be considered a faithful instance of the architecture, and an
+implementation violating any of them cannot.
 
 Structural commitments are organized by the section of the spec
 they are sourced from. Each invariant has a short label, the
@@ -121,54 +119,6 @@ mechanism with electricity” resolved into the recognition that
 the architecture’s exchange is internal and structural:
 observation is what the architecture spends, irreversibility
 is the receipt.
-
------
-
-## Closure invariants
-
-### C1. The abstraction is closed.
-
-**Commitment:** Every property the architecture has is a structural
-consequence of prior commitments specified in DEFINITION.md or the
-catalog. Nothing is bolted on. External assumptions
-(thermodynamic, ML, cognitive, philosophical, or otherwise) may be
-useful for comparison but are not part of the architecture.
-
-**Consequence of violation:** Importing outside frames produces a
-different system that shares vocabulary with this one. Such
-systems may be coherent on their own terms; they are not this
-architecture.
-
-**Source:** DEFINITION section 0.5.
-
-### C2. Misreadings do not change the architecture.
-
-**Commitment:** The architecture’s correctness is determined by
-internal structural inspection of the spec against itself. It
-cannot be established or refuted by external description, no
-matter who produces the description.
-
-**Consequence of violation:** Treating commentary as authoritative
-rather than as input-to-be-evaluated drifts the canon away from
-the spec stack. The architecture’s coherence depends on the spec,
-not on any particular reading.
-
-**Source:** DEFINITION section 0.5.
-
-### C3. AI commentary is treated as any commentary.
-
-**Commitment:** AI-produced commentary on this work is held to the
-same standard as any commentary: useful where it engages
-structurally with the spec, set aside where it imports outside
-frames or inflates claims beyond what the spec supports. This
-standard applies regardless of which AI produced the commentary,
-including the AI that helped build the spec.
-
-**Consequence of violation:** The closure of the abstraction is
-compromised. AI commentary that drifts becomes embedded in the
-canon, and subsequent commentary builds on the drift.
-
-**Source:** DEFINITION section 0.5.
 
 -----
 
@@ -438,8 +388,7 @@ downstream documentation conflicts with canonical documentation,
 the canonical wins.
 
 **Consequence of violation:** Drift accumulates in downstream
-documentation and gradually replaces the spec as the reference,
-which violates C1 (closure).
+documentation and gradually replaces the spec as the reference.
 
 **Source:** DEFINITION.md.
 
@@ -518,11 +467,12 @@ the existence of a cap is.
 **Consequence of violation:** Observer accumulation that grows
 unbounded violates I3 (bounded everything) at a position the
 implementation invariants did not yet name. It also creates a
-finalizable record (a “complete history of self-account”) that
-violates C3’s non-finalizability in spirit: an architecture that
-keeps every observation forever is converging on a final state.
+finalizable record (a "complete history of self-account") that
+contradicts the substrate's indefinite-operation commitment: an
+architecture that keeps every observation forever is converging on
+a final state.
 
-**Source:** I3 (bounded everything), C3 (non-finalizable),
+**Source:** I3 (bounded everything), F4 (operates indefinitely),
 generalized to observers.
 
 ### O3. Observers source vocabulary from the field.
@@ -587,14 +537,14 @@ integrate modulation, evict stale constraints, and respond to any
 modulation that arrives.
 
 **Consequence of violation:** A substrate that can reach a
-terminal “solved” state has reintroduced classical computation’s
+terminal "solved" state has reintroduced classical computation's
 problem-solution-terminus shape. The configuration-and-settling
 account collapses; the substrate becomes a (slow, expensive)
-classical solver. F4 and C3 jointly forbid this; X2 names the
-forbidding explicitly at the level of settling.
+classical solver. F4 forbids this; X2 names the forbidding
+explicitly at the level of settling.
 
-**Source:** F4 (operates indefinitely), C3 (non-finalizable),
-SE-07 (settling is continuous, not terminating).
+**Source:** F4 (operates indefinitely), SE-07 (settling is
+continuous, not terminating).
 
 ### X3. Configuration is internal.
 
@@ -643,32 +593,39 @@ process performed on configuration).
 
 ## How to use this document
 
-When reviewing an implementation, a spec proposal, a piece of
-commentary, or a future revision:
+When reviewing an implementation, a spec proposal, or a future
+revision:
 
-1. Read DEFINITION.md section 0.5 to set the reading-mode.
 1. For each invariant in this document, check whether the artifact
    under review honors it.
-1. For any invariant that is violated, identify whether the
+2. For any invariant that is violated, identify whether the
    violation is intentional (in which case the artifact is not
    instantiating this architecture and that should be stated) or
    unintentional (in which case the artifact should be revised).
-1. For artifacts that make claims beyond what the invariants
+3. For artifacts that make claims beyond what the invariants
    support, identify the specific over-claim and either reduce the
    claim to what the spec supports or add a new SE-N extension
    that establishes the structural ground for the claim.
 
-This document is not a defense against bad-faith readers or against
-implementations that intentionally diverge. It is a reference for
-careful readers and faithful implementers, distilling the spec
-stack’s load-bearing commitments into a single inspectable form.
-
-The closure of the abstraction does the rest of the work.
+This is a reference for implementers, distilling the spec stack's
+load-bearing commitments into a single inspectable form.
 
 ## Version
 
-INVARIANTS.md v1.3. Pinned to DEFINITION.md v1.1 (with section
-0.5), KERNEL.md v1.1 (section 5 rewrite), SE-01 through SE-07.
+INVARIANTS.md v2.0. Pinned to DEFINITION.md v2.0, KERNEL.md v1.1
+(section 5 rewrite), SE-01 through SE-13.
+
+v2.0 changes:
+
+- Removed C-class invariants (C1 closure, C2 misreadings, C3 AI
+  commentary). These were defensive-discipline commitments about
+  how the canon should be read, not structural commitments about
+  what the substrate is. Total invariants: 30 (was 33).
+- C3 citations replaced with F4 (operates indefinitely) where they
+  were doing real structural work; the "non-finalizability"
+  property holds via F4 and X2 without needing a separate
+  closure-clause invariant.
+- "How to use" section simplified.
 
 v1.3 changes:
 

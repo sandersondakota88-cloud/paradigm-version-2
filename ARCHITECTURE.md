@@ -10,9 +10,6 @@ the preface's framing. This document sits underneath both — it states
 what the architecture is, in terms that are precise rather than
 analogical.
 
-Read [canon/DEFINITION.md](canon/DEFINITION.md) §0.5 first; this document
-inherits that reading-mode.
-
 **Status of this document.** Live. The naming was arrived at during
 conversation in May 2026 after the work had developed far enough that
 the right structural vocabulary became visible. Where naming work makes
@@ -384,8 +381,8 @@ artifact is the natural next implementation step. See §6.3.
    deployed grammar.** Three syntactically different host
    implementations (browser cascade, V8 JS, WebGPU shader) produce
    byte-identical output for every program the compiler accepts within
-   the documented closure. This is the strongest empirical evidence
-   the architecture has produced.
+   the documented grammar bounds. This is the strongest empirical
+   evidence the architecture has produced.
 2. **The kernel-adapter separation is empirically observable.** What
    varies across the three substrates is the *adapter* (CSS engine
    vs. V8 bytecode walker vs. WGSL compute shader). What is invariant

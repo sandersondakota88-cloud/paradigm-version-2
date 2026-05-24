@@ -1,21 +1,13 @@
 # KERNEL
 
 A pseudocode reference for the constraint substrate as it actually
-is, faithful to the spec stack. Read DEFINITION.md section 0.5
-first; this document inherits that reading-mode.
+is, faithful to the spec stack.
 
-This document exists because the architecture has a compressible
-operational core. Roughly 250 lines of pseudocode plus structural
-prose can express the kernel without losing load-bearing semantics.
-That compressibility is itself a property worth noting: a system
-whose kernel cannot be expressed compactly probably is not a single
-coherent thing. This one is.
-
-This is **not** an implementation specification. It is a structural
-reference. An implementation must honor every commitment in this
-document but is free to make different concrete choices where the
-pseudocode shows one possibility. Read each line as "the spec
-requires X" rather than "code should look exactly like this."
+This is a structural reference, not an implementation specification.
+An implementation must honor every commitment in this document but
+is free to make different concrete choices where the pseudocode
+shows one possibility. Read each line as "the spec requires X"
+rather than "code should look exactly like this."
 
 ---
 
@@ -579,7 +571,7 @@ state over time.
 
 ## Version
 
-KERNEL.md v1.1. Pinned to DEFINITION.md v1.1 (with section 0.5),
+KERNEL.md v1.1. Pinned to DEFINITION.md v2.0,
 INVARIANTS.md v1.2, IMPLEMENTATION_PATH.md v2.4, and SE-01 through
 SE-06.
 
