@@ -187,7 +187,17 @@
   <button id="stress-test" type="button"
           style="font-family:monospace;font-size:11px;padding:4px 10px;
                  background:#fff;border:1px solid #ccc;cursor:pointer">
-    stress (3-way agreement under load)
+    stress (synthetic)
+  </button>
+  <button id="stress-real" type="button"
+          style="font-family:monospace;font-size:11px;padding:4px 10px;
+                 background:#fff;border:1px solid #ccc;cursor:pointer">
+    stress (real DOM)
+  </button>
+  <button id="edge-probe" type="button"
+          style="font-family:monospace;font-size:11px;padding:4px 10px;
+                 background:#fff;border:1px solid #ccc;cursor:pointer">
+    edge cases
   </button>
 </div>
 
@@ -796,6 +806,168 @@
         action("stress-end", iters + " synthetic events fired");
       }
     }, 16);  // ~60 events/sec
+  });
+
+  // ---- Real-DOM stress: dispatch actual click events on actual elements
+  // The synthetic stress (above) publishes raw intake records and skips
+  // the bridge + handlers. This one runs the full pipeline:
+  //   DOM click -> bridge listener -> intake.publish -> cascade evaluator
+  //   -> CT enqueue cascade-op -> dispatcher -> handler -> DOM mutation
+  //   -> next tick's bridge projection sees the mutation
+  // Stresses substrate clocks against handler-induced DOM mutation, the
+  // place real races could surface (GPU readback from a tick before the
+  // DOM mutation lands; CSS resolution against a freshly-mutated dataset).
+  //
+  // Sequence: ensure 4 todos exist, then rapidly toggle/delete them and
+  // cycle filters. Logs the count of todos as it goes so the export can
+  // be checked for DOM-state consistency.
+  document.getElementById("stress-real").addEventListener("click", function () {
+    action("stress-real-begin", "");
+    var input = document.getElementById("new-todo");
+    var addBtn = document.getElementById("add-btn");
+    var todoListEl = document.getElementById("todo-list");
+
+    // Seed 4 todos so toggle/delete have targets
+    var seeds = ["stress-A", "stress-B", "stress-C", "stress-D"];
+    seeds.forEach(function (s) {
+      input.value = s;
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+    var i = 0;
+    var iters = 200;  // ~3 seconds at 16ms cadence
+    var interval = setInterval(function () {
+      var todos = todoListEl.querySelectorAll(".todo-item");
+      if (todos.length === 0) {
+        // Restock
+        input.value = "restock-" + i;
+        addBtn.click();
+      } else {
+        var op = i % 5;
+        var t = todos[i % todos.length];
+        if (op === 0 || op === 1 || op === 2) {
+          // toggle (3/5 of the time)
+          var cb = t.querySelector('input[type="checkbox"]');
+          if (cb) cb.click();
+        } else if (op === 3) {
+          // delete
+          var del = t.querySelector('button[data-role="delete"]');
+          if (del) del.click();
+        } else {
+          // filter cycle
+          var filters = document.querySelectorAll('[data-role="filter-control"]');
+          if (filters.length > 0) filters[i % filters.length].click();
+        }
+      }
+      i++;
+      if (i >= iters) {
+        clearInterval(interval);
+        action("stress-real-end", iters + " real DOM events fired");
+      }
+    }, 16);
+  });
+
+  // ---- Edge cases: scripted sequence of known-tricky states
+  // Each step is a small intent. We pause between steps so the recorder
+  // captures a clean before/after for each. Looking for: any S2 violation
+  // around state transitions that should be no-ops, or where multiple
+  // intents arrive on the same tick.
+  document.getElementById("edge-probe").addEventListener("click", function () {
+    action("edge-probe-begin", "");
+    var input = document.getElementById("new-todo");
+    var addBtn = document.getElementById("add-btn");
+    var todoListEl = document.getElementById("todo-list");
+
+    var steps = [
+      // (1) Submit with empty input: should be geometric no-op
+      function () {
+        action("edge", "submit-empty: input='', click add");
+        input.value = "";
+        addBtn.click();
+      },
+      // (2) Submit with whitespace-only: handler-side trim should still no-op
+      function () {
+        action("edge", "submit-whitespace: input='   ', click add");
+        input.value = "   ";
+        addBtn.click();
+      },
+      // (3) Add a real todo, then immediately delete it on the next tick
+      function () {
+        action("edge", "add-then-delete");
+        input.value = "edge-todo";
+        addBtn.click();
+      },
+      function () {
+        var t = todoListEl.querySelector(".todo-item");
+        if (t) {
+          var del = t.querySelector('button[data-role="delete"]');
+          if (del) del.click();
+        }
+      },
+      // (4) Toggle + delete same target on the same RAF tick (no setTimeout)
+      function () {
+        action("edge", "add for race");
+        input.value = "race-target";
+        addBtn.click();
+      },
+      function () {
+        action("edge", "race: toggle + delete same target same tick");
+        var t = todoListEl.querySelector(".todo-item");
+        if (t) {
+          var cb = t.querySelector('input[type="checkbox"]');
+          var del = t.querySelector('button[data-role="delete"]');
+          if (cb) cb.click();
+          if (del) del.click();
+        }
+      },
+      // (5) Filter switch with empty list
+      function () {
+        action("edge", "clear remaining + cycle filters on empty");
+        todoListEl.querySelectorAll(".todo-item").forEach(function (li) {
+          var del = li.querySelector('button[data-role="delete"]');
+          if (del) del.click();
+        });
+      },
+      function () {
+        document.querySelector('[data-role="filter-control"][data-filter="active"]').click();
+      },
+      function () {
+        document.querySelector('[data-role="filter-control"][data-filter="completed"]').click();
+      },
+      function () {
+        document.querySelector('[data-role="filter-control"][data-filter="all"]').click();
+      },
+      // (6) Clear-completed with nothing completed
+      function () {
+        action("edge", "add 2 incomplete, clear-completed (should be no-op)");
+        input.value = "incomplete-1"; addBtn.click();
+        input.value = "incomplete-2"; addBtn.click();
+      },
+      function () {
+        var clr = document.getElementById("clear-completed");
+        if (clr) clr.click();
+      },
+      // (7) Toggle-twice on the same todo
+      function () {
+        action("edge", "toggle-toggle same todo");
+        var t = todoListEl.querySelector(".todo-item");
+        if (t) {
+          var cb = t.querySelector('input[type="checkbox"]');
+          if (cb) { cb.click(); cb.click(); }
+        }
+      }
+    ];
+
+    var s = 0;
+    var stepInterval = setInterval(function () {
+      if (s >= steps.length) {
+        clearInterval(stepInterval);
+        action("edge-probe-end", steps.length + " edge cases probed");
+        return;
+      }
+      try { steps[s](); } catch (e) { action("edge-error", "step " + s + ": " + e.message); }
+      s++;
+    }, 250);  // 250ms between steps so cascade settles + reductions snapshot
   });
 
   // ---- GPU reductions snapshot + UI -----------------------------------
