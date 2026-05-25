@@ -167,6 +167,12 @@
 </div>
 
 <div id="status">booting...</div>
+<div id="reductions" style="max-width:550px;margin:8px auto;padding:8px 12px;
+     font-family:monospace;font-size:11px;color:#666;background:white;
+     border:1px solid #ededed;display:none">
+  <div style="color:#999;margin-bottom:4px">GPU reductions (over the full resolved field)</div>
+  <div id="reductions-content"></div>
+</div>
 <div id="controls" style="max-width:550px;margin:8px auto;text-align:right">
   <button id="export-trace" type="button"
           style="font-family:monospace;font-size:11px;padding:4px 10px;
@@ -177,6 +183,11 @@
           style="font-family:monospace;font-size:11px;padding:4px 10px;
                  background:#fff;border:1px solid #ccc;cursor:pointer">
     clear recorder
+  </button>
+  <button id="stress-test" type="button"
+          style="font-family:monospace;font-size:11px;padding:4px 10px;
+                 background:#fff;border:1px solid #ccc;cursor:pointer">
+    stress (3-way agreement under load)
   </button>
 </div>
 
@@ -373,6 +384,7 @@
     dispatched: [],        // {t, tick, op, sourceConstraintId, errors}
     nextOpSamples: [],     // {t, tick, kernelValue, cssValue, gpuValue, agreement bools}
     visibleSamples: [],    // {t, tick, atCoord, kernelValue, cssValue, gpuValue, agreement bools}
+    reductions: [],        // {t, tick, matched, nextOpCounts, visibleCounts, hiddenCoords[]}
     actions: []            // {t, kind, detail} -- user-facing milestones
   };
   function rt() { return performance.now(); }
@@ -710,6 +722,7 @@
       dispatched: recorder.dispatched,
       nextOpSamples: recorder.nextOpSamples,
       visibleSamples: recorder.visibleSamples,
+      reductions: recorder.reductions,
       trace: s.trace.entries,
       currentTodos: Array.prototype.map.call(
         document.querySelectorAll(".todo-item"),
@@ -738,10 +751,105 @@
     recorder.intake.length = 0;
     recorder.dispatched.length = 0;
     recorder.nextOpSamples.length = 0;
+    recorder.visibleSamples.length = 0;
+    recorder.reductions.length = 0;
     recorder.actions.length = 0;
     Trace.clear();
     recorder.started = new Date().toISOString();
   });
+
+  // ---- Stress test: rapid synthetic events --------------------------
+  // Fires a programmed sequence of intake-level events as fast as the
+  // tick loop will accept them, then watches the recorder for any
+  // disagreement among kernel-CPU / browser-CSS / GPU. The point isn't
+  // to break the app -- it's to look for seams between the substrate
+  // clocks (kernel runs sync on tick, CSS resolves on layout, GPU
+  // returns async after a couple frames). If S2 holds under load, the
+  // recorder's allAgree stays true for every change captured.
+  document.getElementById("stress-test").addEventListener("click", function () {
+    action("stress-begin", "");
+    var triggers = ["submit", "toggle", "delete", "filter", "clear-completed"];
+    var filters = ["all", "active", "completed"];
+    var targets = ["1", "2", "3", "4"];
+    var targetCompleted = ["0", "1"];
+    var i = 0;
+    var iters = 400;  // ~6-7 seconds at 60 events/s
+    var interval = setInterval(function () {
+      var trig = triggers[i % triggers.length];
+      var val = {
+        trigger: trig,
+        target: targets[i % targets.length],
+        "target-completed": targetCompleted[i % targetCompleted.length],
+        filter: filters[i % filters.length],
+        "input-present": (i % 2 === 0) ? "1" : "0",
+        "input-new-todo": "stress-" + i
+      };
+      Field.intake.publish({
+        type: "dom::set-attr",
+        value: val,
+        timestamp: performance.now(),
+        source: "stress-test"
+      });
+      i++;
+      if (i >= iters) {
+        clearInterval(interval);
+        action("stress-end", iters + " synthetic events fired");
+      }
+    }, 16);  // ~60 events/sec
+  });
+
+  // ---- GPU reductions snapshot + UI -----------------------------------
+  // Take a snapshot of the GPU's reductions over the full resolved field
+  // once per second. The reductions are properties of the whole coord
+  // space; CSS cannot pose them and JS would have to iterate. This is
+  // the SE-11 contribution from the GPU axis -- discrimination over the
+  // resolved field, not just at the active coord.
+  var reductionsEl = document.getElementById("reductions");
+  var reductionsContent = document.getElementById("reductions-content");
+  function snapshotReductions() {
+    if (!SUBSTRATE_HANDLE.gpuRunner) return;
+    var R = SUBSTRATE_HANDLE.gpuRunner;
+    var latest = R.latest();
+    if (!latest) return;
+    var matched = R.matchedCoordCount();
+    var nextOpCounts = R.countByValue("--next-op");
+    var visibleCounts = R.countByValue("--todo-visible");
+    var hidden = R.coordsMatching("--todo-visible", "0");
+    var snapshot = {
+      tick: SUBSTRATE_HANDLE.tickCount,
+      fromDispatch: latest.tick,
+      matched: matched,
+      nextOpCounts: nextOpCounts,
+      visibleCounts: visibleCounts,
+      hiddenCoordCount: hidden.length,
+      // Capture the first few hidden coords for the export so we can
+      // verify by inspection; full list is reproducible from the
+      // resolved field but would bloat the JSON.
+      hiddenCoordsSample: hidden.slice(0, 8).map(function (h) { return h.coord; })
+    };
+    rec("reductions", snapshot);
+
+    // Render UI -- only show non-default values for legibility
+    var lines = [];
+    lines.push("matched " + matched.matched + "/" + matched.total +
+               " coords (dispatch=" + latest.tick + ")");
+    var nextEntries = Object.keys(nextOpCounts)
+      .filter(function (k) { return k !== "" && nextOpCounts[k] > 0; })
+      .map(function (k) { return k + "=" + nextOpCounts[k]; });
+    if (nextEntries.length > 0) {
+      lines.push("--next-op:    " + nextEntries.join(", "));
+    }
+    var visEntries = Object.keys(visibleCounts)
+      .filter(function (k) { return k !== "" && visibleCounts[k] > 0; })
+      .map(function (k) { return "v=" + k + ":" + visibleCounts[k]; });
+    if (visEntries.length > 0) {
+      lines.push("--todo-visible: " + visEntries.join(", ") +
+                 " (" + hidden.length + " coords resolve hidden)");
+    }
+    reductionsContent.textContent = lines.join("\n");
+    reductionsEl.style.display = "";
+  }
+  setInterval(snapshotReductions, 1000);
 
   // ---- Status line (O-class observer; read-only) ----------------------
   var statusEl = document.getElementById("status");

@@ -283,6 +283,137 @@ try {
   allOk = false;
 }
 
+// Exercise the GPU reduction primitives against a synthetic resolved
+// field. We can't run the shader in Node, but we can:
+//   1. compile the deposition rules to bytecode (real compiler)
+//   2. CPU-walk that bytecode for every coord (mirroring what the shader
+//      does, in JS) to produce a synthetic latestResult
+//   3. run the pure reduction helpers on it
+//   4. check counts against what we know about the deposition geometry
+try {
+  vm.runInContext(`
+    var dims = __DEPOSITION_DIMS__;
+    var outputProps = __DEPOSITION_OUTPUT_PROPERTIES__;
+    var compiled = GpuCascadeCompiler.compile(__DEPOSITION_CASCADE_RULES__, dims, outputProps);
+
+    // --- CPU walker that mirrors resolve-deposition.wgsl per-coord logic ---
+    function unpackCoord(linearIdx) {
+      var out = new Array(dims.length);
+      var rem = linearIdx;
+      for (var d = dims.length - 1; d >= 0; d--) {
+        var card = dims[d].values.length;
+        out[d] = rem % card;
+        rem = (rem - out[d]) / card;
+      }
+      return out;
+    }
+    function resolveCoordOnCpu(coordIdx) {
+      var coord = unpackCoord(coordIdx);
+      var slots = [0,0,0,0]; var matched = 0;
+      var stack = []; var sp = 0; var skipping = false; var pc = 0;
+      while (pc < compiled.instructions.length) {
+        var inst = compiled.instructions[pc];
+        var op = inst & 0xFF;
+        var a = (inst >>> 8) & 0xFF;
+        var b = (inst >>> 16) & 0xFF;
+        if (skipping) {
+          if (op === 0xFF) skipping = false;
+          pc++; continue;
+        }
+        if (op === 0x01) {           // MATCH_DIM
+          stack[sp++] = (coord[a] === b) ? 1 : 0;
+        } else if (op === 0x02) {    // AND
+          stack[sp - 2] = stack[sp - 2] & stack[sp - 1]; sp--;
+        } else if (op === 0x10) {    // BEGIN_THEN
+          sp--; var cond = stack[sp];
+          if (cond === 0) skipping = true;
+        } else if (op === 0x12) {    // SET_OUTPUT
+          slots[a] = b; matched++;
+        } else if (op === 0xFF) {
+          /* END_RULE */
+        }
+        pc++;
+      }
+      return { slots: slots, matched: matched };
+    }
+
+    // Build synthetic latestResult shape
+    var n = compiled.stateSpaceSize;
+    var slotsByCoord = [
+      new Uint32Array(n), new Uint32Array(n),
+      new Uint32Array(n), new Uint32Array(n)
+    ];
+    var matchedByCoord = new Uint32Array(n);
+    for (var i = 0; i < n; i++) {
+      var r = resolveCoordOnCpu(i);
+      for (var s = 0; s < 4; s++) slotsByCoord[s][i] = r.slots[s];
+      matchedByCoord[i] = r.matched;
+    }
+    var synthLatest = {
+      tick: 1, slotsByCoord: slotsByCoord, matchedByCoord: matchedByCoord
+    };
+
+    // --- Run the pure reductions ---
+    var counts = GpuCascadeRunner.pureCountByValue(synthLatest, compiled.outputs, "--next-op");
+    var visCounts = GpuCascadeRunner.pureCountByValue(synthLatest, compiled.outputs, "--todo-visible");
+    var matched = GpuCascadeRunner.pureMatchedCoordCount(synthLatest);
+    var hidden = GpuCascadeRunner.pureCoordsMatching(
+      synthLatest, compiled.outputs, "--todo-visible", "0",
+      GpuCascadeRunner.makeCoordFromIndex(dims)
+    );
+
+    // --- Checks ---
+    // Total counts add up to stateSpaceSize for each property
+    var totalNext = 0; for (var k in counts) totalNext += counts[k];
+    if (totalNext !== n) throw new Error("--next-op counts don't sum to " + n + ": " + JSON.stringify(counts));
+    var totalVis = 0; for (var k2 in visCounts) totalVis += visCounts[k2];
+    if (totalVis !== n) throw new Error("--todo-visible counts don't sum to " + n);
+
+    // Density bound: at most n coords matched
+    if (matched.matched + matched.unmatched !== n) {
+      throw new Error("matched+unmatched != total");
+    }
+
+    // Specific geometric fact: --next-op=clear-completed should fire at
+    // every coord where trigger=clear-completed (regardless of other dims)
+    var triggerIdx = -1;
+    for (var di = 0; di < dims.length; di++) if (dims[di].name === "trigger") triggerIdx = di;
+    var clearTriggerValIdx = dims[triggerIdx].values.indexOf("clear-completed");
+    var dimsAfterTrigger = dims.slice(triggerIdx + 1)
+      .reduce(function (acc, d) { return acc * d.values.length; }, 1);
+    var expectedClearCount = dimsAfterTrigger;
+    if (counts["clear-completed"] !== expectedClearCount) {
+      throw new Error("expected clear-completed count " + expectedClearCount +
+                      ", got " + counts["clear-completed"]);
+    }
+
+    // Hidden coords: --todo-visible=0 fires for (filter=active,completed=1)
+    // and (filter=completed,completed=0). Each combination is 1*1*1 along
+    // (filter, completed) times the cardinality of remaining dims
+    // (trigger, target-completed, input-present).
+    var hiddenExpected = 2 * 6 * 3 * 2;  // 2 (filter,completed) combos * 6 triggers * 3 target-completed * 2 input-present
+    if (hidden.length !== hiddenExpected) {
+      throw new Error("hidden coords mismatch: expected " + hiddenExpected + ", got " + hidden.length);
+    }
+
+    globalThis.__REDUCTIONS_RESULT__ = {
+      stateSpaceSize: n,
+      matchedCount: matched.matched,
+      nextOpCounts: counts,
+      visibleCounts: visCounts,
+      hiddenCount: hidden.length
+    };
+  `, sandbox, { filename: "reductions-sequence" });
+  const r = sandbox.__REDUCTIONS_RESULT__;
+  record("gpu reductions", true,
+    "coords=" + r.stateSpaceSize + " matched=" + r.matchedCount +
+    " hidden=" + r.hiddenCount +
+    " nextOps=" + JSON.stringify(Object.fromEntries(Object.entries(r.nextOpCounts).filter(([k,v])=>k!=="" && v > 0))));
+} catch (e) {
+  record("gpu reductions", false, e.message);
+  allOk = false;
+}
+
 // Report
 const PAD = 36;
 for (const r of results) {

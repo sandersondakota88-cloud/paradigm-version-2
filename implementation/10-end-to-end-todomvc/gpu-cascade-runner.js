@@ -32,6 +32,79 @@
 
 (function (global) {
 
+  // ----------------------------------------------------------------------
+  // Pure reduction helpers (testable without a GPU)
+  //
+  // These operate on a "latestResult" shape:
+  //   { tick, slotsByCoord: [Uint32Array, ...], matchedByCoord: Uint32Array, ... }
+  // and a "compiledOutputs" shape from the compiler:
+  //   { properties: [...], slotByProperty: {...}, opTables: [[...], ...] }
+  //
+  // The runner's runtime closures call into these.
+  // ----------------------------------------------------------------------
+
+  function pureCountByValue(latestResult, compiledOutputs, propertyName) {
+    if (!latestResult) return null;
+    const slot = compiledOutputs.slotByProperty[propertyName];
+    if (slot === undefined) {
+      throw new Error("countByValue: unknown output property '" + propertyName + "'");
+    }
+    const table = compiledOutputs.opTables[slot];
+    const slotArr = latestResult.slotsByCoord[slot];
+    const counts = {};
+    for (let i = 0; i < table.length; i++) counts[table[i]] = 0;
+    for (let i = 0; i < slotArr.length; i++) {
+      const v = table[slotArr[i]];
+      if (v !== undefined) counts[v]++;
+    }
+    return counts;
+  }
+
+  function pureCoordsMatching(latestResult, compiledOutputs, propertyName, value, coordFromIndexFn) {
+    if (!latestResult) return null;
+    const slot = compiledOutputs.slotByProperty[propertyName];
+    if (slot === undefined) {
+      throw new Error("coordsMatching: unknown output property '" + propertyName + "'");
+    }
+    const table = compiledOutputs.opTables[slot];
+    const targetIdx = table.indexOf(String(value));
+    if (targetIdx < 0) return [];
+    const slotArr = latestResult.slotsByCoord[slot];
+    const out = [];
+    for (let i = 0; i < slotArr.length; i++) {
+      if (slotArr[i] === targetIdx) {
+        out.push({ coord: coordFromIndexFn(i), coordIndex: i });
+      }
+    }
+    return out;
+  }
+
+  function pureMatchedCoordCount(latestResult) {
+    if (!latestResult) return null;
+    const arr = latestResult.matchedByCoord;
+    let matched = 0;
+    for (let i = 0; i < arr.length; i++) if (arr[i] > 0) matched++;
+    return {
+      matched: matched,
+      unmatched: arr.length - matched,
+      total: arr.length
+    };
+  }
+
+  function makeCoordFromIndex(dims) {
+    return function (idx) {
+      const out = {};
+      let rem = idx;
+      for (let i = dims.length - 1; i >= 0; i--) {
+        const d = dims[i];
+        const k = rem % d.values.length;
+        out[d.name] = d.values[k];
+        rem = (rem - k) / d.values.length;
+      }
+      return out;
+    };
+  }
+
   function detectSupport() {
     if (typeof navigator === "undefined" || !navigator.gpu) {
       return { supported: false, reason: "navigator.gpu not available" };
@@ -268,6 +341,38 @@
       return index;
     }
 
+    // Inverse of coordToIndex. Last dim varies fastest, matching the
+    // shader's unpack_coord. Reads state.compiled.dims at call time so
+    // it stays correct across recompiles.
+    function coordFromIndex(idx) {
+      return makeCoordFromIndex(state.compiled.dims)(idx);
+    }
+
+    // ----------------------------------------------------------------------
+    // Reductions over the resolved field
+    //
+    // These read the most recent readback only (no extra GPU work). They
+    // surface answers that exist as a property of the full resolved coord
+    // space, which is something the kernel evaluator and CSS substrate
+    // cannot produce -- both of those only ever resolve the active coord.
+    //
+    // Per SE-11 (dimensional resolution): the GPU's contribution as a
+    // substrate is the whole resolved field every dispatch. Reductions
+    // over that field are the discrimination the GPU axis adds.
+    // ----------------------------------------------------------------------
+
+    // Reduction primitives -- thin wrappers around the pure helpers at
+    // the top of this module, so they're testable without a GPU.
+    function countByValue(propertyName) {
+      return pureCountByValue(state.latestResult, state.compiled.outputs, propertyName);
+    }
+    function coordsMatching(propertyName, value) {
+      return pureCoordsMatching(state.latestResult, state.compiled.outputs, propertyName, value, coordFromIndex);
+    }
+    function matchedCoordCount() {
+      return pureMatchedCoordCount(state.latestResult);
+    }
+
     function diagnostics() {
       return {
         dispatchCount: state.dispatchCount,
@@ -300,6 +405,10 @@
       opForCoord:  opForCoord,
       resolveCoord: resolveCoord,
       coordToIndex: coordToIndex,
+      coordFromIndex: coordFromIndex,
+      countByValue: countByValue,
+      coordsMatching: coordsMatching,
+      matchedCoordCount: matchedCoordCount,
       recompile:   recompile,
       diagnostics: diagnostics,
       teardown:    teardown,
@@ -314,7 +423,12 @@
 
   const GpuCascadeRunner = Object.freeze({
     detectSupport: detectSupport,
-    create:        create
+    create:        create,
+    // Pure reduction helpers exposed for testing without a GPU.
+    pureCountByValue:      pureCountByValue,
+    pureCoordsMatching:    pureCoordsMatching,
+    pureMatchedCoordCount: pureMatchedCoordCount,
+    makeCoordFromIndex:    makeCoordFromIndex
   });
 
   if (typeof module !== "undefined" && module.exports) {
