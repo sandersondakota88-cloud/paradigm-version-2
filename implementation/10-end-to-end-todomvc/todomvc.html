@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TodoMVC -- constraint substrate</title>
+<style>
+  /* -------------------------------------------------------------------- */
+  /* Presentation                                                          */
+  /* -------------------------------------------------------------------- */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 40px 20px;
+    color: #4d4d4d;
+  }
+  .app {
+    max-width: 550px;
+    margin: 0 auto;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  h1 {
+    font-size: 80px;
+    font-weight: 100;
+    color: rgba(175, 47, 47, 0.4);
+    text-align: center;
+    margin: 0 0 10px 0;
+  }
+  .input-bar {
+    display: flex;
+    border-bottom: 1px solid #ededed;
+  }
+  #new-todo {
+    flex: 1;
+    padding: 16px;
+    border: none;
+    font-size: 24px;
+    font-weight: 300;
+    color: inherit;
+    outline: none;
+    background: transparent;
+  }
+  #new-todo::placeholder { font-style: italic; color: #ccc; }
+  #add-btn {
+    padding: 0 20px;
+    border: none;
+    background: #f5f5f5;
+    color: #777;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  #todo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .todo-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #ededed;
+    font-size: 18px;
+  }
+  .todo-item input[type="checkbox"] { margin-right: 14px; }
+  .todo-item .text { flex: 1; }
+  .todo-item[data-completed="1"] .text {
+    text-decoration: line-through;
+    color: #d9d9d9;
+  }
+  .todo-item button {
+    border: none;
+    background: transparent;
+    color: #cc9a9a;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0 8px;
+  }
+  .todo-item button:hover { color: #af5b5e; }
+  #footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #777;
+    border-top: 1px solid #ededed;
+  }
+  #footer .filters { display: flex; gap: 8px; }
+  #footer button {
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 3px 7px;
+    cursor: pointer;
+    color: inherit;
+    border-radius: 3px;
+  }
+  #footer button.active { border-color: rgba(175, 47, 47, 0.2); }
+  #footer button:hover { border-color: rgba(175, 47, 47, 0.1); }
+
+  /* Filter visibility -- removed: visibility now resolves through the
+     cascade as --todo-visible on the substrate-state, which all three
+     substrates produce; JS reads the resolved value and applies it as
+     display style on each todo. See deposition.js's visibility rules. */
+
+  #status {
+    max-width: 550px;
+    margin: 16px auto;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #999;
+    background: white;
+    border: 1px solid #ededed;
+  }
+
+  /* -------------------------------------------------------------------- */
+  /* Cascade rules (the CSS substrate's view of the deposition geometry)  */
+  /*                                                                      */
+  /* Same geometry as __DEPOSITION_CASCADE_RULES__ in deposition.js.      */
+  /* Browser CSS engine resolves these against #substrate-state in        */
+  /* parallel with the kernel evaluator. Per S2, both resolutions yield   */
+  /* the same --next-op for the same intake state. Inspect via            */
+  /* getComputedStyle(document.getElementById('substrate-state'))         */
+  /*   .getPropertyValue('--next-op')                                     */
+  /* -------------------------------------------------------------------- */
+  /* --next-op rules (must match deposition.js) */
+  [data-substrate-state][data-trigger="submit"][data-input-present="1"] { --next-op: "add-todo"; }
+  [data-substrate-state][data-trigger="toggle"][data-target-completed="0"] { --next-op: "complete-todo"; }
+  [data-substrate-state][data-trigger="toggle"][data-target-completed="1"] { --next-op: "uncomplete-todo"; }
+  [data-substrate-state][data-trigger="delete"]          { --next-op: "delete-todo"; }
+  [data-substrate-state][data-trigger="clear-completed"] { --next-op: "clear-completed"; }
+  [data-substrate-state][data-trigger="filter"]          { --next-op: "set-filter"; }
+
+  /* --todo-visible rules (must match deposition.js) */
+  [data-substrate-state][data-filter="all"]                                { --todo-visible: "1"; }
+  [data-substrate-state][data-filter="active"][data-completed="0"]         { --todo-visible: "1"; }
+  [data-substrate-state][data-filter="active"][data-completed="1"]         { --todo-visible: "0"; }
+  [data-substrate-state][data-filter="completed"][data-completed="1"]      { --todo-visible: "1"; }
+  [data-substrate-state][data-filter="completed"][data-completed="0"]      { --todo-visible: "0"; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1>todos</h1>
+
+  <div class="input-bar">
+    <input id="new-todo" type="text" placeholder="What needs to be done?"
+           data-role="input-emitter" autofocus>
+    <button id="add-btn" type="button" data-role="action-trigger" data-trigger="submit">Add</button>
+  </div>
+
+  <ul id="todo-list"></ul>
+
+  <div id="footer" style="display:none">
+    <span id="count">0 items left</span>
+    <div class="filters">
+      <button type="button" data-role="filter-control" data-filter="all" class="active">All</button>
+      <button type="button" data-role="filter-control" data-filter="active">Active</button>
+      <button type="button" data-role="filter-control" data-filter="completed">Completed</button>
+    </div>
+    <button id="clear-completed" type="button"
+            data-role="action-trigger" data-trigger="clear-completed"
+            style="display:none">Clear completed</button>
+  </div>
+</div>
+
+<div id="status">booting...</div>
+<div id="controls" style="max-width:550px;margin:8px auto;text-align:right">
+  <button id="export-trace" type="button"
+          style="font-family:monospace;font-size:11px;padding:4px 10px;
+                 background:#fff;border:1px solid #ccc;cursor:pointer">
+    download session.json
+  </button>
+  <button id="clear-trace" type="button"
+          style="font-family:monospace;font-size:11px;padding:4px 10px;
+                 background:#fff;border:1px solid #ccc;cursor:pointer">
+    clear recorder
+  </button>
+</div>
+
+<!--
+  The substrate-state element. DOMbridge.projectFieldToDOM writes intake
+  records here as data-* attributes; the browser CSS engine reads them and
+  resolves the cascade rules above; getComputedStyle exposes --next-op.
+  The kernel evaluator is the authoritative path; this element is the CSS
+  substrate's projection target per Phase 8 contract sec 4 flow 4a.
+-->
+<div id="substrate-state" data-substrate-state=""
+     data-trigger="" data-target="" data-filter="all"
+     data-completed="none" data-target-completed="none"
+     data-input-present="0"
+     style="display:none"></div>
+
+<!-- ====================================================================== -->
+<!-- KERNEL RUNTIME                                                         -->
+<!-- Canonical Phase 5.5 kernel + Phase 8 runtime extensions. Each file is  -->
+<!-- IIFE-wrapped with global fallback so script-tag loading from the       -->
+<!-- canonical paths is sufficient (no inlining, no bundling).              -->
+<!-- ====================================================================== -->
+<script src="../kernel/field.js"></script>
+<script src="../kernel/constraint-compiler.js"></script>
+<script src="../kernel/cpu-oracle.js"></script>
+<script src="../kernel/er-engine.js"></script>
+<script src="../kernel/ct-engine.js"></script>
+<script src="../08-runtime-kernel/field-intake-extension.js"></script>
+<script src="../08-runtime-kernel/kernel-cascade-evaluator.js"></script>
+<script src="../08-runtime-kernel/dom-bridge.js"></script>
+
+<!-- ====================================================================== -->
+<!-- APPLICATION                                                            -->
+<!-- The deposition (cascade rules + op handlers) and the missing tissue    -->
+<!-- (cascade-op dispatcher) that lets CT's cascade-op records actually     -->
+<!-- run a handler.                                                         -->
+<!-- ====================================================================== -->
+<script src="./cascade-op-dispatcher.js"></script>
+<script src="./deposition.js"></script>
+
+<!-- ====================================================================== -->
+<!-- GPU SUBSTRATE (the third peer per SE-06 + SE-11)                       -->
+<!-- Compiles the cascade rules to postfix u32 bytecode and dispatches the  -->
+<!-- WGSL shader per tick to resolve the full coord space in parallel. The  -->
+<!-- kernel evaluator (CPU) and browser CSS engine resolve the same         -->
+<!-- geometry; S2 commits the three substrates to byte-identical resolution -->
+<!-- of the active coord. Witness mode: GPU's --next-op is logged into the  -->
+<!-- recorder alongside kernel and CSS; the kernel still drives handlers.   -->
+<!-- ====================================================================== -->
+<script src="./gpu-cascade-compiler.js"></script>
+<script src="./gpu-cascade-runner.js"></script>
+
+<!-- ====================================================================== -->
+<!-- INIT                                                                   -->
+<!-- Boot sequence mirrors Phase 8 kernel-runtime-emitter SKELETON_INIT,    -->
+<!-- with the missing tissue inserted: drain cascade-op records out of      -->
+<!-- ctPendingOps and dispatch them to registered handlers before           -->
+<!-- CT.drainAll runs (so CT doesn't throw "unknown op kind: cascade-op"). -->
+<!-- ====================================================================== -->
+<script>
+(function () {
+  "use strict";
+
+  var FieldModule           = globalThis.FieldModule;
+  var CTengineModule        = globalThis.CTengineModule;
+  var ERengineModule        = globalThis.ERengineModule;
+  var ConstraintCompiler    = globalThis.ConstraintCompiler;
+  var FieldIntakeExtension  = globalThis.FieldIntakeExtension;
+  var KernelCascadeEvaluator = globalThis.KernelCascadeEvaluator;
+  var DOMbridge             = globalThis.DOMbridge;
+  var CascadeOpDispatcher   = globalThis.CascadeOpDispatcher;
+
+  if (!FieldModule || !CTengineModule || !ERengineModule || !ConstraintCompiler) {
+    document.getElementById("status").textContent = "boot failed: kernel modules missing";
+    throw new Error("kernel modules missing on globalThis");
+  }
+
+  var Field = FieldModule.Field;
+  var Trace = FieldModule.Trace;
+  var SEED  = FieldModule.SEED;
+
+  // ---- Install Field.intake (SE-08) ----
+  FieldIntakeExtension.install(FieldModule);
+
+  // ---- Reset and verify F1 ----
+  Field.reset();
+  Trace.clear();
+  if (Field.constraints.length === 0 || Field.constraints[0].id !== SEED.id
+      || !Field.constraints[0].permanent) {
+    document.getElementById("status").textContent = "boot failed: F1 violation";
+    throw new Error("F1 violation after reset");
+  }
+
+  // ---- Append deposition cascade rules ----
+  var cascadeRules = globalThis.__DEPOSITION_CASCADE_RULES__ || [];
+  for (var i = 0; i < cascadeRules.length; i++) Field.constraints.push(cascadeRules[i]);
+  if (Field.constraints[0].id !== SEED.id) {
+    document.getElementById("status").textContent = "boot failed: F1 displaced";
+    throw new Error("F1 violation post-load: seed displaced");
+  }
+
+  // ---- Engines ----
+  var ER = new ERengineModule.ERengine();
+  ER.state = "cpu-fallback";
+  var CT = new CTengineModule.CTengine();
+  CT.bind(ER, ConstraintCompiler);
+
+  // ---- DOM bridge ----
+  var stateElement = document.getElementById("substrate-state");
+  var bridge = DOMbridge.createBridge();
+  bridge.init(Field, stateElement);
+
+  // ---- Event wiring (flow 4b: real DOM events -> intake records) -------
+  // Each handler publishes its own record because the default
+  // dom-bridge.defaultEventRecord only knows how to read data-trigger off
+  // the event target itself. We need richer records (input text, todo id,
+  // filter name) so we pass custom recordBuilders.
+
+  function publish(type, value) {
+    return {
+      type: "dom::" + type,
+      value: value,
+      timestamp: (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now(),
+      source: "todomvc-init"
+    };
+  }
+
+  // Add-todo: click on #add-btn, or Enter in #new-todo
+  var newTodoInput = document.getElementById("new-todo");
+  var addBtn = document.getElementById("add-btn");
+
+  bridge.addDOMEventListener(addBtn, "click", function () {
+    return publish("click", {
+      trigger: "submit",
+      "input-new-todo": newTodoInput.value,
+      "input-present": newTodoInput.value.trim() ? "1" : "0"
+    });
+  });
+
+  bridge.addDOMEventListener(newTodoInput, "keydown", function (ev) {
+    if (ev.key !== "Enter") return null;
+    return publish("keydown", {
+      trigger: "submit",
+      "input-new-todo": newTodoInput.value,
+      "input-present": newTodoInput.value.trim() ? "1" : "0"
+    });
+  });
+
+  // Toggle and delete: event-delegation on #todo-list (todos are added
+  // dynamically; per-li listeners would leak). Publish the target todo's
+  // current completed state as 'target-completed' so the cascade can
+  // discriminate complete-vs-uncomplete without the handler making the
+  // decision.
+  var todoList = document.getElementById("todo-list");
+  bridge.addDOMEventListener(todoList, "click", function (ev) {
+    var t = ev.target;
+    if (!t || !t.dataset) return null;
+    var role = t.dataset.role;
+    if (role !== "toggle" && role !== "delete") return null;
+    var li = t.closest(".todo-item");
+    if (!li) return null;
+    return publish("click", {
+      trigger: role,
+      target: li.dataset.id,
+      "target-completed": li.dataset.completed || "0"
+    });
+  });
+
+  // Filter buttons
+  var filterBtns = document.querySelectorAll('[data-role="filter-control"]');
+  for (var f = 0; f < filterBtns.length; f++) {
+    (function (btn) {
+      bridge.addDOMEventListener(btn, "click", function () {
+        return publish("click", { trigger: "filter", target: btn.dataset.filter });
+      });
+    })(filterBtns[f]);
+  }
+
+  // Clear-completed
+  var clearBtn = document.getElementById("clear-completed");
+  bridge.addDOMEventListener(clearBtn, "click", function () {
+    return publish("click", { trigger: "clear-completed" });
+  });
+
+  // ---- Recorder (captures things Trace doesn't) -----------------------
+  // Wraps intake.publish to log every record as it arrives; wraps the
+  // dispatcher to log every drain result; samples both --next-op paths
+  // (kernel cascadeOutput, browser getComputedStyle) once per tick so
+  // we can verify S2 (same resolution from both substrates).
+  var recorder = {
+    started: new Date().toISOString(),
+    intake: [],            // {t, type, value, source}
+    dispatched: [],        // {t, tick, op, sourceConstraintId, errors}
+    nextOpSamples: [],     // {t, tick, kernelValue, cssValue, gpuValue, agreement bools}
+    visibleSamples: [],    // {t, tick, atCoord, kernelValue, cssValue, gpuValue, agreement bools}
+    actions: []            // {t, kind, detail} -- user-facing milestones
+  };
+  function rt() { return performance.now(); }
+  function rec(bucket, entry) {
+    entry.t = rt();
+    recorder[bucket].push(entry);
+    // Soft cap so a long session doesn't eat memory
+    if (recorder[bucket].length > 5000) recorder[bucket].shift();
+  }
+
+  var _origPublish = Field.intake.publish.bind(Field.intake);
+  Field.intake.publish = function (record) {
+    var r = _origPublish(record);
+    try {
+      rec("intake", {
+        type: record && record.type,
+        value: record && record.value,
+        source: record && record.source
+      });
+    } catch (_) {}
+    return r;
+  };
+
+  // Wrap the dispatcher's drain without mutating the frozen module.
+  // The tick loop calls drainAndRecord; it snapshots ctPendingOps so we
+  // can label which op the recorder line corresponds to.
+  function drainAndRecord(field) {
+    var before = field.ctPendingOps.slice();
+    var result = CascadeOpDispatcher.drainCascadeOps(field);
+    if (result.dispatched > 0 || result.errors.length > 0) {
+      var ops = before
+        .filter(function (op) { return op && op.kind === "cascade-op"; })
+        .map(function (op) {
+          return {
+            op: op.payload && op.payload.op,
+            sourceConstraintId: op.payload && op.payload.sourceConstraintId
+          };
+        });
+      rec("dispatched", {
+        tick: SUBSTRATE_HANDLE ? SUBSTRATE_HANDLE.tickCount : -1,
+        ops: ops,
+        drained: result.drained,
+        dispatched: result.dispatched,
+        errors: result.errors
+      });
+    }
+    return result;
+  }
+
+  // ---- Read-only substrate handle ----
+  var SUBSTRATE_HANDLE = {
+    field: Field, trace: Trace, seed: SEED,
+    er: ER, ct: CT, bridge: bridge,
+    dispatcher: CascadeOpDispatcher,
+    recorder: recorder,
+    gpuRunner: null,        // populated async after kernel boots
+    gpuStatus: "init...",   // 'unavailable' | 'init...' | 'ready' | 'error:...'
+    tickCount: 0, dispatchedTotal: 0,
+    cascadeRuleCount: cascadeRules.length
+  };
+  Object.defineProperty(globalThis, "substrate", {
+    value: SUBSTRATE_HANDLE, writable: false, configurable: false
+  });
+
+  // ---- GPU substrate (async init; third peer per SE-06 + SE-11) ------
+  // Coord-space and output-property list come from the deposition itself.
+  // The GPU resolves the full coord space every dispatch; the host reads
+  // the active coord (for the substrate-state) and the per-todo coords
+  // (for visibility application). All three substrates resolve identically
+  // under S2.
+  var dimsSpec = globalThis.__DEPOSITION_DIMS__;
+  var outputProperties = globalThis.__DEPOSITION_OUTPUT_PROPERTIES__;
+  if (!dimsSpec || !outputProperties) {
+    throw new Error("deposition must declare __DEPOSITION_DIMS__ and __DEPOSITION_OUTPUT_PROPERTIES__");
+  }
+  var compiled = GpuCascadeCompiler.compile(cascadeRules, dimsSpec, outputProperties);
+
+  // Fetch the shader source and create the runner. If WebGPU isn't
+  // available (no navigator.gpu, no adapter, etc.) we leave gpuRunner
+  // null; the tick loop checks before dispatching and the recorder
+  // simply omits gpuValue from samples.
+  (function bootGpu() {
+    var sup = GpuCascadeRunner.detectSupport();
+    if (!sup.supported) {
+      SUBSTRATE_HANDLE.gpuStatus = "unavailable: " + sup.reason;
+      console.warn("[gpu] " + SUBSTRATE_HANDLE.gpuStatus);
+      return;
+    }
+    fetch("./resolve-deposition.wgsl")
+      .then(function (r) { return r.text(); })
+      .then(function (wgsl) {
+        return GpuCascadeRunner.create({ wgslSource: wgsl, compiled: compiled });
+      })
+      .then(function (runner) {
+        SUBSTRATE_HANDLE.gpuRunner = runner;
+        SUBSTRATE_HANDLE.gpuStatus = "ready";
+        console.log("[gpu] runner ready;", runner.diagnostics());
+      })
+      .catch(function (e) {
+        SUBSTRATE_HANDLE.gpuStatus = "error: " + (e && e.message ? e.message : String(e));
+        console.error("[gpu] init failed:", e);
+      });
+  })();
+
+  // Build the coord object the active substrate-state element represents,
+  // for cross-substrate comparison. Read directly from intake records the
+  // same way the kernel evaluator does.
+  function activeCoordFromIntake() {
+    var coord = {};
+    var records = Field.intake.records;
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (typeof rec.type !== "string") continue;
+      var colon = rec.type.indexOf("::");
+      if (colon < 0) continue;
+      var prefix = rec.type.substring(0, colon);
+      if (prefix === "dom" && rec.value && typeof rec.value === "object") {
+        for (var k in rec.value) {
+          var cleanKey = (k.indexOf("data-") === 0) ? k.substring(5) : k;
+          coord[cleanKey] = String(rec.value[k]);
+        }
+      }
+    }
+    return coord;
+  }
+
+  // ---- Tick loop ------------------------------------------------------
+  // 1. Kernel cascade evaluator -> writes --next-op to Field.cascadeOutput
+  // 2. Bridge projects intake to DOM (so CSS cascade can resolve too)
+  // 3. Bridge samples --next-op, enqueues cascade-op record to CT
+  // 4. Dispatcher drains cascade-op records, runs handlers, publishes
+  //    writebacks as new intake records (the missing tissue)
+  // 5. CT.drainAll runs remaining ops (tick, etc.)
+  // 6. Field.refreshVectorDelta + requestAnimationFrame
+  var tickInProgress = false;
+  function tick() {
+    if (tickInProgress) return;
+    tickInProgress = true;
+
+    KernelCascadeEvaluator.evaluateCascade(Field, { traceModule: Trace });
+    bridge.projectFieldToDOM();
+
+    // GPU substrate: dispatch every tick (non-blocking). The runner skips
+    // if a previous readback hasn't returned, so we never pile up work.
+    if (SUBSTRATE_HANDLE.gpuRunner) {
+      SUBSTRATE_HANDLE.gpuRunner.dispatch();
+    }
+
+    // S2 cross-check: kernel cascadeOutput vs browser getComputedStyle vs
+    // GPU resolved field at active coord. All three substrates resolve the
+    // same constraint geometry; under S2 they must agree on every output
+    // property at the active coord.
+    var activeCoord = activeCoordFromIntake();
+
+    // -- --next-op --
+    var kernelEntry = bridge.sampleNextOp();
+    var kernelVal = kernelEntry ? kernelEntry.value : null;
+    var cssVal = bridge.sampleNextOpFromCss();
+    var gpuVal = null;
+    var gpuVisibleVal = null;
+    var gpuFromDispatch = null;
+    if (SUBSTRATE_HANDLE.gpuRunner) {
+      var g = SUBSTRATE_HANDLE.gpuRunner.resolveCoord(activeCoord);
+      if (g) {
+        gpuVal = g.values["--next-op"];
+        gpuVisibleVal = g.values["--todo-visible"];
+        gpuFromDispatch = g.fromDispatch;
+      }
+    }
+    var lastNextOp = recorder.nextOpSamples[recorder.nextOpSamples.length - 1];
+    var nextOpChanged = !lastNextOp
+      || lastNextOp.kernelValue !== kernelVal
+      || lastNextOp.cssValue !== cssVal
+      || lastNextOp.gpuValue !== gpuVal;
+    if (kernelVal !== null && nextOpChanged) {
+      rec("nextOpSamples", {
+        tick: SUBSTRATE_HANDLE.tickCount,
+        kernelValue: kernelVal,
+        cssValue: cssVal,
+        gpuValue: gpuVal,
+        gpuFromDispatch: gpuFromDispatch,
+        kernelMatchesCss: kernelVal === cssVal,
+        kernelMatchesGpu: gpuVal !== null ? kernelVal === gpuVal : null,
+        cssMatchesGpu:    gpuVal !== null ? cssVal === gpuVal : null,
+        allAgree: gpuVal !== null && kernelVal === cssVal && kernelVal === gpuVal
+      });
+    }
+
+    // -- --todo-visible (sample at the substrate-state's current
+    //                   (filter, completed) pair) --
+    var kernelVisible = null;
+    var kernelVisEntry = (Field.cascadeOutput || {})["--todo-visible"];
+    if (kernelVisEntry) kernelVisible = kernelVisEntry.value;
+    var cssVisible = null;
+    if (typeof getComputedStyle === "function") {
+      var raw = getComputedStyle(stateElement).getPropertyValue("--todo-visible");
+      if (raw) cssVisible = raw.trim().replace(/^"(.*)"$/, "$1");
+      if (cssVisible === "") cssVisible = null;
+    }
+    var lastVis = recorder.visibleSamples[recorder.visibleSamples.length - 1];
+    var visChanged = !lastVis
+      || lastVis.kernelValue !== kernelVisible
+      || lastVis.cssValue !== cssVisible
+      || lastVis.gpuValue !== gpuVisibleVal
+      || lastVis.atCoordCompleted !== activeCoord.completed
+      || lastVis.atCoordFilter !== activeCoord.filter;
+    if (kernelVisible !== null && visChanged) {
+      rec("visibleSamples", {
+        tick: SUBSTRATE_HANDLE.tickCount,
+        atCoordFilter: activeCoord.filter || "all",
+        atCoordCompleted: activeCoord.completed || "none",
+        kernelValue: kernelVisible,
+        cssValue: cssVisible,
+        gpuValue: gpuVisibleVal,
+        kernelMatchesCss: kernelVisible === cssVisible,
+        kernelMatchesGpu: gpuVisibleVal !== null ? kernelVisible === gpuVisibleVal : null,
+        cssMatchesGpu:    gpuVisibleVal !== null ? cssVisible === gpuVisibleVal : null,
+        allAgree: gpuVisibleVal !== null && kernelVisible === cssVisible && kernelVisible === gpuVisibleVal
+      });
+    }
+
+    // Apply per-todo visibility from the GPU's resolved field. The GPU
+    // resolved --todo-visible at every (filter, completed) combination
+    // this tick; for each todo in the DOM we look up the coord
+    // (current-filter, this-todo's-completed) and read what the cascade
+    // decided. JS doesn't decide visible-or-not -- JS applies what the
+    // geometry resolved. CSS would do the same via its rule (but we
+    // removed those rules from the stylesheet; this is the JS reader
+    // applying the same geometry that all three substrates resolve).
+    if (SUBSTRATE_HANDLE.gpuRunner) {
+      var currentFilter = (document.body.dataset.filter) || "all";
+      var todoEls = document.querySelectorAll(".todo-item");
+      for (var ti = 0; ti < todoEls.length; ti++) {
+        var todo = todoEls[ti];
+        var perTodoCoord = {
+          trigger: "",
+          filter: currentFilter,
+          completed: todo.dataset.completed || "0",
+          "target-completed": "none",
+          "input-present": "0"
+        };
+        var r = SUBSTRATE_HANDLE.gpuRunner.resolveCoord(perTodoCoord);
+        if (r) {
+          var v = r.values["--todo-visible"];
+          // v === null means no rule matched (shouldn't happen given our
+          // rule set covers all filter-x-completed combos); default to
+          // visible to be safe.
+          todo.style.display = (v === "0") ? "none" : "";
+        }
+      }
+    }
+
+    bridge.dispatchToCT(CT);
+
+    var result = drainAndRecord(Field);
+    SUBSTRATE_HANDLE.dispatchedTotal += result.dispatched;
+    if (result.errors.length > 0) {
+      console.warn("[tick] dispatcher errors:", result.errors);
+    }
+
+    CT.enqueueInternal("tick", {});
+    CT.drainAll(8).then(function () {
+      Field.refreshVectorDelta();
+      SUBSTRATE_HANDLE.tickCount++;
+      tickInProgress = false;
+      requestAnimationFrame(tick);
+    }).catch(function (e) {
+      console.error("[tick] CT drain error:", e);
+      tickInProgress = false;
+      requestAnimationFrame(tick);
+    });
+  }
+  requestAnimationFrame(tick);
+
+  // ---- Action milestones (so the export shows user intent inline) -----
+  // Each event-listener already publishes its own intake record, but the
+  // intake record is mechanistic ("trigger=submit"). Action milestones
+  // are the human-readable interpretation, useful when scanning the
+  // exported timeline.
+  function action(kind, detail) {
+    recorder.actions.push({ t: rt(), kind: kind, detail: detail });
+  }
+  addBtn.addEventListener("click", function () {
+    action("ui-click", "add-btn (input=" + JSON.stringify(newTodoInput.value) + ")");
+  });
+  newTodoInput.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") action("ui-keydown", "enter in new-todo (input=" + JSON.stringify(newTodoInput.value) + ")");
+  });
+  todoList.addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.role === "toggle" || t.dataset.role === "delete") {
+      var li = t.closest(".todo-item");
+      action("ui-click", t.dataset.role + " on todo id=" + (li && li.dataset.id));
+    }
+  });
+  for (var fi = 0; fi < filterBtns.length; fi++) {
+    (function (btn) {
+      btn.addEventListener("click", function () {
+        action("ui-click", "filter=" + btn.dataset.filter);
+      });
+    })(filterBtns[fi]);
+  }
+  clearBtn.addEventListener("click", function () {
+    action("ui-click", "clear-completed");
+  });
+
+  // ---- Export / clear buttons -----------------------------------------
+  document.getElementById("export-trace").addEventListener("click", function () {
+    var s = globalThis.substrate;
+    var payload = {
+      meta: {
+        started: recorder.started,
+        exportedAt: new Date().toISOString(),
+        url: location.href,
+        userAgent: navigator.userAgent,
+        tickCount: s.tickCount,
+        fieldStep: s.field.step,
+        constraints: s.field.constraints.length,
+        cascadeRules: s.cascadeRuleCount,
+        intakeBufferSize: s.field.intake.records.length,
+        intakeTotalReceived: s.field.intake.totalReceived,
+        dispatchedTotal: s.dispatchedTotal,
+        registeredOps: s.dispatcher.listRegistered(),
+        bridgeDiagnostics: s.bridge.diagnostics(),
+        gpuStatus: s.gpuStatus,
+        gpuDiagnostics: s.gpuRunner ? s.gpuRunner.diagnostics() : null
+      },
+      cascadeRules: s.field.constraints.slice(1).map(function (c) {
+        return { id: c.id, selector: c.pattern && c.pattern.selector, emit: c.emit };
+      }),
+      cascadeOutput: s.field.cascadeOutput,
+      actions: recorder.actions,
+      intake: recorder.intake,
+      dispatched: recorder.dispatched,
+      nextOpSamples: recorder.nextOpSamples,
+      visibleSamples: recorder.visibleSamples,
+      trace: s.trace.entries,
+      currentTodos: Array.prototype.map.call(
+        document.querySelectorAll(".todo-item"),
+        function (li) {
+          return {
+            id: li.dataset.id,
+            completed: li.dataset.completed,
+            text: li.querySelector(".text").textContent
+          };
+        }
+      )
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)],
+      { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "todomvc-session-" + Date.now() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }, 0);
+  });
+  document.getElementById("clear-trace").addEventListener("click", function () {
+    recorder.intake.length = 0;
+    recorder.dispatched.length = 0;
+    recorder.nextOpSamples.length = 0;
+    recorder.actions.length = 0;
+    Trace.clear();
+    recorder.started = new Date().toISOString();
+  });
+
+  // ---- Status line (O-class observer; read-only) ----------------------
+  var statusEl = document.getElementById("status");
+  setInterval(function () {
+    var s = globalThis.substrate;
+    var gpuPart = " gpu=" + s.gpuStatus;
+    if (s.gpuRunner) {
+      var gd = s.gpuRunner.diagnostics();
+      gpuPart = " gpu=ready dispatch=" + gd.dispatchCount + "/readback=" + gd.readbackCount
+        + " coords=" + gd.stateSpaceSize;
+    }
+    statusEl.textContent =
+      "tick=" + s.tickCount +
+      " step=" + s.field.step +
+      " constraints=" + s.field.constraints.length +
+      " intake=" + s.field.intake.records.length +
+      "/" + s.field.intake.totalReceived +
+      " dispatched=" + s.dispatchedTotal +
+      " trace=" + s.trace.entries.length +
+      gpuPart;
+  }, 250);
+})();
+</script>
+
+</body>
+</html>
