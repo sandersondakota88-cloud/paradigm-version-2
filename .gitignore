@@ -22,6 +22,12 @@ logs/
 Trace-*.json
 Trace-*.json.gz
 
+# --- TodoMVC session exports ------------------------------------------------
+# Produced by the "download session.json" button in todomvc.html. Local
+# diagnostics by default; specific sessions whose data backs a commit's
+# empirical claims may be force-added per-file via `git add -f`.
+implementation/10-end-to-end-todomvc/todomvc-session-*.json
+
 # --- OS metadata ------------------------------------------------------------
 # Windows
 Thumbs.db
