@@ -452,6 +452,7 @@
     recorder: recorder,
     gpuRunner: null,        // populated async after kernel boots
     gpuStatus: "init...",   // 'unavailable' | 'init...' | 'ready' | 'error:...'
+    recallCount: 0,         // todos recalled from substrate hosting (SE-06:193)
     tickCount: 0, dispatchedTotal: 0,
     cascadeRuleCount: cascadeRules.length
   };
@@ -677,6 +678,27 @@
   function action(kind, detail) {
     recorder.actions.push({ t: rt(), kind: kind, detail: detail });
   }
+
+  // ---- Recall observer (SE-06:193 substrate hosting visibility) ----
+  // The deposition's hydration loop rebuilt DOM elements from localStorage
+  // before this script executed. That is the browser hosting the field
+  // "in DOM state and persistent storage collectively" per SE-06:193 --
+  // a constitutive substrate property, not added machinery. This observer
+  // surfaces what was recalled so the recall is inspectable rather than
+  // silent. O1: read-only with respect to the field. O3: vocabulary
+  // sourced from the field (item count, hydration timestamp).
+  (function () {
+    var r = globalThis.__SUBSTRATE_HYDRATION_RESULT__;
+    if (!r) return;
+    if (r.error) {
+      action("substrate-recall", "FAILED: " + r.error);
+    } else {
+      action("substrate-recall",
+        r.items + " todo(s) recalled from substrate hosting (SE-06:193 DOM+localStorage)");
+    }
+    SUBSTRATE_HANDLE.recallCount = r.items;
+  })();
+
   addBtn.addEventListener("click", function () {
     action("ui-click", "add-btn (input=" + JSON.stringify(newTodoInput.value) + ")");
   });
@@ -721,7 +743,9 @@
         registeredOps: s.dispatcher.listRegistered(),
         bridgeDiagnostics: s.bridge.diagnostics(),
         gpuStatus: s.gpuStatus,
-        gpuDiagnostics: s.gpuRunner ? s.gpuRunner.diagnostics() : null
+        gpuDiagnostics: s.gpuRunner ? s.gpuRunner.diagnostics() : null,
+        recallCount: s.recallCount,
+        hydrationResult: globalThis.__SUBSTRATE_HYDRATION_RESULT__ || null
       },
       cascadeRules: s.field.constraints.slice(1).map(function (c) {
         return { id: c.id, selector: c.pattern && c.pattern.selector, emit: c.emit };
@@ -1041,6 +1065,7 @@
       "/" + s.field.intake.totalReceived +
       " dispatched=" + s.dispatchedTotal +
       " trace=" + s.trace.entries.length +
+      " recall=" + s.recallCount +
       gpuPart;
   }, 250);
 })();

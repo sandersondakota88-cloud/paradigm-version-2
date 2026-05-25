@@ -410,7 +410,19 @@ whenReady(function () {
     return { "trigger": "", "target": "", "filter": filter };
   });
 
-  // ---- Hydration: load persisted todos -------------------------------------
+  // ---- Recall: rebuild persisted DOM substrate state -----------------------
+  // This is SE-06:193 in action -- the field is hosted "in DOM state and
+  // persistent storage collectively." The browser's localStorage is the
+  // durable layer of the host's substrate hosting; reading it and rebuilding
+  // the DOM nodes before the first paint reconstitutes the substrate state
+  // for the next tick. The cascade resolves against the rebuilt DOM
+  // identically to live-edited DOM because the resolution is
+  // substrate-state-shape-driven, not history-driven.
+  //
+  // Posts a result global so the init script can observe what was recalled
+  // and surface it (recall is the constitutive property; it should be
+  // visible).
+  var recallResult = { items: 0, error: null, recalledAt: Date.now() };
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
     if (raw) {
@@ -421,13 +433,16 @@ whenReady(function () {
           if (!item || !item.id) return;
           const li = makeTodoElement(item.id, item.text || "", item.completed === "1");
           listEl.appendChild(li);
+          recallResult.items++;
         });
       }
     }
     refreshFooter();
   } catch (e) {
+    recallResult.error = e.message;
     console.warn("[deposition] hydration failed:", e.message);
   }
+  globalThis.__SUBSTRATE_HYDRATION_RESULT__ = recallResult;
 });
 
 })();
