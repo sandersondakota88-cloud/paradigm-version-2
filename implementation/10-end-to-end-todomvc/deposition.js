@@ -227,24 +227,81 @@ globalThis.__DEPOSITION_CASCADE_RULES__ = [
     },
     emit: { property: "--todo-visible", value: "0" },
     birth: 0, lastUsed: 0, uses: 0, weight: 1.0, permanent: false
+  },
+
+  // --- substrate-mode (the cascade reading the substrate's own dynamics)
+  // SE-05's vector-delta gap is the substrate's structural "reaching"
+  // signal. The cascade reads it through data-gap-band (derived per-tick
+  // from Field.gap) and emits --substrate-mode accordingly. This is the
+  // smallest legible instance of "selection sensitive to substrate
+  // dynamics" the canon (K2/K3) names as load-bearing.
+  //
+  // In a UTF-honoring implementation, --substrate-mode would gate
+  // predictive constraint generation (SE-05) and sub-cascade promotion
+  // (K1). Here it just gets resolved by all three substrates and
+  // observable in the recorder, so the loop is closed.
+  {
+    id: "deposit::mode-settled",
+    kind: "derived",
+    pattern: {
+      type: "cascade-match",
+      selector: {
+        "data-substrate-state": "*",
+        "data-gap-band": "low"
+      }
+    },
+    emit: { property: "--substrate-mode", value: "settled" },
+    birth: 0, lastUsed: 0, uses: 0, weight: 1.0, permanent: false
+  },
+  {
+    id: "deposit::mode-transitioning",
+    kind: "derived",
+    pattern: {
+      type: "cascade-match",
+      selector: {
+        "data-substrate-state": "*",
+        "data-gap-band": "medium"
+      }
+    },
+    emit: { property: "--substrate-mode", value: "transitioning" },
+    birth: 0, lastUsed: 0, uses: 0, weight: 1.0, permanent: false
+  },
+  {
+    id: "deposit::mode-reaching",
+    kind: "derived",
+    pattern: {
+      type: "cascade-match",
+      selector: {
+        "data-substrate-state": "*",
+        "data-gap-band": "high"
+      }
+    },
+    emit: { property: "--substrate-mode", value: "reaching" },
+    birth: 0, lastUsed: 0, uses: 0, weight: 1.0, permanent: false
   }
 ];
 
 // The list of output properties this deposition writes, in slot order.
 // The GPU compiler uses this to allocate output slots; the host uses it to
 // know which slot maps to which custom property.
-globalThis.__DEPOSITION_OUTPUT_PROPERTIES__ = ["--next-op", "--todo-visible"];
+globalThis.__DEPOSITION_OUTPUT_PROPERTIES__ = ["--next-op", "--todo-visible", "--substrate-mode"];
 
 // The coord-space the GPU should sweep. Values explicit (not derived from
 // rules) because some dims have values that appear as coord-state but not
 // as selector values (e.g. data-filter values "active","completed" don't
 // appear in --next-op selectors, only in --todo-visible selectors).
+//
+// 'gap-band' is the substrate's own dynamical reading (SE-05 vector-delta
+// banded into three buckets). It enters the coord space because the
+// cascade's --substrate-mode rules condition on it. The bridge projects
+// it from Field.gap each tick via publishGapBand.
 globalThis.__DEPOSITION_DIMS__ = [
   { name: "trigger",          values: ["", "submit", "toggle", "delete", "clear-completed", "filter"] },
   { name: "filter",           values: ["all", "active", "completed"] },
   { name: "completed",        values: ["none", "0", "1"] },
   { name: "target-completed", values: ["none", "0", "1"] },
-  { name: "input-present",    values: ["0", "1"] }
+  { name: "input-present",    values: ["0", "1"] },
+  { name: "gap-band",         values: ["low", "medium", "high"] }
 ];
 
 // ---- Operation handlers (mechanical actuators) -----------------------------

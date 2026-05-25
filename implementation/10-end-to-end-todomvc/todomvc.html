@@ -138,6 +138,12 @@
   [data-substrate-state][data-filter="active"][data-completed="1"]         { --todo-visible: "0"; }
   [data-substrate-state][data-filter="completed"][data-completed="1"]      { --todo-visible: "1"; }
   [data-substrate-state][data-filter="completed"][data-completed="0"]      { --todo-visible: "0"; }
+
+  /* --substrate-mode rules (the cascade reading the substrate's own
+     dynamics; must match deposition.js) */
+  [data-substrate-state][data-gap-band="low"]    { --substrate-mode: "settled"; }
+  [data-substrate-state][data-gap-band="medium"] { --substrate-mode: "transitioning"; }
+  [data-substrate-state][data-gap-band="high"]   { --substrate-mode: "reaching"; }
 </style>
 </head>
 <body>
@@ -211,7 +217,7 @@
 <div id="substrate-state" data-substrate-state=""
      data-trigger="" data-target="" data-filter="all"
      data-completed="none" data-target-completed="none"
-     data-input-present="0"
+     data-input-present="0" data-gap-band="low"
      style="display:none"></div>
 
 <!-- ====================================================================== -->
@@ -392,9 +398,16 @@
     started: new Date().toISOString(),
     intake: [],            // {t, type, value, source}
     dispatched: [],        // {t, tick, op, sourceConstraintId, errors}
-    nextOpSamples: [],     // {t, tick, kernelValue, cssValue, gpuValue, agreement bools}
-    visibleSamples: [],    // {t, tick, atCoord, kernelValue, cssValue, gpuValue, agreement bools}
+    nextOpSamples: [],     // {t, tick, executeSubstrate, renderSubstrateCSS, renderSubstrateGPU, agreement bools}
+    visibleSamples: [],    // {t, tick, atCoord, executeSubstrate, renderSubstrateCSS, renderSubstrateGPU, agreement bools}
+    modeSamples: [],       // {t, tick, gapBand, kernelValue, cssValue, gpuValue, agreement bools}
     reductions: [],        // {t, tick, matched, nextOpCounts, visibleCounts, hiddenCoords[]}
+    // dynamics: per-second snapshot of the kernel's vector-delta (SE-05) +
+    // modulation layers (SE-03) + tick activity. These are the dynamical
+    // readings the canon names as load-bearing for selection sensitivity
+    // and predictive reaching. Surfacing them makes the substrate's
+    // internal life inspectable.
+    dynamics: [],          // {t, tick, scalarDelta, fastDelta, slowDelta, gap, fastMod, slowMod, intakeRate, dispatchRate, gapBand}
     actions: []            // {t, kind, detail} -- user-facing milestones
   };
   function rt() { return performance.now(); }
@@ -531,9 +544,51 @@
   // 5. CT.drainAll runs remaining ops (tick, etc.)
   // 6. Field.refreshVectorDelta + requestAnimationFrame
   var tickInProgress = false;
+  // ---- gap-band derivation (SE-05 vector-delta -> cascade dim) -----
+  // Reads Field.gap (the SE-05 fast/slow divergence) and bands it into
+  // three discrete values the cascade can match on. Publishes the band
+  // as an intake record so the bridge projects it to data-gap-band on
+  // #substrate-state. All three substrates see the same band.
+  //
+  // Thresholds are hardcoded for TodoMVC's density. In a UTF-honoring
+  // implementation, the bands would be derived from running statistics
+  // of the field's actual gap distribution, with predictive constraints
+  // (SE-05) generating new bands when novelty arrives.
+  var GAP_LOW_THRESHOLD = 0.1;
+  var GAP_HIGH_THRESHOLD = 0.4;
+  var lastGapBandPublished = null;
+  function deriveGapBand() {
+    var g = Field.gap || 0;
+    if (g < GAP_LOW_THRESHOLD) return "low";
+    if (g >= GAP_HIGH_THRESHOLD) return "high";
+    return "medium";
+  }
+  function publishGapBand() {
+    var band = deriveGapBand();
+    if (band === lastGapBandPublished) return;  // dedupe; only publish on change
+    lastGapBandPublished = band;
+    Field.intake.publish({
+      type: "dom::set-attr",
+      value: { "gap-band": band },
+      timestamp: performance.now(),
+      source: "gap-band-deriver"
+    });
+  }
+
+  // Approximate per-tick rates for the dynamics snapshot
+  var lastIntakeTotal = 0;
+  var lastDispatchTotal = 0;
+  var lastDynamicsSnapshotT = performance.now();
+
   function tick() {
     if (tickInProgress) return;
     tickInProgress = true;
+
+    // Refresh vector-delta first so gap is current, then derive the gap
+    // band and publish it as intake before the evaluator runs against
+    // the updated intake state.
+    Field.refreshVectorDelta();
+    publishGapBand();
 
     KernelCascadeEvaluator.evaluateCascade(Field, { traceModule: Trace });
     bridge.projectFieldToDOM();
@@ -550,18 +605,20 @@
     // property at the active coord.
     var activeCoord = activeCoordFromIntake();
 
-    // -- --next-op --
+    // -- --next-op + --substrate-mode --
     var kernelEntry = bridge.sampleNextOp();
     var kernelVal = kernelEntry ? kernelEntry.value : null;
     var cssVal = bridge.sampleNextOpFromCss();
     var gpuVal = null;
     var gpuVisibleVal = null;
+    var gpuModeVal = null;
     var gpuFromDispatch = null;
     if (SUBSTRATE_HANDLE.gpuRunner) {
       var g = SUBSTRATE_HANDLE.gpuRunner.resolveCoord(activeCoord);
       if (g) {
         gpuVal = g.values["--next-op"];
         gpuVisibleVal = g.values["--todo-visible"];
+        gpuModeVal = g.values["--substrate-mode"];
         gpuFromDispatch = g.fromDispatch;
       }
     }
@@ -617,6 +674,36 @@
       });
     }
 
+    // -- --substrate-mode (the cascade reading the substrate's own
+    //                       dynamical state via gap-band) --
+    var kernelMode = null;
+    var kernelModeEntry = (Field.cascadeOutput || {})["--substrate-mode"];
+    if (kernelModeEntry) kernelMode = kernelModeEntry.value;
+    var cssMode = null;
+    if (typeof getComputedStyle === "function") {
+      var rawM = getComputedStyle(stateElement).getPropertyValue("--substrate-mode");
+      if (rawM) cssMode = rawM.trim().replace(/^"(.*)"$/, "$1");
+      if (cssMode === "") cssMode = null;
+    }
+    var lastMode = recorder.modeSamples[recorder.modeSamples.length - 1];
+    var modeChanged = !lastMode
+      || lastMode.kernelValue !== kernelMode
+      || lastMode.cssValue !== cssMode
+      || lastMode.gpuValue !== gpuModeVal;
+    if (kernelMode !== null && modeChanged) {
+      rec("modeSamples", {
+        tick: SUBSTRATE_HANDLE.tickCount,
+        gapBand: activeCoord["gap-band"] || deriveGapBand(),
+        kernelValue: kernelMode,
+        cssValue: cssMode,
+        gpuValue: gpuModeVal,
+        kernelMatchesCss: kernelMode === cssMode,
+        kernelMatchesGpu: gpuModeVal !== null ? kernelMode === gpuModeVal : null,
+        cssMatchesGpu:    gpuModeVal !== null ? cssMode === gpuModeVal : null,
+        allAgree: gpuModeVal !== null && kernelMode === cssMode && kernelMode === gpuModeVal
+      });
+    }
+
     // Apply per-todo visibility from the GPU's resolved field. The GPU
     // resolved --todo-visible at every (filter, completed) combination
     // this tick; for each todo in the DOM we look up the coord
@@ -635,7 +722,8 @@
           filter: currentFilter,
           completed: todo.dataset.completed || "0",
           "target-completed": "none",
-          "input-present": "0"
+          "input-present": "0",
+          "gap-band": deriveGapBand()
         };
         var r = SUBSTRATE_HANDLE.gpuRunner.resolveCoord(perTodoCoord);
         if (r) {
@@ -756,7 +844,9 @@
       dispatched: recorder.dispatched,
       nextOpSamples: recorder.nextOpSamples,
       visibleSamples: recorder.visibleSamples,
+      modeSamples: recorder.modeSamples,
       reductions: recorder.reductions,
+      dynamics: recorder.dynamics,
       trace: s.trace.entries,
       currentTodos: Array.prototype.map.call(
         document.querySelectorAll(".todo-item"),
@@ -786,7 +876,9 @@
     recorder.dispatched.length = 0;
     recorder.nextOpSamples.length = 0;
     recorder.visibleSamples.length = 0;
+    recorder.modeSamples.length = 0;
     recorder.reductions.length = 0;
+    recorder.dynamics.length = 0;
     recorder.actions.length = 0;
     Trace.clear();
     recorder.started = new Date().toISOString();
@@ -1047,6 +1139,35 @@
   }
   setInterval(snapshotReductions, 1000);
 
+  // ---- Dynamics snapshot (kernel's vector-delta + modulation, per-second)
+  // Captures the substrate's internal life per SE-03 (modulation layers)
+  // and SE-05 (vector-delta). These are computed every tick by the kernel;
+  // this snapshot just reads them so the recorder has them.
+  function snapshotDynamics() {
+    var now = performance.now();
+    var dt = (now - lastDynamicsSnapshotT) / 1000;
+    lastDynamicsSnapshotT = now;
+    var intakeTotal = Field.intake.totalReceived;
+    var dispatchTotal = SUBSTRATE_HANDLE.dispatchedTotal;
+    var intakeRate = dt > 0 ? (intakeTotal - lastIntakeTotal) / dt : 0;
+    var dispatchRate = dt > 0 ? (dispatchTotal - lastDispatchTotal) / dt : 0;
+    lastIntakeTotal = intakeTotal;
+    lastDispatchTotal = dispatchTotal;
+    rec("dynamics", {
+      tick: SUBSTRATE_HANDLE.tickCount,
+      scalarDelta: Field.scalarDelta,
+      fastDelta: Field.fastDelta,
+      slowDelta: Field.slowDelta,
+      gap: Field.gap,
+      fastMod: Field.fastMod,
+      slowMod: Field.slowMod,
+      gapBand: deriveGapBand(),
+      intakeRate: intakeRate,
+      dispatchRate: dispatchRate
+    });
+  }
+  setInterval(snapshotDynamics, 1000);
+
   // ---- Status line (O-class observer; read-only) ----------------------
   var statusEl = document.getElementById("status");
   setInterval(function () {
@@ -1057,6 +1178,13 @@
       gpuPart = " gpu=ready dispatch=" + gd.dispatchCount + "/readback=" + gd.readbackCount
         + " coords=" + gd.stateSpaceSize;
     }
+    var f = s.field;
+    var dynPart = " | delta s=" + (f.scalarDelta || 0).toFixed(3) +
+      " f=" + (f.fastDelta || 0).toFixed(3) +
+      " sl=" + (f.slowDelta || 0).toFixed(3) +
+      " gap=" + (f.gap || 0).toFixed(3) +
+      " band=" + deriveGapBand() +
+      " mod[" + (f.fastMod || 0).toFixed(3) + "," + (f.slowMod || 0).toFixed(3) + "]";
     statusEl.textContent =
       "tick=" + s.tickCount +
       " step=" + s.field.step +
@@ -1066,7 +1194,8 @@
       " dispatched=" + s.dispatchedTotal +
       " trace=" + s.trace.entries.length +
       " recall=" + s.recallCount +
-      gpuPart;
+      gpuPart +
+      dynPart;
   }, 250);
 })();
 </script>

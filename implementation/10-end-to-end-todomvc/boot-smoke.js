@@ -257,6 +257,14 @@ try {
     if (visTable.indexOf("0") < 0 || visTable.indexOf("1") < 0) {
       throw new Error("visible table missing 0 or 1");
     }
+    // --substrate-mode table contains the three bands
+    var modeTable = compiled.outputs.opTables[compiled.outputs.slotByProperty["--substrate-mode"]];
+    var expectedModes = ["settled","transitioning","reaching"];
+    for (var mi = 0; mi < expectedModes.length; mi++) {
+      if (modeTable.indexOf(expectedModes[mi]) < 0) {
+        throw new Error("substrate-mode table missing: " + expectedModes[mi]);
+      }
+    }
     // coord-index sanity: all-defaults coord is index 0
     var idx0 = GpuCascadeCompiler.coordToIndex({
       trigger: "", filter: "all", completed: "none",
@@ -390,8 +398,8 @@ try {
     // Hidden coords: --todo-visible=0 fires for (filter=active,completed=1)
     // and (filter=completed,completed=0). Each combination is 1*1*1 along
     // (filter, completed) times the cardinality of remaining dims
-    // (trigger, target-completed, input-present).
-    var hiddenExpected = 2 * 6 * 3 * 2;  // 2 (filter,completed) combos * 6 triggers * 3 target-completed * 2 input-present
+    // (trigger, target-completed, input-present, gap-band).
+    var hiddenExpected = 2 * 6 * 3 * 2 * 3;  // 2 combos * 6 triggers * 3 target-completed * 2 input-present * 3 gap-band
     if (hidden.length !== hiddenExpected) {
       throw new Error("hidden coords mismatch: expected " + hiddenExpected + ", got " + hidden.length);
     }
