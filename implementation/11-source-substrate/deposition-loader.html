@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' blob:; script-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>Substrate Deposition · Standalone Loader</title>
+<style>
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: #0e1116; color: #d6dde6;
+    margin: 0; padding: 16px;
+    font-size: 11px; line-height: 1.45;
+    max-width: 1200px; margin: 0 auto;
+  }
+  h1 { font-size: 14px; letter-spacing: 2px; margin: 0 0 8px 0; }
+  h2 { font-size: 11px; letter-spacing: 1px; margin: 12px 0 6px 0;
+       color: #8aa0bb; text-transform: uppercase; }
+  p { margin: 6px 0; color: #9aa8bb; }
+  p.muted { font-size: 10px; }
+  .box { border: 1px solid #2c3340; padding: 10px 12px; margin-bottom: 10px;
+         background: #161b22; }
+  .drop {
+    border: 2px dashed #4a5160;
+    border-radius: 6px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #0c1118;
+  }
+  .drop.hover { border-color: #c2a05a; background: #1a1612; }
+  .drop.loaded { border-color: #5a8a4a; background: #121a14; border-style: solid; }
+  .drop .icon { font-size: 24px; opacity: 0.6; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  label {
+    display: block;
+    font-size: 10px;
+    color: #8aa0bb;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  select, input {
+    width: 100%;
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    color: #d6dde6;
+    padding: 5px 7px;
+    font-family: inherit;
+    font-size: 11px;
+    border-radius: 3px;
+  }
+  button {
+    font-family: inherit; font-size: 11px;
+    padding: 8px 14px;
+    border: 1px solid #2c3340; background: #161b22; color: #d6dde6;
+    cursor: pointer; letter-spacing: 1px;
+    border-radius: 3px;
+  }
+  button:hover { background: #2c3340; }
+  button.primary {
+    border-color: #c2a05a;
+    background: #1a1612;
+    color: #e6c98a;
+  }
+  button.primary:hover { background: #2a2218; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .result-row {
+    display: grid; grid-template-columns: 140px 1fr;
+    gap: 8px; align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid #1a1f28;
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row .k { color: #8aa0bb; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .result-row .v { font-size: 13px; font-weight: 700; }
+  .result-row .v.fired { color: #b0e6c0; }
+  .result-row .v.unresolved { color: #888; }
+  .result-row .v.big { font-size: 18px; }
+  .heat-grid {
+    margin-top: 8px;
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    display: grid;
+    grid-template-columns: repeat(125, 1fr);
+    gap: 0;
+    height: 200px;
+    overflow: hidden;
+  }
+  .heat-grid .cell { width: 100%; height: 100%; }
+  .cell-matched { background: #2a5238; }
+  .cell-unmatched { background: #4a1a1a; }
+  pre {
+    background: #0c1118; padding: 10px;
+    overflow-x: auto; max-height: 250px;
+    border: 1px solid #2c3340;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid #2c3340;
+    border-radius: 2px;
+    font-size: 9px;
+    color: #c2a05a;
+    margin-left: 4px;
+  }
+  .stat { color: #9aa8bb; }
+  .status { color: #c2a05a; font-weight: 700; }
+  .status.ok { color: #8ce0a0; }
+  .status.err { color: #e07575; }
+</style>
+</head>
+<body>
+
+<h1>SUBSTRATE DEPOSITION · STANDALONE LOADER</h1>
+
+<div class="box">
+  <p>This page has <strong>no substrate code</strong>. No lattice, no peers, no canonical
+  Field. The browser's native CSS cascade engine resolves the substrate's deposited
+  understanding. Drop in a substrate-deposition CSS file (emitted by Phase 6's
+  <code>css-deposition-emitter.js</code>) and the page will populate the joint
+  coord space, attach the deposited rules, and let you query any coord.</p>
+  <p class="muted">The page's only knowledge about the substrate is the
+  joint coord-space shape (axes + their finite alphabets). That metadata is
+  embedded below. Everything else is browser-native CSS resolution.</p>
+</div>
+
+<!-- ============================== DROP ZONE ============================= -->
+<div class="box">
+  <h2>1. Load deposition stylesheet</h2>
+  <div class="drop" id="drop">
+    <div class="icon">&darr;</div>
+    <div>Drop <code>substrate-deposition-*.css</code> here<br>
+    <span class="stat">(or click to pick a file)</span></div>
+  </div>
+  <input type="file" id="file-input" accept=".css" style="display:none">
+  <div id="load-status" style="margin-top: 8px;"></div>
+</div>
+
+<!-- ============================ PROBE ELEMENT =========================== -->
+<!--
+  The probe is the DOM element the cascade resolves rules against.
+  It lives at id="substrate-probe" matching the emitter's default
+  probeId. We position it off-screen but in-tree so getComputedStyle
+  works against it.
+-->
+<div id="substrate-probe"
+     style="position:absolute; left:-9999px; top:-9999px; width:1px; height:1px;"></div>
+
+<!-- ============================ QUERY ============================= -->
+<div class="box">
+  <h2>2. Query a coord</h2>
+  <p class="muted">Pick any combination of axis outputs. The browser's
+  cascade resolves which substrate constraint (if any) fires at this joint coord.</p>
+  <div class="row3" id="axis-pickers">
+    <!-- Populated by populateAxisPickers() once the shape is loaded -->
+  </div>
+  <div style="margin-top: 12px;">
+    <button class="primary" id="btn-query">RESOLVE THIS COORD</button>
+    <button id="btn-random">RANDOMIZE</button>
+  </div>
+  <div id="query-result" style="margin-top: 12px;"></div>
+</div>
+
+<!-- ====================== FULL JOINT-SPACE WALK ======================= -->
+<div class="box">
+  <h2>3. Walk the full joint coord space</h2>
+  <p class="muted">Iterate over every joint coord in the lattice's joint
+  space, ask the cascade what fires at each, summarize.</p>
+  <button class="primary" id="btn-walk">RESOLVE FULL JOINT COORD SPACE</button>
+  <div id="walk-result" style="margin-top: 12px;"></div>
+  <div class="heat-grid" id="heat-grid" style="display:none;"></div>
+</div>
+
+<!-- ====================== SAMPLE FIRES ============================ -->
+<div class="box" id="sample-box" style="display:none;">
+  <h2>Sample resolved coords (first 50)</h2>
+  <pre id="sample-out"></pre>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+// ---------------------------------------------------------------------
+// Joint coord-space shape.
+// This is METADATA about the deposition, not substrate code. It says:
+// the deposition's selectors use these data-attributes with these
+// finite value alphabets. A different deposition over a different
+// substrate configuration would publish a different version of this
+// alongside its CSS.
+// ---------------------------------------------------------------------
+const LATTICE_DIMS = [
+  { name: "kind",      values: ["kind-run-start", "kind-run-mid", "kind-run-end", "kind-transition", "kind-isolated"] },
+  { name: "vocab",     values: ["vocab-fresh", "vocab-recurring", "vocab-binding-decl", "vocab-binding-use", "vocab-positional"] },
+  { name: "cooccur",   values: ["cooccur-sig-novel", "cooccur-sig-recurring", "cooccur-symmetric", "cooccur-anchored", "cooccur-isolated"] },
+  { name: "position",  values: ["position-decl", "position-use", "position-attr", "position-other", "position-transition"] },
+  { name: "frequency", values: ["freq-singleton", "freq-rare", "freq-moderate", "freq-common", "freq-dominant"] },
+  { name: "composer",  values: ["composer-multi-axis-agreement", "composer-single-axis-only", "composer-no-agreement", "composer-novel-intersection"] }
+];
+
+const PROBE_ID = "substrate-probe";
+const OUTPUT_PROPERTY = "--lattice-fire";
+
+// ---------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------
+const state = {
+  styleEl: null,
+  loaded: false,
+  fileName: null
+};
+
+// ---------------------------------------------------------------------
+// Populate axis pickers
+// ---------------------------------------------------------------------
+function populateAxisPickers() {
+  const root = document.getElementById("axis-pickers");
+  root.innerHTML = "";
+  for (const dim of LATTICE_DIMS) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      "<label>" + dim.name + "</label>" +
+      "<select data-dim='" + dim.name + "'>" +
+        dim.values.map(function (v) {
+          return "<option value='" + v + "'>" + v + "</option>";
+        }).join("") +
+      "</select>";
+    root.appendChild(wrap);
+  }
+}
+
+function getCurrentCoordPicks() {
+  const out = Object.create(null);
+  document.querySelectorAll("#axis-pickers select").forEach(function (sel) {
+    out[sel.dataset.dim] = sel.value;
+  });
+  return out;
+}
+
+function setProbeCoord(coord) {
+  const probe = document.getElementById(PROBE_ID);
+  for (const k in coord) probe.setAttribute("data-" + k, coord[k]);
+}
+
+function readProbeFire() {
+  const probe = document.getElementById(PROBE_ID);
+  const raw = getComputedStyle(probe).getPropertyValue(OUTPUT_PROPERTY).trim();
+  // Strip CSS string quotes if present
+  return raw.replace(/^["']|["']$/g, "");
+}
+
+// ---------------------------------------------------------------------
+// Load CSS file
+// ---------------------------------------------------------------------
+function loadCSSFile(file) {
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const text = e.target.result;
+    if (state.styleEl) state.styleEl.remove();
+    const s = document.createElement("style");
+    s.textContent = text;
+    document.head.appendChild(s);
+    state.styleEl = s;
+    state.loaded = true;
+    state.fileName = file.name;
+
+    const drop = document.getElementById("drop");
+    drop.classList.add("loaded");
+    drop.querySelector(".icon").textContent = "✓";
+    drop.querySelector("div:nth-child(2)").innerHTML =
+      "<strong>" + file.name + "</strong><br>" +
+      "<span class='stat'>" + Math.round(text.length / 1024) + " KB · " +
+      (text.match(/^\s*#substrate-probe/gm) || []).length + " rules · ready</span>";
+
+    const status = document.getElementById("load-status");
+    status.innerHTML = "<span class='status ok'>loaded; query any coord or walk the full space</span>";
+  };
+  reader.onerror = function () {
+    document.getElementById("load-status").innerHTML =
+      "<span class='status err'>file read failed</span>";
+  };
+  reader.readAsText(file);
+}
+
+// ---------------------------------------------------------------------
+// Drop zone wiring
+// ---------------------------------------------------------------------
+function wireDropZone() {
+  const drop = document.getElementById("drop");
+  const input = document.getElementById("file-input");
+
+  drop.addEventListener("click", function () { input.click(); });
+  input.addEventListener("change", function (e) {
+    if (e.target.files.length) loadCSSFile(e.target.files[0]);
+  });
+
+  drop.addEventListener("dragover", function (e) {
+    e.preventDefault(); drop.classList.add("hover");
+  });
+  drop.addEventListener("dragleave", function () { drop.classList.remove("hover"); });
+  drop.addEventListener("drop", function (e) {
+    e.preventDefault(); drop.classList.remove("hover");
+    if (e.dataTransfer.files.length) loadCSSFile(e.dataTransfer.files[0]);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Single-coord query
+// ---------------------------------------------------------------------
+function queryCurrentCoord() {
+  if (!state.loaded) {
+    document.getElementById("query-result").innerHTML =
+      "<span class='status err'>load a deposition first</span>";
+    return;
+  }
+  const coord = getCurrentCoordPicks();
+  setProbeCoord(coord);
+  const fire = readProbeFire();
+
+  let html = "";
+  html += "<div class='result-row'><span class='k'>coord</span>" +
+    "<span class='v'>" +
+      LATTICE_DIMS.map(function (d) { return coord[d.name]; }).join(" · ") +
+    "</span></div>";
+  if (fire) {
+    html += "<div class='result-row'><span class='k'>fired</span>" +
+      "<span class='v fired big'>" + fire + "</span></div>";
+    html += "<div class='result-row'><span class='k'>meaning</span>" +
+      "<span class='v stat'>this coord is structurally significant; the substrate's settled understanding promoted a constraint here</span></div>";
+  } else {
+    html += "<div class='result-row'><span class='k'>fired</span>" +
+      "<span class='v unresolved big'>(none)</span></div>";
+    html += "<div class='result-row'><span class='k'>meaning</span>" +
+      "<span class='v stat'>this coord falls into the substrate's unresolved region; no settled constraint discriminates it</span></div>";
+  }
+  document.getElementById("query-result").innerHTML = html;
+}
+
+// ---------------------------------------------------------------------
+// Full walk
+// ---------------------------------------------------------------------
+function walkFullSpace() {
+  if (!state.loaded) {
+    document.getElementById("walk-result").innerHTML =
+      "<span class='status err'>load a deposition first</span>";
+    return;
+  }
+  const status = document.getElementById("walk-result");
+  status.innerHTML = "<span class='status'>walking joint coord space...</span>";
+
+  // Yield to the browser so the status message paints
+  setTimeout(function () {
+    const t0 = performance.now();
+    let total = 1;
+    for (const d of LATTICE_DIMS) total *= d.values.length;
+
+    const probe = document.getElementById(PROBE_ID);
+    const results = new Array(total);
+    const fireCounts = Object.create(null);
+    let matched = 0;
+
+    for (let i = 0; i < total; i++) {
+      let rem = i;
+      for (let d = LATTICE_DIMS.length - 1; d >= 0; d--) {
+        const dim = LATTICE_DIMS[d];
+        probe.setAttribute("data-" + dim.name, dim.values[rem % dim.values.length]);
+        rem = Math.floor(rem / dim.values.length);
+      }
+      const v = getComputedStyle(probe).getPropertyValue(OUTPUT_PROPERTY).trim().replace(/^["']|["']$/g, "");
+      results[i] = v;
+      if (v) {
+        matched++;
+        fireCounts[v] = (fireCounts[v] || 0) + 1;
+      }
+    }
+
+    const tWalk = performance.now() - t0;
+    const unresolved = total - matched;
+    const latticeDelta = unresolved / total;
+    const distinctFires = Object.keys(fireCounts).length;
+
+    let html = "";
+    html += "<div class='result-row'><span class='k'>state-space size</span><span class='v'>" + total + "</span></div>";
+    html += "<div class='result-row'><span class='k'>matched coords</span><span class='v fired'>" + matched + "</span></div>";
+    html += "<div class='result-row'><span class='k'>unresolved coords</span><span class='v unresolved'>" + unresolved + "</span></div>";
+    html += "<div class='result-row'><span class='k'>lattice-scope delta</span><span class='v big'>" + latticeDelta.toFixed(4) + "</span></div>";
+    html += "<div class='result-row'><span class='k'>distinct fires</span><span class='v'>" + distinctFires + "</span></div>";
+    html += "<div class='result-row'><span class='k'>walk time</span><span class='v stat'>" + tWalk.toFixed(0) + " ms</span></div>";
+    status.innerHTML = html;
+
+    // Heat grid
+    const grid = document.getElementById("heat-grid");
+    grid.style.display = "grid";
+    grid.innerHTML = "";
+    // Use 125×100 grid (12500 cells) — works for the canonical 5×5×5×5×5×4 space
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < total; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell " + (results[i] ? "cell-matched" : "cell-unmatched");
+      cell.title = "coord " + i + " · " + (results[i] || "unresolved");
+      frag.appendChild(cell);
+    }
+    grid.appendChild(frag);
+
+    // Sample first 50 fires
+    const sampleBox = document.getElementById("sample-box");
+    const sampleOut = document.getElementById("sample-out");
+    sampleBox.style.display = "block";
+    const samples = [];
+    for (let i = 0; i < total && samples.length < 50; i++) {
+      if (results[i]) samples.push("coord " + String(i).padStart(5) + "  ->  " + results[i]);
+    }
+    sampleOut.textContent = samples.join("\n");
+
+    window.__lastWalkResults = results;
+    window.__lastWalkSummary = {
+      stateSpaceSize: total,
+      matched: matched,
+      unresolved: unresolved,
+      latticeDelta: latticeDelta,
+      distinctFires: distinctFires,
+      walkMs: tWalk
+    };
+  }, 20);
+}
+
+// ---------------------------------------------------------------------
+// Randomize coord
+// ---------------------------------------------------------------------
+function randomizeCoord() {
+  document.querySelectorAll("#axis-pickers select").forEach(function (sel) {
+    const opts = sel.options;
+    sel.selectedIndex = Math.floor(Math.random() * opts.length);
+  });
+  queryCurrentCoord();
+}
+
+// ---------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------
+populateAxisPickers();
+wireDropZone();
+document.getElementById("btn-query").addEventListener("click", queryCurrentCoord);
+document.getElementById("btn-random").addEventListener("click", randomizeCoord);
+document.getElementById("btn-walk").addEventListener("click", walkFullSpace);
+
+})();
+</script>
+
+</body>
+</html>
