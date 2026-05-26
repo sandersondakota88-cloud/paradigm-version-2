@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+<title>Phase 11 Source-Substrate Navigator</title>
+<style>
+  body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    background: #0e1116; color: #d6dde6;
+    margin: 0; padding: 12px;
+    font-size: 11px; line-height: 1.45;
+  }
+  h1 { font-size: 13px; letter-spacing: 2px; margin: 0 0 8px 0; }
+  h2 { font-size: 10px; letter-spacing: 1px; margin: 0 0 4px 0; color: #8aa0bb; text-transform: uppercase; }
+  .box { border: 1px solid #2c3340; padding: 8px 10px; margin-bottom: 8px; background: #161b22; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row3 { display: grid; grid-template-columns: 80px 1fr 80px; gap: 6px; align-items: center; }
+  .stat { color: #9aa8bb; font-size: 10px; }
+  .gauges {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+  }
+  .gauge {
+    border: 1px solid #2c3340;
+    padding: 4px 6px;
+    background: #0c1118;
+    font-size: 10px;
+  }
+  .gauge.lattice {
+    border-color: #c2a05a;
+    background: #1a1612;
+  }
+  .gauge .name { color: #8aa0bb; text-transform: uppercase; font-size: 9px; letter-spacing: 1px; }
+  .gauge .value { font-size: 14px; font-weight: 700; color: #e6ebf2; }
+  .gauge .bar { height: 4px; background: #0c1118; margin-top: 3px; }
+  .gauge .fill { height: 100%; background: #5d8ec0; transition: width 0.2s; }
+  .gauge.lattice .fill { background: #c2a05a; }
+  .source-pane {
+    height: 400px; overflow-y: scroll;
+    background: #0c1118;
+    padding: 8px;
+    border: 1px solid #2c3340;
+    font-size: 10px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .source-pane .tok {
+    display: inline-block;
+    padding: 0 1px;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .source-pane .tok:hover {
+    border-color: #c2a05a;
+  }
+  .source-pane .tok.selected {
+    border-color: #c2a05a;
+    background: #2a2218;
+  }
+  /* Source pane colors keyed by composer output (NOT a hardcoded interpretation
+     of what tokens mean; just a visualization of the substrate's emitted
+     decision per token). */
+  .src-composer-multi-axis-agreement { background: #1f3a2c; color: #b0e6c0; }
+  .src-composer-single-axis-only     { background: #1f303a; color: #9ac6e0; }
+  .src-composer-no-agreement         { background: #2a2a2a; color: #888; }
+  .src-composer-novel-intersection   { background: #3a2a1f; color: #e6c0a0; }
+  .projection {
+    height: 200px;
+    position: relative;
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    overflow: hidden;
+  }
+  .projection .dot {
+    position: absolute;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: #5d8ec0;
+    transform: translate(-50%, -50%);
+  }
+  .projection .dot.selected {
+    background: #c2a05a;
+    width: 8px; height: 8px;
+    z-index: 10;
+  }
+  .heat-grid {
+    height: 180px;
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    display: grid;
+    /* 100x125 grid for the 12,500 cells; aspect of cells doesn't matter, we
+       just want a dense rasterization */
+    grid-template-columns: repeat(100, 1fr);
+    grid-template-rows: repeat(125, 1fr);
+    gap: 0;
+    overflow: hidden;
+  }
+  .heat-grid .cell {
+    width: 100%; height: 100%;
+  }
+  .cell-matched { background: #2a5238; }
+  .cell-unmatched { background: #4a1a1a; }
+  .detail-panel {
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    padding: 6px 8px;
+    font-size: 10px;
+    min-height: 120px;
+  }
+  .detail-panel .token-id { color: #c2a05a; font-weight: 700; }
+  .detail-panel .field { color: #8aa0bb; }
+  .detail-panel .value { color: #e6ebf2; }
+  .slider-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 50px;
+    gap: 8px;
+    margin: 3px 0;
+    align-items: center;
+    font-size: 10px;
+  }
+  .slider-row .label { color: #8aa0bb; }
+  .slider-row .value-display { color: #c2a05a; font-weight: 700; text-align: right; }
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    background: transparent;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: #2c3340;
+    border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 12px; width: 12px;
+    background: #c2a05a;
+    border-radius: 50%;
+    margin-top: -4px;
+  }
+  button {
+    font-family: inherit; font-size: 11px;
+    padding: 6px 10px;
+    border: 1px solid #2c3340; background: #161b22; color: #d6dde6;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  button:hover { background: #2c3340; }
+  button:disabled { color: #555; cursor: not-allowed; }
+  #boot-status { color: #c2a05a; }
+</style>
+</head>
+<body>
+
+<h1>PHASE 11 · SOURCE-SUBSTRATE NAVIGATOR</h1>
+
+<div class="box">
+  <div style="display: flex; gap: 12px; align-items: center;">
+    <button id="btn-boot">BOOT LATTICE (ingest corpus)</button>
+    <select id="corpus-select">
+      <option value="../kernel/field.js">kernel/field.js (9243 tokens)</option>
+      <option value="../../exodus/demonstration/state-projector/exodus-vlan-sync.html#script">vlan-sync (script block, 2831 tokens)</option>
+    </select>
+    <span class="stat" id="boot-status">idle</span>
+  </div>
+</div>
+
+<div class="box">
+  <h2>Per-scope delta readings (F2 + SE-01 reflexive scope; same formula, different populations)</h2>
+  <div class="gauges" id="gauges">
+    <div class="gauge" data-axis="kind"><div class="name">kind</div><div class="value" id="g-kind">—</div><div class="bar"><div class="fill" id="g-kind-fill" style="width:0%"></div></div></div>
+    <div class="gauge" data-axis="vocab"><div class="name">vocab</div><div class="value" id="g-vocab">—</div><div class="bar"><div class="fill" id="g-vocab-fill" style="width:0%"></div></div></div>
+    <div class="gauge" data-axis="cooccur"><div class="name">cooccur</div><div class="value" id="g-cooccur">—</div><div class="bar"><div class="fill" id="g-cooccur-fill" style="width:0%"></div></div></div>
+    <div class="gauge" data-axis="position"><div class="name">position</div><div class="value" id="g-position">—</div><div class="bar"><div class="fill" id="g-position-fill" style="width:0%"></div></div></div>
+    <div class="gauge" data-axis="frequency"><div class="name">frequency</div><div class="value" id="g-frequency">—</div><div class="bar"><div class="fill" id="g-frequency-fill" style="width:0%"></div></div></div>
+    <div class="gauge" data-axis="composer"><div class="name">composer</div><div class="value" id="g-composer">—</div><div class="bar"><div class="fill" id="g-composer-fill" style="width:0%"></div></div></div>
+    <div class="gauge lattice" data-axis="lattice"><div class="name">LATTICE</div><div class="value" id="g-lattice">—</div><div class="bar"><div class="fill" id="g-lattice-fill" style="width:0%"></div></div></div>
+  </div>
+</div>
+
+<div class="row">
+  <!-- Left: source pane -->
+  <div>
+    <div class="box">
+      <h2>Source · annotated by composer output</h2>
+      <div class="source-pane" id="source-pane">load a corpus to render</div>
+    </div>
+    <div class="box">
+      <h2>Selected token</h2>
+      <div class="detail-panel" id="detail-panel">click a token in the source pane</div>
+    </div>
+    <div class="box">
+      <h2>Axis weight (re-resolve composer with weighted alphabet)</h2>
+      <div id="sliders"></div>
+      <div style="margin-top: 6px; display: flex; gap: 6px;">
+        <button id="btn-reset-sliders">RESET WEIGHTS</button>
+        <button id="btn-recompile">RECOMPILE LATTICE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: 2D projection + heat grid -->
+  <div>
+    <div class="box">
+      <h2>2D projection · cascade-resolved layout (per PLAN no algorithmic dim-reduction)</h2>
+      <div class="projection" id="projection"></div>
+      <div class="stat" style="margin-top: 4px;">x = composer-output × kind-output; y = position-output × frequency-output</div>
+    </div>
+    <div class="box">
+      <h2>Joint coord-space heat grid (12,500 coords; outer cascade per SE-01)</h2>
+      <div class="heat-grid" id="heat-grid"></div>
+      <div class="stat" id="heat-stat" style="margin-top: 4px;">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Dependency modules. They all expose globals (IIFE UMD-ish). -->
+<script src="acorn.js"></script>
+<script src="../kernel/field.js"></script>
+<script src="corpus-adapter.js"></script>
+<script src="primitive-vocabs.js"></script>
+<script src="peer-specs.js"></script>
+<script src="substrate-factory.js"></script>
+<script src="lattice.js"></script>
+<script src="gpu-lattice-compiler.js"></script>
+<script src="gpu-lattice-runner.js"></script>
+
+<script>
+"use strict";
+(function () {
+
+// ---------------------------------------------------------------------
+// Module resolution
+// ---------------------------------------------------------------------
+// In Node, these are CommonJS modules. In the browser, the script tags
+// above set them as globals (the IIFE wrapper in each file checks both
+// `module.exports` and `global.X`).
+
+const acorn       = window.acorn || window.Acorn;
+const FieldModule = window.FieldModule;
+const CorpusAdapter   = window.CorpusAdapter;
+const PrimitiveVocabs = window.PrimitiveVocabs;
+const PeerSpecs       = window.PeerSpecs;
+const SubstrateFactory = window.SubstrateFactory;
+const Lattice          = window.Lattice;
+const GpuLatticeCompiler = window.GpuLatticeCompiler;
+const GpuLatticeRunner   = window.GpuLatticeRunner;
+
+function checkModules() {
+  const missing = [];
+  if (!acorn)            missing.push("acorn");
+  if (!FieldModule || !FieldModule.Field) missing.push("FieldModule");
+  if (!CorpusAdapter)    missing.push("CorpusAdapter");
+  if (!PrimitiveVocabs)  missing.push("PrimitiveVocabs");
+  if (!PeerSpecs)        missing.push("PeerSpecs");
+  if (!SubstrateFactory) missing.push("SubstrateFactory");
+  if (!Lattice)          missing.push("Lattice");
+  if (!GpuLatticeCompiler) missing.push("GpuLatticeCompiler");
+  if (!GpuLatticeRunner)   missing.push("GpuLatticeRunner");
+  if (missing.length) {
+    document.getElementById("boot-status").textContent =
+      "MODULE LOAD FAILED: " + missing.join(", ") +
+      " (serve via static HTTP, not file://; e.g. node serve.js)";
+    return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------
+const state = {
+  lattice:      null,
+  stream:       null,
+  perTokenOutputs: [],   // [{ kind, vocab, cooccur, position, frequency, composer }]
+  selectedTokenIdx: null,
+  latticeDims:  null,
+  walkResult:   null,
+  axisWeights:  { kind: 1, vocab: 1, cooccur: 1, position: 1, frequency: 1, composer: 1 }
+};
+
+// ---------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------
+async function boot() {
+  if (!checkModules()) return;
+  const statusEl = document.getElementById("boot-status");
+  const sel = document.getElementById("corpus-select");
+  const corpusURL = sel.value.split("#")[0];
+  const isScriptBlock = sel.value.indexOf("#script") >= 0;
+  statusEl.textContent = "fetching corpus...";
+
+  let src;
+  try {
+    const resp = await fetch(corpusURL);
+    src = await resp.text();
+  } catch (e) {
+    statusEl.textContent = "fetch failed: " + e.message;
+    return;
+  }
+
+  // Extract JS from HTML if needed.
+  if (isScriptBlock) {
+    const startTag = src.indexOf("<script>");
+    const endTag = src.indexOf("</script>");
+    if (startTag < 0 || endTag < 0) {
+      statusEl.textContent = "no <script> block in corpus";
+      return;
+    }
+    src = src.substring(startTag + "<script>".length, endTag);
+  }
+
+  statusEl.textContent = "adapting (" + src.length + " bytes)...";
+  await new Promise(function (r) { setTimeout(r, 0); });
+
+  const stream = CorpusAdapter.adaptCorpus(src, acorn);
+  state.stream = stream;
+
+  statusEl.textContent = "building lattice...";
+  await new Promise(function (r) { setTimeout(r, 0); });
+
+  state.lattice = Lattice.makeLattice({
+    FieldModule:      FieldModule,
+    SubstrateFactory: SubstrateFactory,
+    PeerSpecs:        PeerSpecs,
+    PrimitiveVocabs:  PrimitiveVocabs
+  });
+
+  // Ingest the corpus, yielding every N tokens so the UI stays responsive
+  state.perTokenOutputs = new Array(stream.records.length);
+  const CHUNK = 250;
+  let cur = 0;
+  async function chunk() {
+    const end = Math.min(cur + CHUNK, stream.records.length);
+    for (; cur < end; cur++) {
+      state.lattice.ingest(stream.records[cur]);
+      const snap = Object.create(null);
+      for (const axis of state.lattice.ALL_PEERS) {
+        snap[axis] = state.lattice.peers[axis].getLastOutput();
+      }
+      state.perTokenOutputs[cur] = snap;
+    }
+    const pct = Math.floor(100 * cur / stream.records.length);
+    statusEl.textContent = "ingesting " + cur + "/" + stream.records.length + " (" + pct + "%)";
+    if (cur < stream.records.length) {
+      return new Promise(function (r) { setTimeout(function () { chunk().then(r); }, 0); });
+    }
+  }
+  await chunk();
+
+  statusEl.textContent = "rendering (" + stream.records.length + " tokens, " +
+    state.lattice.ALL_PEERS.length + " peers)";
+
+  // Build lattice dims for joint-space resolution
+  state.latticeDims = GpuLatticeCompiler.buildLatticeDimsSpec(PeerSpecs);
+
+  renderAll();
+  statusEl.textContent = "ready · click any token";
+}
+
+// ---------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------
+function renderAll() {
+  renderGauges();
+  renderSourcePane();
+  renderProjection();
+  renderHeatGrid();
+  renderSliders();
+}
+
+function renderGauges() {
+  const obs = state.lattice.observe();
+  for (const axis of state.lattice.ALL_PEERS) {
+    const d = obs.peers[axis].delta.scalar;
+    document.getElementById("g-" + axis).textContent = d.toFixed(3);
+    document.getElementById("g-" + axis + "-fill").style.width = (d * 100) + "%";
+  }
+  if (state.walkResult) {
+    const ld = state.walkResult.latticeDelta;
+    document.getElementById("g-lattice").textContent = ld.scalar.toFixed(3);
+    document.getElementById("g-lattice-fill").style.width = (ld.scalar * 100) + "%";
+  }
+}
+
+function renderSourcePane() {
+  const pane = document.getElementById("source-pane");
+  const stream = state.stream;
+  if (!stream) return;
+  const records = stream.records;
+  const parts = [];
+  const src = stream.records.length > 0 ?
+    (function () {
+      // Reconstruct visible text from token spans. We don't have the
+      // original source string here in a single variable, so we use
+      // source_range to slice into the records' source. The adapter
+      // doesn't preserve the source; we approximate with token text +
+      // single-space.
+      let out = "";
+      let lastEnd = 0;
+      for (let i = 0; i < records.length; i++) {
+        const r = records[i];
+        if (r.source_range && r.source_range[0] > lastEnd) {
+          out += " ".repeat(Math.min(2, r.source_range[0] - lastEnd));
+        }
+        out += "{TOK" + i + "}";
+        if (r.source_range) lastEnd = r.source_range[1];
+      }
+      return out;
+    })() : "";
+
+  // Build with token spans
+  const html = [];
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+    const o = state.perTokenOutputs[i] || {};
+    const composerOut = o.composer || "composer-no-agreement";
+    const cls = "tok src-" + composerOut;
+    const txt = r.text != null ? String(r.text) : "";
+    // escape HTML
+    const safe = txt.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    html.push("<span class='" + cls + "' data-token-id='" + i + "'>" + safe + "</span>");
+    // separator: respect token spacing
+    if (i < records.length - 1) {
+      const next = records[i + 1];
+      const gap = (next.source_range && r.source_range) ?
+        Math.max(0, Math.min(4, next.source_range[0] - r.source_range[1])) : 1;
+      html.push(" ".repeat(gap));
+      // line break heuristic: punctuation ; and { } trigger a newline
+      if (txt === ";" || txt === "{" || txt === "}") html.push("\n");
+    }
+  }
+  pane.innerHTML = html.join("");
+}
+
+function renderProjection() {
+  const stream = state.stream;
+  if (!stream) return;
+  const proj = document.getElementById("projection");
+  proj.innerHTML = "";
+  const w = proj.clientWidth, h = proj.clientHeight;
+
+  // Cascade-resolved layout: x and y come from composer-output combined
+  // with one of the axis-outputs. This is NOT t-SNE/UMAP; it's the
+  // composer's intersection signature placed on a 2D grid via the
+  // axis-alphabet indices. Tokens with the same (composer, kind) tuple
+  // land in the same x cell; same (position, frequency) in the same y cell.
+  const composerVals = PeerSpecs.composer.outputAlphabet;
+  const kindVals = PeerSpecs.kind.outputAlphabet;
+  const positionVals = PeerSpecs.position.outputAlphabet;
+  const freqVals = PeerSpecs.frequency.outputAlphabet;
+  const xCells = composerVals.length * kindVals.length;
+  const yCells = positionVals.length * freqVals.length;
+
+  // Cluster tokens by (composer, kind, position, frequency); dot density
+  // shows how many tokens land at each (x, y).
+  const clusters = Object.create(null);
+  for (let i = 0; i < stream.records.length; i++) {
+    const o = state.perTokenOutputs[i];
+    if (!o) continue;
+    const cIdx = composerVals.indexOf(o.composer);
+    const kIdx = kindVals.indexOf(o.kind);
+    const pIdx = positionVals.indexOf(o.position);
+    const fIdx = freqVals.indexOf(o.frequency);
+    if (cIdx < 0 || kIdx < 0 || pIdx < 0 || fIdx < 0) continue;
+    const x = (cIdx * kindVals.length + kIdx + 0.5) / xCells;
+    const y = (pIdx * freqVals.length + fIdx + 0.5) / yCells;
+    const key = cIdx + ":" + kIdx + ":" + pIdx + ":" + fIdx;
+    if (!clusters[key]) {
+      clusters[key] = { x: x, y: y, tokens: [], composer: o.composer };
+    }
+    clusters[key].tokens.push(i);
+  }
+  const frag = document.createDocumentFragment();
+  for (const k of Object.keys(clusters)) {
+    const c = clusters[k];
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    dot.style.left = (c.x * w) + "px";
+    dot.style.top = (c.y * h) + "px";
+    dot.title = "(" + c.tokens.length + " tokens at " + c.composer + ")";
+    dot.dataset.tokens = c.tokens.join(",");
+    if (state.selectedTokenIdx !== null && c.tokens.indexOf(state.selectedTokenIdx) >= 0) {
+      dot.classList.add("selected");
+    }
+    // Dot size scales with cluster density
+    const size = Math.min(12, 4 + Math.log2(c.tokens.length + 1));
+    dot.style.width = size + "px";
+    dot.style.height = size + "px";
+    dot.addEventListener("click", function () {
+      // snap to first token in this cluster
+      selectToken(c.tokens[0]);
+    });
+    frag.appendChild(dot);
+  }
+  proj.appendChild(frag);
+}
+
+function renderHeatGrid() {
+  if (!state.lattice || !state.latticeDims) return;
+  // Recompile the lattice rules and walk the joint coord space.
+  const rules = GpuLatticeCompiler.extractLatticeRules(null, state.lattice.peers);
+  const compiled = GpuLatticeCompiler.compile(rules, state.latticeDims, ["--lattice-fire"]);
+  const walked = GpuLatticeRunner.cpuWalk(compiled);
+  state.walkResult = walked;
+
+  const grid = document.getElementById("heat-grid");
+  grid.innerHTML = "";
+  const N = walked.stateSpaceSize;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < N; i++) {
+    const cell = document.createElement("div");
+    const m = walked.outputs[i].matched;
+    cell.className = "cell " + (m > 0 ? "cell-matched" : "cell-unmatched");
+    cell.title = "coord " + i + " · " + (m > 0 ? m + " rules fired" : "unresolved");
+    frag.appendChild(cell);
+  }
+  grid.appendChild(frag);
+
+  const stat = document.getElementById("heat-stat");
+  const ld = walked.latticeDelta;
+  stat.textContent = ld.matched + "/" + ld.total + " coords resolved · " +
+    "lattice-scope delta = " + ld.scalar.toFixed(4) + " · " +
+    rules.length + " rules · " + compiled.stats.totalInstructions + " instructions";
+
+  renderGauges();
+}
+
+function renderSliders() {
+  const root = document.getElementById("sliders");
+  root.innerHTML = "";
+  for (const axis of ["kind", "vocab", "cooccur", "position", "frequency", "composer"]) {
+    const row = document.createElement("div");
+    row.className = "slider-row";
+    row.innerHTML =
+      "<span class='label'>" + axis + "</span>" +
+      "<input type='range' min='0' max='2' step='0.1' value='" + state.axisWeights[axis] + "' data-axis='" + axis + "'>" +
+      "<span class='value-display' id='w-" + axis + "'>" + state.axisWeights[axis].toFixed(1) + "</span>";
+    root.appendChild(row);
+  }
+  root.querySelectorAll("input").forEach(function (inp) {
+    inp.addEventListener("input", function (e) {
+      const axis = e.target.dataset.axis;
+      const v = parseFloat(e.target.value);
+      state.axisWeights[axis] = v;
+      document.getElementById("w-" + axis).textContent = v.toFixed(1);
+      // Sliders adjust the cascade's match-emit behavior; for Phase 5 they
+      // are informational (visualized in the heat grid by re-walk only).
+      // A future phase could route them into the lattice's intake.
+    });
+  });
+}
+
+function selectToken(idx) {
+  state.selectedTokenIdx = idx;
+  // highlight in source pane
+  document.querySelectorAll("#source-pane .tok").forEach(function (el) {
+    el.classList.toggle("selected", parseInt(el.dataset.tokenId, 10) === idx);
+  });
+  // scroll into view
+  const el = document.querySelector("#source-pane .tok[data-token-id='" + idx + "']");
+  if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  renderProjection();
+  renderDetail();
+}
+
+function renderDetail() {
+  const panel = document.getElementById("detail-panel");
+  const idx = state.selectedTokenIdx;
+  if (idx === null || !state.stream) {
+    panel.textContent = "click a token in the source pane";
+    return;
+  }
+  const r = state.stream.records[idx];
+  const o = state.perTokenOutputs[idx] || {};
+  panel.innerHTML =
+    "<div><span class='token-id'>token #" + idx + "</span> · <span class='value'>" +
+    (r.text || "").replace(/[<>&]/g, function (c) { return { "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]; }) +
+    "</span></div>" +
+    "<div class='field'>kind:</div><div class='value'>" + r.kind + "</div>" +
+    "<div class='field'>position:</div><div class='value'>" + r.position_class + "</div>" +
+    "<div class='field'>recurrence_text:</div><div class='value'>" + r.recurrence_text + "</div>" +
+    "<hr style='border: none; border-top: 1px solid #2c3340; margin: 6px 0;'>" +
+    "<div class='field'>composer output:</div><div class='value' style='color: #c2a05a;'>" + o.composer + "</div>" +
+    "<div class='field'>kind output:</div><div class='value'>" + o.kind + "</div>" +
+    "<div class='field'>vocab output:</div><div class='value'>" + o.vocab + "</div>" +
+    "<div class='field'>cooccur output:</div><div class='value'>" + o.cooccur + "</div>" +
+    "<div class='field'>position output:</div><div class='value'>" + o.position + "</div>" +
+    "<div class='field'>frequency output:</div><div class='value'>" + o.frequency + "</div>";
+}
+
+// ---------------------------------------------------------------------
+// Event wiring
+// ---------------------------------------------------------------------
+document.getElementById("btn-boot").addEventListener("click", boot);
+
+document.getElementById("source-pane").addEventListener("click", function (e) {
+  const t = e.target.closest(".tok");
+  if (!t) return;
+  selectToken(parseInt(t.dataset.tokenId, 10));
+});
+
+document.getElementById("btn-recompile").addEventListener("click", function () {
+  renderHeatGrid();
+});
+
+document.getElementById("btn-reset-sliders").addEventListener("click", function () {
+  for (const axis in state.axisWeights) state.axisWeights[axis] = 1;
+  renderSliders();
+});
+
+})();
+</script>
+
+</body>
+</html>
