@@ -494,6 +494,8 @@ direct work:
 | 2026-05-25 | PLAN.md created. Six phases scoped. Discipline committed. No code written. Phase 0 (corpus survey) is the next session's start. |
 | 2026-05-25 | Phase 0 complete. Corpus selected: `exodus/demonstration/state-projector/exodus-vlan-sync.html` (751 lines). See §8 for rationale. Phase 1 (adapter spec) begins next. |
 | 2026-05-25 | Phase 1 complete. Adapter spec written to `adapter-spec.md`. JS-only scope (HTML/CSS adapters named as Phase 7 extension candidates). Five-axis intake record shape defined. Acorn as host-parser wrap per Q2 sub-rec 4. Position-class derivation rules specified. Falsification did not halt. Phase 2 (substrate factory + SE-05/K1 kernel additions) begins next. |
+| 2026-05-26 | Phase 2 complete (commit 22354dc). Substrate factory + 5 vocabs + corpus adapter + smoke test. Canonical SE-05/K1 cycle observed running on full kernel/field.js. 3 of 5 axes completed full cycle; 2 produced honest structural diagnostics. See phase-2-results.md. |
+| 2026-05-26 | **Phase 3 REDIRECT.** Original Phase 3 scope (composer substrate over source-code peer outputs) deferred. After auditing canon/UTF/research/Phase 6 melting-pot duel (which demonstrates rich-learning stabilization with intake-configs, output token alphabets, invention at ratification, cross-channels, selector, meta-substrate), Phase 3 redirects to: instantiate the melting-pot architecture against canonical Field over a duel-configuration. Validates that canonical Field hosts the architecture on a domain where stabilization is empirically known (the melting-pot reference). Source-code port becomes Phase 5 after the architecture is validated against canonical Field. New spec: `phase-3-spec.md`. |
 
 Updates appended as phases complete (or halt).
 
