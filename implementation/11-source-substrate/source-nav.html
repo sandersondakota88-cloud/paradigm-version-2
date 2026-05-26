@@ -177,6 +177,8 @@
     </select>
     <span class="stat" id="boot-status">idle</span>
     <button id="btn-download-trajectory" style="margin-left: auto;">DOWNLOAD TRAJECTORY TSV</button>
+    <button id="btn-deposit-css">DEPOSIT CSS</button>
+    <button id="btn-deposit-probe">DEPOSIT PROBE HTML</button>
   </div>
   <div class="host-mix" id="host-mix" style="margin-top: 6px; display: none;">
     <span class="h">HTML records: <strong id="hm-html">0</strong></span>
@@ -246,6 +248,7 @@
 <script src="lattice.js"></script>
 <script src="gpu-lattice-compiler.js"></script>
 <script src="gpu-lattice-runner.js"></script>
+<script src="css-deposition-emitter.js"></script>
 
 <script>
 "use strict";
@@ -269,6 +272,7 @@ const SubstrateFactory = window.SubstrateFactory;
 const Lattice          = window.Lattice;
 const GpuLatticeCompiler = window.GpuLatticeCompiler;
 const GpuLatticeRunner   = window.GpuLatticeRunner;
+const CSSDepositionEmitter = window.CSSDepositionEmitter;
 
 function checkModules() {
   const missing = [];
@@ -283,6 +287,7 @@ function checkModules() {
   if (!Lattice)          missing.push("Lattice");
   if (!GpuLatticeCompiler) missing.push("GpuLatticeCompiler");
   if (!GpuLatticeRunner)   missing.push("GpuLatticeRunner");
+  if (!CSSDepositionEmitter) missing.push("CSSDepositionEmitter");
   if (missing.length) {
     document.getElementById("boot-status").textContent =
       "MODULE LOAD FAILED: " + missing.join(", ") +
@@ -787,6 +792,53 @@ document.getElementById("btn-reset-sliders").addEventListener("click", function 
 });
 
 document.getElementById("btn-download-trajectory").addEventListener("click", downloadTrajectory);
+
+// ---------------------------------------------------------------------
+// CSS deposition (Phase 6) — emit the substrate's settled state as a
+// portable cascade-resolvable stylesheet.
+// ---------------------------------------------------------------------
+function downloadBlob(content, mime, name) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function depositCSS() {
+  if (!state.lattice) {
+    document.getElementById("boot-status").textContent = "no lattice; boot a corpus first";
+    return;
+  }
+  const emit = CSSDepositionEmitter.emitCSS(state.lattice, {});
+  const tag = state.streamMode || "lattice";
+  downloadBlob(
+    emit.css,
+    "text/css",
+    "substrate-deposition-" + tag + "-" + Date.now() + ".css"
+  );
+  document.getElementById("boot-status").textContent =
+    "deposited " + emit.stats.rulesEmitted + " rules" +
+    (emit.stats.rulesSkipped ? " (" + emit.stats.rulesSkipped + " skipped)" : "");
+}
+
+function depositProbe() {
+  if (!state.lattice || !state.latticeDims) {
+    document.getElementById("boot-status").textContent = "no lattice; boot a corpus first";
+    return;
+  }
+  const tag = state.streamMode || "lattice";
+  const cssName = "substrate-deposition-" + tag + ".css";
+  const html = CSSDepositionEmitter.emitProbeHTML(state.latticeDims, cssName, {});
+  downloadBlob(html, "text/html", "substrate-probe-" + tag + "-" + Date.now() + ".html");
+  document.getElementById("boot-status").textContent =
+    "probe HTML emitted (loads " + cssName + " · save them in the same dir)";
+}
+
+document.getElementById("btn-deposit-css").addEventListener("click", depositCSS);
+document.getElementById("btn-deposit-probe").addEventListener("click", depositProbe);
 
 })();
 </script>
