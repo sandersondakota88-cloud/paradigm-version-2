@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<title>Substrate deposition probe</title>
+<link rel='stylesheet' href='substrate-deposition-three-language.css'>
+<style>body{font-family:monospace;background:#0e1116;color:#d6dde6;padding:12px;font-size:11px;}</style>
+</head>
+<body>
+<h2>Substrate-state deposition probe</h2>
+<p>The substrate's settled understanding deposited as CSS. The browser's cascade engine resolves the joint coord space.</p>
+<div id='substrate-probe' style='position:absolute;left:-9999px'></div>
+<button onclick='runProbe()'>RESOLVE FULL JOINT COORD SPACE</button>
+<pre id='out' style='margin-top:12px; white-space: pre-wrap; max-height: 70vh; overflow-y: scroll'></pre>
+<script>
+const LATTICE_DIMS = [
+  {
+    "name": "kind",
+    "values": [
+      "kind-run-start",
+      "kind-run-mid",
+      "kind-run-end",
+      "kind-transition",
+      "kind-isolated"
+    ]
+  },
+  {
+    "name": "vocab",
+    "values": [
+      "vocab-fresh",
+      "vocab-recurring",
+      "vocab-binding-decl",
+      "vocab-binding-use",
+      "vocab-positional"
+    ]
+  },
+  {
+    "name": "cooccur",
+    "values": [
+      "cooccur-sig-novel",
+      "cooccur-sig-recurring",
+      "cooccur-symmetric",
+      "cooccur-anchored",
+      "cooccur-isolated"
+    ]
+  },
+  {
+    "name": "position",
+    "values": [
+      "position-decl",
+      "position-use",
+      "position-attr",
+      "position-other",
+      "position-transition"
+    ]
+  },
+  {
+    "name": "frequency",
+    "values": [
+      "freq-singleton",
+      "freq-rare",
+      "freq-moderate",
+      "freq-common",
+      "freq-dominant"
+    ]
+  },
+  {
+    "name": "composer",
+    "values": [
+      "composer-multi-axis-agreement",
+      "composer-single-axis-only",
+      "composer-no-agreement",
+      "composer-novel-intersection"
+    ]
+  }
+];
+const PROBE_ID = "substrate-probe";
+function runProbe() {
+  const probe = document.getElementById(PROBE_ID);
+  let stateSpaceSize = 1;
+  for (const d of LATTICE_DIMS) stateSpaceSize *= d.values.length;
+  const results = new Array(stateSpaceSize);
+  let matched = 0;
+  for (let i = 0; i < stateSpaceSize; i++) {
+    let rem = i;
+    for (let d = LATTICE_DIMS.length - 1; d >= 0; d--) {
+      const dim = LATTICE_DIMS[d];
+      probe.setAttribute('data-' + dim.name, dim.values[rem % dim.values.length]);
+      rem = Math.floor(rem / dim.values.length);
+    }
+    const v = getComputedStyle(probe).getPropertyValue('--lattice-fire').trim().replace(/^['"]|['"]$/g, '');
+    results[i] = v;
+    if (v && v !== '') matched++;
+  }
+  document.getElementById('out').textContent =
+    'stateSpaceSize: ' + stateSpaceSize + '\n' +
+    'matched: ' + matched + '\n' +
+    'unresolved: ' + (stateSpaceSize - matched) + '\n' +
+    'lattice-scope delta: ' + ((stateSpaceSize - matched) / stateSpaceSize).toFixed(4) + '\n\n' +
+    'Sample (first 30 matched coords):\n' +
+    results.map((v, i) => v ? (i + ': ' + v) : null).filter(x => x).slice(0, 30).join('\n');
+  window.__probeResults = results;
+  return { stateSpaceSize, matched, results };
+}
+</script>
+</body>
+</html>

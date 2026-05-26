@@ -30,7 +30,13 @@ const MIME = {
 http.createServer(function (req, res) {
   const u = url.parse(req.url);
   let p = decodeURIComponent(u.pathname || "/");
-  if (p === "/") p = "/implementation/11-source-substrate/source-nav.html";
+  // Redirect bare "/" to the source-nav.html under its actual directory
+  // so relative <script src="..."> paths resolve correctly in the browser.
+  if (p === "/") {
+    res.writeHead(302, { "Location": "/implementation/11-source-substrate/source-nav.html" });
+    res.end();
+    return;
+  }
   const full = path.normalize(path.join(ROOT, p));
   if (full.indexOf(ROOT) !== 0) {
     res.writeHead(403); res.end("forbidden"); return;

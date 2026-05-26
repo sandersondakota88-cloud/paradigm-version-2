@@ -1,0 +1,608 @@
+/* =============================================================== */
+/* Substrate-state deposition · emitted 2026-05-26T20:33:30.417Z */
+/* Phase 11 Phase 6 — algorithm 04 cascade-shape rules.            */
+/* The substrate's settled understanding of the corpus's relational */
+/* dynamics, deposited as portable CSS. Resolution mechanism is the */
+/* canonical CSS cascade per algorithm 16 byte-for-byte trust.     */
+/* =============================================================== */
+
+/* Default: --lattice-fire is empty unless a rule fires. */
+#substrate-probe { --lattice-fire: ""; }
+
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "c::1";
+}
+#substrate-probe[data-kind="kind-run-start"][data-position="position-other"] {
+  --lattice-fire: "c::11";
+}
+#substrate-probe[data-kind="kind-run-mid"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::124";
+}
+#substrate-probe[data-kind="kind-run-mid"][data-position="position-other"] {
+  --lattice-fire: "c::125";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-kind="kind-run-mid"] {
+  --lattice-fire: "c::131";
+}
+#substrate-probe[data-frequency="freq-common"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::134";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-frequency="freq-common"] {
+  --lattice-fire: "c::135";
+}
+#substrate-probe[data-frequency="freq-common"][data-position="position-other"] {
+  --lattice-fire: "c::136";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-frequency="freq-common"] {
+  --lattice-fire: "c::139";
+}
+#substrate-probe[data-kind="kind-run-end"][data-position="position-other"] {
+  --lattice-fire: "c::14";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-kind="kind-run-mid"] {
+  --lattice-fire: "c::143";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-frequency="freq-common"] {
+  --lattice-fire: "c::144";
+}
+#substrate-probe[data-frequency="freq-dominant"][data-kind="kind-run-mid"] {
+  --lattice-fire: "c::156";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::15699";
+}
+#substrate-probe[data-frequency="freq-dominant"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::157";
+}
+#substrate-probe[data-frequency="freq-dominant"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::15700";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-frequency="freq-dominant"] {
+  --lattice-fire: "c::158";
+}
+#substrate-probe[data-frequency="freq-moderate"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::15914";
+}
+#substrate-probe[data-frequency="freq-dominant"][data-position="position-other"] {
+  --lattice-fire: "c::161";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-frequency="freq-dominant"] {
+  --lattice-fire: "c::162";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::17";
+}
+#substrate-probe[data-frequency="freq-rare"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::19";
+}
+#substrate-probe[data-kind="kind-run-start"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::190";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::20";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-frequency="freq-dominant"] {
+  --lattice-fire: "c::202";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "c::21";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-kind="kind-run-start"] {
+  --lattice-fire: "c::23";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-kind="kind-run-end"] {
+  --lattice-fire: "c::27";
+}
+#substrate-probe[data-position="position-other"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "c::29";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-binding-use"] {
+  --lattice-fire: "c::2986";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-use"] {
+  --lattice-fire: "c::2987";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-vocab="vocab-binding-use"] {
+  --lattice-fire: "c::2988";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "c::3";
+}
+#substrate-probe[data-frequency="freq-rare"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "c::30";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "c::31";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-frequency="freq-singleton"] {
+  --lattice-fire: "c::34";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-cooccur="cooccur-sig-novel"] {
+  --lattice-fire: "c::35";
+}
+#substrate-probe[data-kind="kind-run-end"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::352";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-position="position-other"] {
+  --lattice-fire: "c::38";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-frequency="freq-rare"] {
+  --lattice-fire: "c::39";
+}
+#substrate-probe[data-frequency="freq-rare"][data-position="position-other"] {
+  --lattice-fire: "c::40";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-frequency="freq-singleton"] {
+  --lattice-fire: "c::41";
+}
+#substrate-probe[data-frequency="freq-singleton"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::44";
+}
+#substrate-probe[data-frequency="freq-singleton"][data-position="position-other"] {
+  --lattice-fire: "c::46";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-kind="kind-isolated"] {
+  --lattice-fire: "c::47";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-position="position-other"] {
+  --lattice-fire: "c::49";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-kind="kind-run-start"] {
+  --lattice-fire: "c::5";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-position="position-other"] {
+  --lattice-fire: "c::50";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-frequency="freq-rare"] {
+  --lattice-fire: "c::51";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-kind="kind-run-mid"] {
+  --lattice-fire: "c::63";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-frequency="freq-moderate"] {
+  --lattice-fire: "c::649";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::69";
+}
+#substrate-probe[data-position="position-other"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::70";
+}
+#substrate-probe[data-frequency="freq-moderate"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::71";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::72";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-frequency="freq-moderate"] {
+  --lattice-fire: "c::73";
+}
+#substrate-probe[data-frequency="freq-moderate"][data-position="position-other"] {
+  --lattice-fire: "c::74";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-frequency="freq-moderate"] {
+  --lattice-fire: "c::75";
+}
+#substrate-probe[data-cooccur="cooccur-sig-novel"][data-kind="kind-run-end"] {
+  --lattice-fire: "c::8";
+}
+#substrate-probe[data-cooccur="cooccur-symmetric"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::82";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-cooccur="cooccur-symmetric"] {
+  --lattice-fire: "c::84";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::11942";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15158";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15230";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15321";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15703";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15767";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15775";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15814";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15822";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15857";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15881";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15918";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15927";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15935";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15962";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::15970";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::16004";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::16033";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::17435";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1753";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1755";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1801";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1805";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1807";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::1819";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::207";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2073";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2075";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2077";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2079";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2081";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::209";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::211";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::215";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::219";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2209";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2211";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::223";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2258";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::227";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::231";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::232";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::233";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::234";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::235";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::236";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::237";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::238";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::239";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::240";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::241";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::242";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::243";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::244";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::245";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::246";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::247";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::248";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::249";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::250";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::251";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::252";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2528";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::253";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::254";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::255";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2559";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2603";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2716";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2896";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2933";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2969";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::2990";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3005";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3022";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3033";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3039";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3055";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3076";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3087";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3098";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3109";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3147";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3158";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3215";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3281";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3347";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::344";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::345";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::346";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::347";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::348";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::349";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::350";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::351";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::356";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3920";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::3977";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4148";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4283";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4347";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4377";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4480";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4828";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::4917";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::5084";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::541";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::543";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::545";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::547";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::549";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::551";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::5677";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::6291";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::6712";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::685";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::687";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::689";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::691";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::699";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::701";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::703";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::705";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::706";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::707";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::708";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::709";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::710";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::711";
+}
+#substrate-probe[data-kind="kind-isolated"][data-vocab="vocab-fresh"] {
+  --lattice-fire: "p::712";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::713";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::7718";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::7982";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::8697";
+}
+#substrate-probe[data-kind="kind-isolated"][data-position="position-other"] {
+  --lattice-fire: "p::9831";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-cooccur="cooccur-sig-novel"][data-frequency="freq-dominant"][data-kind="kind-run-mid"][data-position="position-other"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::1137";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-cooccur="cooccur-sig-novel"][data-frequency="freq-dominant"][data-kind="kind-isolated"][data-position="position-other"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::15701";
+}
+#substrate-probe[data-composer="composer-no-agreement"][data-cooccur="cooccur-symmetric"][data-frequency="freq-dominant"][data-kind="kind-run-mid"][data-position="position-other"][data-vocab="vocab-recurring"] {
+  --lattice-fire: "c::589";
+}
