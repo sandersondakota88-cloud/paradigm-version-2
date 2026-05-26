@@ -56,6 +56,45 @@
     };
   }
 
+  // ------ Cross-channel intake helpers (Phase 3.3b) ----------------
+  //
+  // The lattice routes each peer's lastOutput into other peers' intake
+  // as origin-tagged tokens "from-<axis>:<output>" placed in
+  // input.intakeTokens by the per-peer tokensFn (see peer-specs.js).
+  //
+  // These helpers let each axis vocab read cross-channel data uniformly
+  // and generate/match cross-context patterns whose vocabulary is
+  // substrate-internal only (axis names + output alphabet tokens) per
+  // O3 / discipline 2.1.
+
+  function _parseCrossTokens(input) {
+    // Returns map: { axisName: outputToken, ... } parsed from intakeTokens
+    const out = Object.create(null);
+    if (!input || !input.intakeTokens) return out;
+    for (const t of input.intakeTokens) {
+      if (typeof t !== "string" || t.indexOf("from-") !== 0) continue;
+      const colon = t.indexOf(":");
+      if (colon < 5) continue;
+      const axis = t.slice(5, colon);
+      const tok = t.slice(colon + 1);
+      if (axis && tok) out[axis] = tok;
+    }
+    return out;
+  }
+
+  function _allCrossPairings(field, type) {
+    // Returns the set of (otherAxis, otherOutput) currently observed in
+    // derived/ratified constraints of the given type.
+    const seen = Object.create(null);
+    for (const c of field.constraints) {
+      if (!c.pattern || c.pattern.type !== type) continue;
+      if (c.kind !== "derived" && c.kind !== "ratified") continue;
+      const key = c.pattern.otherAxis + "|" + c.pattern.otherOut;
+      seen[key] = true;
+    }
+    return seen;
+  }
+
   // ===================================================================
   // 1. KIND-PEER vocabulary
   // ===================================================================
@@ -109,6 +148,20 @@
             "transition " + input.prevKind + " -> " + input.kind));
         }
       }
+      // Phase 3.3b: kind-with-cross-context. Generate when current kind
+      // co-occurs with a not-yet-observed (kind, otherAxis, otherOut) tuple.
+      const cross = _parseCrossTokens(input);
+      for (const otherAxis in cross) {
+        if (gen.length >= GEN_MAX_PER_TOKEN) break;
+        const otherOut = cross[otherAxis];
+        if (!_has(field, "kind-with-cross-context", function (p) {
+          return p.kind === input.kind && p.otherAxis === otherAxis && p.otherOut === otherOut;
+        })) {
+          gen.push(_mkDerived("kind-with-cross-context",
+            { kind: input.kind, otherAxis: otherAxis, otherOut: otherOut },
+            "kind " + input.kind + " under " + otherAxis + ":" + otherOut));
+        }
+      }
       return gen;
     },
 
@@ -151,6 +204,37 @@
           transitions[ba] = true;
         }
       }
+      // Phase 3.3b: predict kind-with-cross-context tuples for pairings
+      // observed once but not under all kinds (substrate reaches for
+      // "this otherAxis output also appears with kinds we know").
+      const seenPairings = _allCrossPairings(field, "kind-with-cross-context");
+      const kindsKnown = Object.create(null);
+      for (const c of field.constraints) {
+        if (!c.pattern) continue;
+        if (c.pattern.type === "kind-presence" || c.pattern.type === "kind-with-cross-context") {
+          if (c.pattern.kind) kindsKnown[c.pattern.kind] = true;
+        }
+      }
+      const knownKinds = Object.keys(kindsKnown);
+      const pairKeys = Object.keys(seenPairings);
+      outer: for (const pk of pairKeys) {
+        const [otherAxis, otherOut] = pk.split("|");
+        for (const k of knownKinds) {
+          const probe = otherAxis + "|" + otherOut;
+          // Predict: this kind under this (axis, output) is plausible but
+          // not yet observed. Check if specifically this kind+axis+out is
+          // already a derived/ratified pattern; if not, predict it.
+          const exists = _has(field, "kind-with-cross-context", function (p) {
+            return p.kind === k && p.otherAxis === otherAxis && p.otherOut === otherOut;
+          });
+          if (!exists) {
+            if (gen.length >= PRED_MAX_PER_GAP) break outer;
+            gen.push(_mkPredictive("kind-with-cross-context",
+              { kind: k, otherAxis: otherAxis, otherOut: otherOut },
+              "predicted: kind " + k + " under " + otherAxis + ":" + otherOut));
+          }
+        }
+      }
       return gen;
     },
 
@@ -169,6 +253,11 @@
           // Run-detection requires sequential state we don't track here;
           // treat as never-matches for now (predictive only).
           return false;
+        case "kind-with-cross-context": {
+          if (p.kind !== input.kind) return false;
+          const cross = _parseCrossTokens(input);
+          return cross[p.otherAxis] === p.otherOut;
+        }
       }
       return false;
     },
@@ -227,6 +316,20 @@
             "'" + input.text + "' as " + input.kind));
         }
       }
+      // Phase 3.3b: text-with-cross-context (text co-occurs with another
+      // peer's lastOutput; cross-axis text affinity).
+      const cross = _parseCrossTokens(input);
+      for (const otherAxis in cross) {
+        if (gen.length >= GEN_MAX_PER_TOKEN) break;
+        const otherOut = cross[otherAxis];
+        if (!_has(field, "text-with-cross-context", function (p) {
+          return p.text === input.text && p.otherAxis === otherAxis && p.otherOut === otherOut;
+        })) {
+          gen.push(_mkDerived("text-with-cross-context",
+            { text: input.text, otherAxis: otherAxis, otherOut: otherOut },
+            "'" + input.text + "' under " + otherAxis + ":" + otherOut));
+        }
+      }
       return gen;
     },
 
@@ -266,6 +369,11 @@
           if (p.a === input.text) return input.neighborTexts.indexOf(p.b) >= 0;
           if (p.b === input.text) return input.neighborTexts.indexOf(p.a) >= 0;
           return false;
+        case "text-with-cross-context": {
+          if (p.text !== input.text) return false;
+          const cross = _parseCrossTokens(input);
+          return cross[p.otherAxis] === p.otherOut;
+        }
       }
       return false;
     },
@@ -335,6 +443,20 @@
             "symmetric neighborhood " + input.sig));
         }
       }
+      // Phase 3.3b: cooccur-with-cross-context. Tie kind+cross-axis output
+      // to neighborhood-bucket coarsely (avoid full-sig dimensionality).
+      const cross = _parseCrossTokens(input);
+      for (const otherAxis in cross) {
+        if (gen.length >= GEN_MAX_PER_TOKEN) break;
+        const otherOut = cross[otherAxis];
+        if (!_has(field, "cooccur-with-cross-context", function (p) {
+          return p.kind === input.kind && p.otherAxis === otherAxis && p.otherOut === otherOut;
+        })) {
+          gen.push(_mkDerived("cooccur-with-cross-context",
+            { kind: input.kind, otherAxis: otherAxis, otherOut: otherOut },
+            "cooccur kind " + input.kind + " under " + otherAxis + ":" + otherOut));
+        }
+      }
       return gen;
     },
 
@@ -369,6 +491,11 @@
         case "neighborhood-sig": return p.sig === input.sig;
         case "kind-in-neighborhood": return p.kind === input.kind && p.sig === input.sig;
         case "neighborhood-symmetry": return p.sig === input.sig && input.symmetric;
+        case "cooccur-with-cross-context": {
+          if (p.kind !== input.kind) return false;
+          const cross = _parseCrossTokens(input);
+          return cross[p.otherAxis] === p.otherOut;
+        }
       }
       return false;
     },
@@ -425,6 +552,19 @@
             "position " + input.prevPosition + " -> " + input.position));
         }
       }
+      // Phase 3.3b: position-with-cross-context
+      const cross = _parseCrossTokens(input);
+      for (const otherAxis in cross) {
+        if (gen.length >= GEN_MAX_PER_TOKEN) break;
+        const otherOut = cross[otherAxis];
+        if (!_has(field, "position-with-cross-context", function (p) {
+          return p.position === input.position && p.otherAxis === otherAxis && p.otherOut === otherOut;
+        })) {
+          gen.push(_mkDerived("position-with-cross-context",
+            { position: input.position, otherAxis: otherAxis, otherOut: otherOut },
+            "position " + input.position + " under " + otherAxis + ":" + otherOut));
+        }
+      }
       return gen;
     },
 
@@ -459,6 +599,11 @@
           return p.position === input.position && p.text === input.text;
         case "position-transition":
           return p.to === input.position && p.from === input.prevPosition;
+        case "position-with-cross-context": {
+          if (p.position !== input.position) return false;
+          const cross = _parseCrossTokens(input);
+          return cross[p.otherAxis] === p.otherOut;
+        }
       }
       return false;
     },
@@ -515,6 +660,21 @@
             input.kind + " has " + input.textBucket + " text recurrence"));
         }
       }
+      // Phase 3.3b: freq-with-cross-context. The closed bucket-space
+      // saturated in Phase 2; cross-context patterns add a new dimension
+      // along which derivations can keep generating.
+      const cross = _parseCrossTokens(input);
+      for (const otherAxis in cross) {
+        if (gen.length >= GEN_MAX_PER_TOKEN) break;
+        const otherOut = cross[otherAxis];
+        if (!_has(field, "freq-with-cross-context", function (p) {
+          return p.bucket === input.textBucket && p.otherAxis === otherAxis && p.otherOut === otherOut;
+        })) {
+          gen.push(_mkDerived("freq-with-cross-context",
+            { bucket: input.textBucket, otherAxis: otherAxis, otherOut: otherOut },
+            "bucket " + input.textBucket + " under " + otherAxis + ":" + otherOut));
+        }
+      }
       return gen;
     },
 
@@ -550,6 +710,11 @@
         case "recurrence-bucket": return p.bucket === input.textBucket;
         case "kind-recurrence":
           return p.kind === input.kind && p.bucket === input.textBucket;
+        case "freq-with-cross-context": {
+          if (p.bucket !== input.textBucket) return false;
+          const cross = _parseCrossTokens(input);
+          return cross[p.otherAxis] === p.otherOut;
+        }
       }
       return false;
     },
