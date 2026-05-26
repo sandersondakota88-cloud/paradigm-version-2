@@ -1,0 +1,16 @@
+token_idx	peer	name	family	members	fid_at_birth
+100	kind	kind-cooccurs	kind-cooccurs	3	0.1340
+100	kind	kind-with-cross-cont	kind-with-cross-context	17	0.0940
+100	vocab	text-with-cross-cont	text-with-cross-context	24	0.0448
+100	position	position-with-cross-	position-with-cross-context	18	0.0989
+100	frequency	freq-with-cross-cont	freq-with-cross-context	17	0.1160
+100	composer	composer-pair	composer-pair	27	0.1282
+300	position	position-context-pat	position-context-pattern	32	0.0349
+300	composer	composer-axis-affini	composer-axis-affinity	39	0.0866
+300	composer	composer-extension	composer-extension	41	0.0910
+300	composer	composer-tuple	composer-tuple	13	0.0821
+500	vocab	text-in-position	text-in-position	35	0.0315
+500	vocab	text-kind-binding	text-kind-binding	22	0.0344
+600	vocab	text-presence	text-presence	23	0.0325
+700	vocab	text-context-pattern	text-context-pattern	9	0.0496
+700	position	position-text-bindin	position-text-binding	78	0.0342

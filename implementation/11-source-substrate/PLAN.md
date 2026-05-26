@@ -586,6 +586,7 @@ direct work:
 | 2026-05-26 | Phase 3.3b complete (commit 62c859f). Axis vocabs extended with `*-with-cross-context` pattern types. Gap D closed at axis layer. **Frequency-peer broke Phase 2 saturation**: 31d/0p (terminal) → 106d/1p (first ever promotion via cross-channel intake). 13 → 18 promoted sub-cascades lattice-wide. |
 | 2026-05-26 | Phase 3.4 complete. Trajectory captured (`phase-3-trajectory.tsv`, `-promotions.tsv`); analysis at `phase-3-trajectory.md`. 4 of 6 peers O1-like (sustained productivity); kind O2-like (slowing under coarse lexical vocabulary); frequency O2 (input-driven saturation, not substrate-intrinsic lock). All four Phase 2 gaps closed by mechanism. Phase 3 complete. |
 | 2026-05-26 | **Documentation reconciliation pass.** Read all 6 markdown files; rectified incongruences between original PLAN and what was actually built. Identified one substantive issue: the Phase 0 corpus decision (`exodus-vlan-sync.html`) was silently replaced by `implementation/kernel/field.js` for Phase 2/3 smoke tests. See §8 CORPUS SHIFT note and §9 below. |
+| 2026-05-26 | **Reconciliation run on vlan-sync.** Re-ran Phase 3.4 trajectory against the originally-scoped corpus per §9.3 option 1. See [phase-3-trajectory-vlan-sync.md](phase-3-trajectory-vlan-sync.md). 15 promotions across the lattice (vs. 18 on field.js); 2.7× promotion rate per token; productivity shapes match field.js (4 peers O1, kind slowing, frequency saturating). Reflexive trap did not produce load-bearing effect. §9.3 CLOSED. |
 
 Updates appended as phases complete (or halt).
 
@@ -630,6 +631,18 @@ patterns a reader would recognize in an unfamiliar SPA" — is NOT
 fully tested under this corpus shift, because field.js is not an
 unfamiliar SPA. Running against vlan-sync (or another unfamiliar
 corpus) remains future work; named here so it isn't lost.
+
+> **CLOSED 2026-05-26:** Re-ran Phase 3.4 trajectory against
+> vlan-sync (the originally-scoped corpus). See
+> [`phase-3-trajectory-vlan-sync.md`](phase-3-trajectory-vlan-sync.md).
+> Headline: the lattice's promotion families, productivity shapes,
+> and mechanism are corpus-invariant; vlan-sync actually produces
+> 2.7× the promotion rate per token vs. field.js. The reflexive
+> trap did not produce a load-bearing effect on the Phase 3
+> mechanics findings. The reader-correspondence question (whether
+> any promoted sub-cascade maps to human-recognizable patterns)
+> remains separate downstream work as named in
+> phase-3-trajectory-vlan-sync.md §5.
 
 **9.4 Phase 6 (run + observe + report) was partially executed by
 Phase 3.4.** PLAN §3 Phase 6 is the falsification phase that
