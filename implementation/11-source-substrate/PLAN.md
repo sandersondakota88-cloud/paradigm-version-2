@@ -1,11 +1,17 @@
 # Phase 11 — Source-Structure Substrate (the SE-11 Open-Input Test)
 
-**Status:** Planning. No code written. This document is the planning
-artifact that survives context compaction. If you (the operator) or a
-future Claude session lands here without the conversation context, read
-this front-to-back before starting work.
+**Status:** Phases 0–3 complete; Phase 4 (GPU) is the next outstanding
+work per §3. See §7 Live status for the per-phase ledger and §9
+Reconciliation notes for spec corrections made after implementation
+diverged from the original PLAN.
 
-**Date:** 2026-05-25
+This document is the planning artifact that survives context compaction.
+If you (the operator) or a future Claude session lands here without the
+conversation context, read this front-to-back before starting work,
+including §9.
+
+**Date:** 2026-05-25 (created); 2026-05-26 (reconciled after Phase 3
+completion)
 
 **Lineage:** Direct continuation of the TodoMVC work in
 `implementation/10-end-to-end-todomvc/`. Phase 10 demonstrated S2 +
@@ -222,52 +228,85 @@ contract.
 
 ### Phase 2 — Substrate factory (1-2 sessions)
 
+> **RECONCILIATION (2026-05-26):** The scope paragraphs below claimed
+> the canonical kernel lacked M2/M3/K1 and that Phase 2 had to add
+> them. **This was wrong.** Direct audit of `implementation/kernel/
+> field.js` showed the mechanisms were already present and wired.
+> The actual Phase 2 work was: wrap canonical Field with a per-peer
+> cycle that uses per-axis primitive vocabularies. **No kernel
+> modifications happened or were needed.** See
+> [substrate-factory-spec.md §1, §2, §5](substrate-factory-spec.md)
+> for the audit and the corrected scope. Scope text below is preserved
+> as a record of the original PLAN's misread.
+
 **Goal:** Build the substrate factory that instantiates one peer
 substrate. All five peers will be instantiated from this factory with
 per-peer primitive vocabulary configurations.
 
-**Scope:**
+**Scope (original — see RECONCILIATION above):**
 - Read the canonical kernel files we already have:
   `implementation/kernel/field.js`, `ct-engine.js`, `er-engine.js`,
   etc. They already include the F1 seed, F2 delta computation,
   M4 modulation, F4 indefinite operation, F5 irreversibility.
-- The kernel files do NOT yet include M2/M3 predictive reaching
-  + ratification. We need to add this. It's specified in SE-05
-  and pseudocoded in KERNEL.md §4. Per the discipline (§2.3
-  above), this gets built honestly, not faked.
-- The kernel files do NOT yet include K1 sub-cascade promotion via
-  fidelity. We need to add this. It's specified in SE-01 and the
-  v3 bootstrap. Per the discipline, this gets built honestly.
+- ~~The kernel files do NOT yet include M2/M3 predictive reaching
+  + ratification. We need to add this.~~ **WRONG**: they already
+  include it. See substrate-factory-spec.md §2.
+- ~~The kernel files do NOT yet include K1 sub-cascade promotion via
+  fidelity. We need to add this.~~ **WRONG**: they already include
+  it. See substrate-factory-spec.md §2.
 - The substrate factory wraps these with per-peer configuration:
   the peer's primitive vocabulary (what patterns its derived
   constraints describe), its fidelity metric (per SE-11 §2.2 each
   peer uses firing-frequency-relative-to-field-average), its
   initial seed.
 
-**Why this is the biggest sub-task:** we're wiring SE-05 and K1
-for the first time in our work. The TodoMVC kernel runs F1/F2/M4/
-F4/F5 but has the SE-05 and K1 mechanisms present-but-inert. Phase
-11 makes them operative.
+**Why this is the biggest sub-task:** ~~we're wiring SE-05 and K1
+for the first time in our work.~~ Per the reconciliation: we are
+*plugging into* SE-05/K1 with a per-axis primitive vocabulary.
+TodoMVC's kernel had these mechanisms present but they never fired
+because TodoMVC's input shape never produced the conditions that
+exercise them (no novelty → no derived generation → no families →
+no promotions). Phase 11 makes them fire by feeding the kernel real
+source novelty.
 
-**Falsification condition:** if SE-05 or K1 cannot be wired honestly
-(meaning: predictive constraints don't actually predict, or sub-
-cascades promote via something other than measured fidelity), Phase
-2 halts. We report the discipline failure and re-plan.
+**Falsification condition:** if SE-05 or K1 cannot be exercised
+honestly (meaning: predictive constraints don't actually predict, or
+sub-cascades promote via something other than measured fidelity),
+Phase 2 halts. We report the discipline failure and re-plan.
 
-**Deliverable:** `substrate-factory.js`, plus the additions to the
-kernel files (`field.js`, `ct-engine.js`) needed for SE-05 + K1.
-A smoke test that instantiates one peer, ingests a small token
-stream, observes ratifications happening.
+**Deliverable:** `substrate-factory.js`. ~~Plus the additions to the
+kernel files (`field.js`, `ct-engine.js`) needed for SE-05 + K1.~~
+**Per RECONCILIATION: no kernel additions; canonical Field is
+unmodified.** A smoke test (`phase-2-smoke.js`) that instantiates
+one peer, ingests a small token stream, observes ratifications
+happening.
 
-### Phase 3 — Composer substrate (1 session)
+### Phase 3 — Intake-configuration + cross-channels + composer (4 sessions, all complete)
 
-**Goal:** Build the composer substrate. Its intake is the five peers'
-promoted sub-cascades + top-by-uses constraints; its primitives are
-the three composer primitives from SE-11 §2.3 (JOINT_RECUR,
-JOINT_NAMING, KIND_TEXT_BIND — adapted per our five-axis variant);
-its output is the surfaced intersection structure.
+> **REWRITE (2026-05-26):** The original Phase 3 (text below) framed
+> the composer as a *post-hoc intersection over peer outputs* and
+> assumed peers ran blind to each other until Phase 3. After Phase 2
+> ran, four structural gaps surfaced that the original scope did not
+> address: peers produced no resolved per-token output (Gap A), each
+> peer had only nominally distinct intake (Gap B), pattern vocabulary
+> was closed at spec-time (Gap C), and peers had no cross-observation
+> (Gap D). Phase 3 was rewritten to close all four gaps via
+> intake-configuration: per-peer `dimsFn`/`tokensFn`/`domainRules`/
+> output alphabets, invention at ratification, origin-tagged
+> cross-channels at intake, and the composer as a sixth peer reading
+> all five lattice outputs. See [phase-3-spec.md](phase-3-spec.md)
+> for the rewritten spec and [phase-3-trajectory.md](phase-3-trajectory.md)
+> for the empirical result. Phase 3 split into four sub-phases
+> (3.1–3.4); all four complete.
 
-**Scope:**
+**Goal (original — see REWRITE above):** Build the composer substrate.
+Its intake is the five peers' promoted sub-cascades + top-by-uses
+constraints; its primitives are the three composer primitives from
+SE-11 §2.3 (JOINT_RECUR, JOINT_NAMING, KIND_TEXT_BIND — adapted per
+our five-axis variant); its output is the surfaced intersection
+structure.
+
+**Scope (original):**
 - Adapt the composer primitives from SE-11 §2.3 (which used three
   peers) to our five-peer case. JOINT_RECUR generalizes
   straightforwardly (joint strength = min(member.uses) across the
@@ -279,15 +318,33 @@ its output is the surfaced intersection structure.
 - The composer's promotion threshold is configurable; start at
   canonical reference values.
 
+**Actual scope (rewritten — see phase-3-spec.md):**
+- Extend `makePeer` to accept intake-configuration spec fields
+  (`dimsFn`, `tokensFn`, `outputVar`, `outputAlphabet`, `domainRules`,
+  `centroids`, `onRatify`, `onPromote`) without modifying canonical
+  Field.
+- Author per-axis intake-configs in `peer-specs.js` for five axes.
+- Wire a lattice layer (`lattice.js`) that fans `ingest()` to all six
+  peers per tick with previous-tick lastOutputs as cross-channel
+  intake.
+- Add composer as the sixth peer with its own intake-config spec
+  reading the other five axes' outputs.
+- Extend each axis's primitive vocab in `primitive-vocabs.js` with a
+  cross-context pattern type so axes consume cross-channel intake.
+
 **Falsification condition:** if the composer's primitives can't be
 expressed in the same substrate-factory shape (meaning: the composer
 needs supervision or special-case wiring that the peers don't have),
 Phase 3 halts. We re-examine SE-11 §2.3 and either find the missing
-generalization or flag a canon gap.
+generalization or flag a canon gap. **Did not halt** — composer
+hosted by `makePeer` with the same shape as axis peers.
 
-**Deliverable:** `composer-substrate.js`. Composer factory invocation
-producing a composer instance whose intake is the peers' resolved
-state.
+**Deliverables (actual):** `phase-3-spec.md`, extended
+`substrate-factory.js`, `peer-specs.js`, `lattice.js`, extended
+`primitive-vocabs.js`, `phase-3-smoke-3_1.js`, `phase-3-smoke-3_2.js`,
+`phase-3-smoke-3_3.js`, `phase-3-trajectory.js`,
+`phase-3-trajectory.tsv`, `phase-3-trajectory-promotions.tsv`,
+`phase-3-trajectory.md`.
 
 ### Phase 4 — GPU resolution layer (2 sessions)
 
@@ -416,17 +473,44 @@ This build inherits and reuses where possible:
 - `cascade-op-dispatcher.js` — likely not needed (Phase 11 is
   navigation, not event-driven op dispatch).
 
-**Net-new in `implementation/11-source-substrate/`:**
+**Net-new in `implementation/11-source-substrate/` (actual, post-Phase-3):**
+
+Planning + spec docs:
 - `PLAN.md` (this file)
 - `adapter-spec.md` (Phase 1 deliverable)
-- `acorn.min.js` (vendored, Phase 1)
+- `substrate-factory-spec.md` (Phase 2 spec; includes RECONCILIATION
+  blocks documenting kernel-already-has-SE05/K1 audit)
+- `phase-2-results.md` (Phase 2 deliverable)
+- `phase-3-spec.md` (Phase 3 rewrite — intake-configuration shape)
+- `phase-3-trajectory.md` (Phase 3.4 trajectory analysis)
+
+Implementation:
+- `acorn.js` (vendored Acorn 8.16.0, Phase 1 — NOT `acorn.min.js`)
 - `corpus-adapter.js` (Phase 1)
-- `substrate-factory.js` (Phase 2)
-- `composer-substrate.js` (Phase 3)
+- `primitive-vocabs.js` (Phase 2, extended in Phase 3.3b with
+  cross-context pattern types and composer vocab)
+- `substrate-factory.js` (Phase 2, extended in Phase 3.1 with
+  intake-configuration spec fields)
+- `peer-specs.js` (Phase 3.2/3.3 — five axis specs + composer spec)
+- `lattice.js` (Phase 3.3 — six-peer wiring layer)
+
+Smoke + trajectory:
+- `phase-2-smoke.js` (Phase 2)
+- `phase-3-smoke-3_1.js` (Phase 3.1 kernel gate)
+- `phase-3-smoke-3_2.js` (Phase 3.2 per-axis isolation)
+- `phase-3-smoke-3_3.js` (Phase 3.3 full lattice)
+- `phase-3-trajectory.js` (Phase 3.4 windowed capture harness)
+- `phase-3-trajectory.tsv`, `phase-3-trajectory-promotions.tsv`
+  (Phase 3.4 raw data)
+
+Outstanding (Phases 4–6, not yet started):
 - `source-shader.wgsl` (Phase 4, per-peer variant)
 - `composer-shader.wgsl` (Phase 4)
 - `source-nav.html` (Phase 5)
-- `phase-11-trajectory.md` (Phase 6)
+- `phase-11-trajectory.md` (Phase 6 — note: Phase 3.4 trajectory
+  analysis already exercised the O1/O2/O3 framework for the CPU
+  lattice; the Phase 6 deliverable likely becomes "GPU-lattice
+  trajectory" or is folded into Phase 5's render layer report)
 
 ---
 
@@ -501,14 +585,85 @@ direct work:
 | 2026-05-26 | Phase 3.3 complete (commit 3d29311). Lattice wiring layer + composer. Six peers run with cross-channels per SE-10/M5; composer promotes 4 sub-cascades from cross-axis reads alone. One honest finding: axis vocabs not yet consuming `intakeTokens`. |
 | 2026-05-26 | Phase 3.3b complete (commit 62c859f). Axis vocabs extended with `*-with-cross-context` pattern types. Gap D closed at axis layer. **Frequency-peer broke Phase 2 saturation**: 31d/0p (terminal) → 106d/1p (first ever promotion via cross-channel intake). 13 → 18 promoted sub-cascades lattice-wide. |
 | 2026-05-26 | Phase 3.4 complete. Trajectory captured (`phase-3-trajectory.tsv`, `-promotions.tsv`); analysis at `phase-3-trajectory.md`. 4 of 6 peers O1-like (sustained productivity); kind O2-like (slowing under coarse lexical vocabulary); frequency O2 (input-driven saturation, not substrate-intrinsic lock). All four Phase 2 gaps closed by mechanism. Phase 3 complete. |
+| 2026-05-26 | **Documentation reconciliation pass.** Read all 6 markdown files; rectified incongruences between original PLAN and what was actually built. Identified one substantive issue: the Phase 0 corpus decision (`exodus-vlan-sync.html`) was silently replaced by `implementation/kernel/field.js` for Phase 2/3 smoke tests. See §8 CORPUS SHIFT note and §9 below. |
 
 Updates appended as phases complete (or halt).
 
 ---
 
+## 9. Reconciliation notes
+
+This section was added 2026-05-26 after Phase 3 completed. It records
+where the implementation diverged from this PLAN's original prose so
+a reader following the PLAN as authoritative isn't misled by stale
+sections.
+
+**9.1 Kernel modifications were never required.** PLAN §3 Phase 2
+described M2/M3 (predictive reaching + ratification) and K1
+(sub-cascade promotion via fidelity) as "not yet in the kernel" and
+scoped Phase 2 to add them. Direct audit of `implementation/kernel/
+field.js` early in Phase 2 showed all three mechanisms were already
+present and wired. Phase 2 (and Phase 3) ran against canonical Field
+unmodified. See [substrate-factory-spec.md §1, §2, §5](substrate-factory-spec.md).
+
+**9.2 The composer is a peer, not a post-processor.** PLAN §3
+Phase 3 described the composer as a substrate that runs *after*
+peers have completed their cycles, consuming the peers' promoted
+sub-cascades and top-by-uses constraints. Phase 3 was rewritten:
+the composer is a sixth peer instantiated by the same
+`makePeer` factory, reading the other five peers' previous-tick
+lastOutputs at intake. It participates in the lattice on the same
+terms as the axis peers (per F3 — no supervision). See
+[phase-3-spec.md §2.5](phase-3-spec.md).
+
+**9.3 The corpus shifted from `exodus-vlan-sync.html` to
+`implementation/kernel/field.js`.** §8 originally selected
+vlan-sync. The smoke tests target field.js. This shift was
+operationally convenient but reintroduces the reflexive trap §8
+originally tried to avoid (the substrate observing its own kernel's
+source). Phase 3.4 trajectory analysis does not lean on this
+self-reference for any finding; the mechanics results (canonical
+Field hosts intake-config, ratifications fire, inventions enter the
+field) are valid regardless of corpus. **However**, the SE-11
+falsification claim from §1 — "the substrate should surface
+patterns a reader would recognize in an unfamiliar SPA" — is NOT
+fully tested under this corpus shift, because field.js is not an
+unfamiliar SPA. Running against vlan-sync (or another unfamiliar
+corpus) remains future work; named here so it isn't lost.
+
+**9.4 Phase 6 (run + observe + report) was partially executed by
+Phase 3.4.** PLAN §3 Phase 6 is the falsification phase that
+applies the O1/O2/O3 framework. Phase 3.4 ran that framework
+against the CPU lattice's trajectory on `field.js`. The Phase 6
+deliverable as originally scoped (`phase-11-trajectory.md`) is
+substantively the same artifact as the existing
+[`phase-3-trajectory.md`](phase-3-trajectory.md), differing only
+in name. If Phase 4 (GPU) and Phase 5 (render) proceed, the
+remaining work for Phase 6 is to run the framework again at the
+GPU layer and against a different corpus.
+
+---
+
 ## 8. Phase 0 result — corpus selection
 
-**Selected corpus:** `exodus/demonstration/state-projector/exodus-vlan-sync.html`
+> **CORPUS SHIFT (2026-05-26):** Phase 0 selected `exodus-vlan-sync.html`
+> as the corpus. Phase 2's smoke test (`phase-2-smoke.js`) instead
+> targets `implementation/kernel/field.js` (1326 lines, 9243 tokens).
+> All Phase 2 and Phase 3 trajectory data is against `field.js`, not
+> vlan-sync. **Reason for shift:** the smoke harness needed an
+> immediately-available JS source that could be sliced by line count
+> for falsification windows; kernel/field.js was already loaded by
+> the test infrastructure and is pure JS (no HTML/CSS stripping
+> required). Vlan-sync remains a valid candidate for a future run if
+> we want to compare trajectories across corpora. **Note on canon-
+> coupling:** field.js IS the substrate's kernel — the substrate is
+> observing its own implementation. This is the reflexive trap §8
+> originally tried to avoid. Phase 3.4 trajectory analysis does not
+> use this self-reference as a finding; the trajectory results are
+> reported as raw substrate behavior on real source, not as evidence
+> the substrate "recognized itself."
+
+**Selected corpus (original Phase 0 decision):** `exodus/demonstration/state-projector/exodus-vlan-sync.html`
 
 **Size:** 751 lines, single HTML file, no external dependencies.
 

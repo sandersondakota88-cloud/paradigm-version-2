@@ -143,37 +143,64 @@ implementation patches. Phase 2 honors the kernel as it stands.
 
 **File (Phase 2.4 implementation):** `substrate-factory.js`
 
-**Public surface:**
+**Public surface (as built):**
+
+> **Reconciliation note:** the original draft listed `ct: CTengine`
+> and `er: ERengine` slots on the Peer interface. Per §5 (the
+> CT-engine audit), peers do NOT use the canonical CT/ER engines —
+> the factory constructs its own per-peer cycle that calls Field's
+> public methods directly. The Peer interface below reflects what
+> was actually built. Phase 3.1 added several intake-configuration
+> fields (also reflected).
 
 ```
 makePeer(config) -> Peer
 
-config: {
-  id:              String      // peer identifier, e.g. "kind-peer"
-  axis:            String      // "kind" | "vocab" | "cooccur" | "position" | "frequency"
-  primitiveVocab:  PrimitiveVocab    // see §4
-  seedThen:        Function    // assertion of what the peer's seed measures
+config (Phase 2 fields, all required): {
+  FieldModule:     Object              // canonical Field module
+  id:              String              // peer identifier
+  axis:            String              // "kind" | "vocab" | "cooccur" | "position" | "frequency" | "composer"
+  primitiveVocab:  PrimitiveVocab      // see §4
 }
 
+config (Phase 3.1 intake-configuration fields, all optional):
+  dimsFn:          (token, ctx) -> Coord
+  tokensFn:        (token, ctx) -> [intake-token-string, ...]
+  outputVar:       String              // e.g. "--kind-role"
+  defaultOutput:   String              // alphabet default
+  outputAlphabet:  [String, ...]
+  domainRules:     [{ when: {dim: value, ...}, then: String }, ...]
+  centroids:       { outputToken: centroidTemplate, ... }
+  onRatify:        (constraint, field, ctx) -> patternObj | null
+  onPromote:       (subcascade, idMap, field, ctx) -> patternObj | null
+
 Peer: {
-  id:              String
-  axis:            String
-  field:           Field           // the canonical Field instance (one per peer)
-  ct:              CTengine        // the canonical CT engine instance (one per peer)
-  er:              ERengine        // the canonical ER engine instance (one per peer)
-  primitiveVocab:  PrimitiveVocab
-  
-  ingest(token):       void        // accept one TokenIntakeRecord
-  observe():           PeerObservation  // read-only snapshot of peer state
-  teardown():          void
+  id:                  String
+  axis:                String
+  field:               Field            // per-peer canonical Field instance (state isolated; methods shared with kernel)
+  primitiveVocab:      PrimitiveVocab
+  intakeConfigActive:  Boolean          // true if Phase 3.1 fields wired
+  outputVar:           String | null
+  outputAlphabet:      [String] | null
+
+  ingest(token, extCtx?):  IngestResult  // extCtx optional in Phase 3.3 lattice wiring
+  observe():               PeerObservation
+  getLastOutput():         String | null
+  teardown():              void
 }
 
 PeerObservation: {
-  constraints: { derived: Int, predictive: Int, ratified: Int, meta: Int }
-  subcascades: SubcascadeView[]
-  fidelities:  { [famType]: Float }
-  delta:       { scalar, fast, slow, gap }
-  step:        Int
+  id, axis, step:           identity
+  constraintsByKind:        { seed, derived, predictive, ratified, meta, compound, other }
+  constraintTotal:          Int
+  ratCount:                 Int
+  delta:                    { scalar, fast, slow, gap }
+  mod:                      { fast, slow }   // SE-03 substrate modulation
+  fidelities:               { [famType]: { avg, totalFires, observations } }
+  subcascades:              SubcascadeView[]
+  namingPref, namedCount:   K3 surface (currently inert per INVARIANTS K3 note)
+  intakeConfig:             null | { outputVar, lastOutput, defaultOutput, alphabet, outputCounts, ... }
+  stats:                    { tokensIngested, derivedGenerated, predictionsGenerated, ratificationsObserved, promotionsObserved, evictionsObserved, inventionsGenerated, outputResolutions, outputCounts }
 }
 ```
 
@@ -578,19 +605,22 @@ input through a configurable primitive vocabulary. Phase 3
 
 ## 7. What this spec commits to and doesn't
 
-### Commits to
+### Commits to (as built)
 - The kernel's existing SE-05 + K1 mechanisms (no rewrite).
-- One small kernel addition: `primitiveVocab` opts parameter to
-  `Field.reset()` and corresponding plug-in points in
-  `Field.generate`, `Field.generatePredictions`, `Field._evaluateMatches`.
-  The default remains the canonical text-only vocabulary.
-- Five per-axis primitive vocabularies (§4), each with the same
-  shape (`tokenToInput`, `generateDerivedFromNovelty`,
-  `generatePredictionsFromGap`, `matches`, `familyType`).
+- ~~One small kernel addition: `primitiveVocab` opts parameter to
+  `Field.reset()`...~~ **Per §5 reconciliation: no kernel addition was
+  made.** The factory wraps canonical Field's public methods and
+  constructs the per-peer cycle in `substrate-factory.js` itself.
+- Five per-axis primitive vocabularies (§4) plus a sixth composer
+  vocabulary (added in Phase 3.3), each with the same shape
+  (`tokenToInput`, `generateDerivedFromNovelty`,
+  `generatePredictionsFromGap`, `matches`, `familyType`). Phase 3.3b
+  added per-axis cross-context pattern types.
 - A substrate factory (`substrate-factory.js`) that produces
-  Peer instances from primitive-vocab configurations.
+  Peer instances from primitive-vocab + (Phase 3.1) intake-config
+  configurations.
 - A smoke test demonstrating one peer's full SE-05/K1 cycle on
-  real source input.
+  real source input (`phase-2-smoke.js`).
 
 ### Does not commit to
 - The specific primitive-vocabulary content being optimal. The

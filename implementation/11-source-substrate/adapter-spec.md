@@ -1,9 +1,18 @@
 # Phase 1 — Adapter Specification
 
-**Status:** Phase 1 deliverable per `PLAN.md` §3. Specification, not
-implementation. Phase 2 will build against this spec.
+**Status:** Phase 1 deliverable per `PLAN.md` §3. Specification +
+delivered implementation (`corpus-adapter.js`, `acorn.js` vendored).
 
-**Date:** 2026-05-25
+**Date:** 2026-05-25 (created); 2026-05-26 (corpus-shift note added)
+
+> **Corpus shift (2026-05-26):** §1 below names `exodus-vlan-sync.html`
+> as the target corpus. Actual Phase 2 and Phase 3 smoke tests run
+> against `implementation/kernel/field.js` instead. The adapter itself
+> (`corpus-adapter.js`) is corpus-agnostic — it accepts any JS source
+> string. See PLAN.md §8 CORPUS SHIFT note and §9.3 for the
+> reconciliation. The §1 vlan-sync framing below is preserved as the
+> original Phase 0 decision but does not describe what the adapter
+> was actually fed.
 
 **Discipline:** This document does not invent. Per UTF Q2
 sub-recognition 4 (`canon/UTF/utf-decision-questions.md`): adapters
