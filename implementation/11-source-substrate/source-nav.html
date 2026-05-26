@@ -66,6 +66,17 @@
   .src-composer-single-axis-only     { background: #1f303a; color: #9ac6e0; }
   .src-composer-no-agreement         { background: #2a2a2a; color: #888; }
   .src-composer-novel-intersection   { background: #3a2a1f; color: #e6c0a0; }
+  /* Host-language origin shown as a thin left border so three-language
+     ingestion is visible without overriding the composer color. */
+  .tok.origin-html { border-left: 2px solid #c87575; padding-left: 2px; }
+  .tok.origin-css  { border-left: 2px solid #75c8c8; padding-left: 2px; }
+  .tok.origin-js   { border-left: 2px solid #b5c875; padding-left: 2px; }
+  .host-mix {
+    display: flex; gap: 12px; font-size: 10px;
+  }
+  .host-mix .h { color: #c87575; }
+  .host-mix .c { color: #75c8c8; }
+  .host-mix .j { color: #b5c875; }
   .projection {
     height: 200px;
     position: relative;
@@ -160,9 +171,17 @@
     <button id="btn-boot">BOOT LATTICE (ingest corpus)</button>
     <select id="corpus-select">
       <option value="../kernel/field.js">kernel/field.js (9243 tokens)</option>
-      <option value="../../exodus/demonstration/state-projector/exodus-vlan-sync.html#script">vlan-sync (script block, 2831 tokens)</option>
+      <option value="../../exodus/demonstration/state-projector/exodus-vlan-sync.html#script">vlan-sync · JS only (2831 tokens)</option>
+      <option value="todomvc:js-only">TodoMVC · JS only (4188 tokens)</option>
+      <option value="todomvc:three-language">TodoMVC · HTML + CSS + JS (three host languages)</option>
     </select>
     <span class="stat" id="boot-status">idle</span>
+    <button id="btn-download-trajectory" style="margin-left: auto;">DOWNLOAD TRAJECTORY TSV</button>
+  </div>
+  <div class="host-mix" id="host-mix" style="margin-top: 6px; display: none;">
+    <span class="h">HTML records: <strong id="hm-html">0</strong></span>
+    <span class="c">CSS records: <strong id="hm-css">0</strong></span>
+    <span class="j">JS records: <strong id="hm-js">0</strong></span>
   </div>
 </div>
 
@@ -219,6 +238,8 @@
 <script src="acorn.js"></script>
 <script src="../kernel/field.js"></script>
 <script src="corpus-adapter.js"></script>
+<script src="corpus-adapter-html.js"></script>
+<script src="corpus-adapter-css.js"></script>
 <script src="primitive-vocabs.js"></script>
 <script src="peer-specs.js"></script>
 <script src="substrate-factory.js"></script>
@@ -240,6 +261,8 @@
 const acorn       = window.acorn || window.Acorn;
 const FieldModule = window.FieldModule;
 const CorpusAdapter   = window.CorpusAdapter;
+const HTMLAdapter      = window.HTMLAdapter;
+const CSSAdapter       = window.CSSAdapter;
 const PrimitiveVocabs = window.PrimitiveVocabs;
 const PeerSpecs       = window.PeerSpecs;
 const SubstrateFactory = window.SubstrateFactory;
@@ -252,6 +275,8 @@ function checkModules() {
   if (!acorn)            missing.push("acorn");
   if (!FieldModule || !FieldModule.Field) missing.push("FieldModule");
   if (!CorpusAdapter)    missing.push("CorpusAdapter");
+  if (!HTMLAdapter)      missing.push("HTMLAdapter");
+  if (!CSSAdapter)       missing.push("CSSAdapter");
   if (!PrimitiveVocabs)  missing.push("PrimitiveVocabs");
   if (!PeerSpecs)        missing.push("PeerSpecs");
   if (!SubstrateFactory) missing.push("SubstrateFactory");
@@ -283,41 +308,115 @@ const state = {
 // ---------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------
+
+// TodoMVC corpus locations (the external SPA we test against).
+const TODOMVC_DIR = "../../exodus/external-corpora/todomvc-vanilla-es5/";
+const TODOMVC_HTML = TODOMVC_DIR + "index.html";
+const TODOMVC_CSS = [
+  TODOMVC_DIR + "todomvc-common-base.css",
+  TODOMVC_DIR + "todomvc-app.css"
+];
+const TODOMVC_JS = TODOMVC_DIR + "todomvc-combined.js";
+
+async function fetchText(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(url + " " + resp.status);
+  return await resp.text();
+}
+
+// Build the unified intake stream for a given corpus selection.
+// Three-language mode honors spec-defined order: HTML → CSS → JS,
+// per UTF Q2 sub-rec 4 / SE-10 (source carries its own evaluation order).
+async function buildStream(selValue, statusEl) {
+  if (selValue === "todomvc:js-only") {
+    statusEl.textContent = "fetching TodoMVC JS...";
+    const src = await fetchText(TODOMVC_JS);
+    return {
+      mode: "js-only",
+      records: CorpusAdapter.adaptCorpus(src, acorn).records,
+      hostMix: { js: -1 }  // filled below
+    };
+  }
+  if (selValue === "todomvc:three-language") {
+    statusEl.textContent = "fetching TodoMVC HTML...";
+    const htmlSrc = await fetchText(TODOMVC_HTML);
+    statusEl.textContent = "fetching TodoMVC CSS (1/2)...";
+    const cssParts = [];
+    for (let i = 0; i < TODOMVC_CSS.length; i++) {
+      cssParts.push(await fetchText(TODOMVC_CSS[i]));
+    }
+    statusEl.textContent = "fetching TodoMVC JS...";
+    const jsSrc = await fetchText(TODOMVC_JS);
+
+    statusEl.textContent = "parsing HTML...";
+    await new Promise(function (r) { setTimeout(r, 0); });
+    const htmlStream = HTMLAdapter.adaptHTML(htmlSrc);
+    statusEl.textContent = "parsing CSS...";
+    await new Promise(function (r) { setTimeout(r, 0); });
+    const cssStream = CSSAdapter.adaptCSS(cssParts.join("\n\n"));
+    statusEl.textContent = "tokenizing JS...";
+    await new Promise(function (r) { setTimeout(r, 0); });
+    const jsStream = CorpusAdapter.adaptCorpus(jsSrc, acorn);
+
+    // Stitch records: HTML → CSS → JS. Re-assign indices and tag origin.
+    const records = [];
+    let idx = 0;
+    for (const r of htmlStream.records) { r.origin = "html"; r.index = idx++; records.push(r); }
+    for (const r of cssStream.records)  { r.origin = "css";  r.index = idx++; records.push(r); }
+    for (const r of jsStream.records)   { r.origin = "js";   r.index = idx++; records.push(r); }
+    return {
+      mode: "three-language",
+      records: records,
+      hostMix: {
+        html: htmlStream.records.length,
+        css:  cssStream.records.length,
+        js:   jsStream.records.length
+      }
+    };
+  }
+
+  // Default path: original corpora (vlan-sync, kernel/field.js)
+  const corpusURL = selValue.split("#")[0];
+  const isScriptBlock = selValue.indexOf("#script") >= 0;
+  statusEl.textContent = "fetching corpus...";
+  let src = await fetchText(corpusURL);
+  if (isScriptBlock) {
+    const LT = String.fromCharCode(60);
+    const SCRIPT_OPEN  = LT + "script>";
+    const SCRIPT_CLOSE = LT + "/script>";
+    const startTag = src.indexOf(SCRIPT_OPEN);
+    const endTag = src.indexOf(SCRIPT_CLOSE);
+    if (startTag < 0 || endTag < 0) throw new Error("no script block in corpus");
+    src = src.substring(startTag + SCRIPT_OPEN.length, endTag);
+  }
+  const recs = CorpusAdapter.adaptCorpus(src, acorn).records;
+  for (const r of recs) r.origin = "js";
+  return { mode: "js-only", records: recs, hostMix: { js: recs.length } };
+}
+
 async function boot() {
   if (!checkModules()) return;
   const statusEl = document.getElementById("boot-status");
   const sel = document.getElementById("corpus-select");
-  const corpusURL = sel.value.split("#")[0];
-  const isScriptBlock = sel.value.indexOf("#script") >= 0;
-  statusEl.textContent = "fetching corpus...";
 
-  let src;
+  let unifiedStream;
   try {
-    const resp = await fetch(corpusURL);
-    src = await resp.text();
+    unifiedStream = await buildStream(sel.value, statusEl);
   } catch (e) {
-    statusEl.textContent = "fetch failed: " + e.message;
+    statusEl.textContent = "boot failed: " + e.message;
     return;
   }
 
-  // Extract JS from HTML if needed.
-  if (isScriptBlock) {
-    const startTag = src.indexOf("<script>");
-    const endTag = src.indexOf("</script>");
-    if (startTag < 0 || endTag < 0) {
-      statusEl.textContent = "no <script> block in corpus";
-      return;
-    }
-    src = src.substring(startTag + "<script>".length, endTag);
-  }
+  state.stream = { records: unifiedStream.records, metadata: { total_tokens: unifiedStream.records.length } };
+  state.streamMode = unifiedStream.mode;
+  state.hostMix = unifiedStream.hostMix;
 
-  statusEl.textContent = "adapting (" + src.length + " bytes)...";
-  await new Promise(function (r) { setTimeout(r, 0); });
-
-  const stream = CorpusAdapter.adaptCorpus(src, acorn);
-  state.stream = stream;
-
-  statusEl.textContent = "building lattice...";
+  statusEl.textContent = "building lattice (" + unifiedStream.records.length +
+    " records" +
+    (unifiedStream.mode === "three-language"
+      ? " · html=" + unifiedStream.hostMix.html + " css=" + unifiedStream.hostMix.css + " js=" + unifiedStream.hostMix.js
+      : "") +
+    ")...";
   await new Promise(function (r) { setTimeout(r, 0); });
 
   state.lattice = Lattice.makeLattice({
@@ -327,11 +426,12 @@ async function boot() {
     PrimitiveVocabs:  PrimitiveVocabs
   });
 
-  // Ingest the corpus, yielding every N tokens so the UI stays responsive
+  // Ingest in order; yield every CHUNK records so the UI stays responsive.
+  const stream = state.stream;
   state.perTokenOutputs = new Array(stream.records.length);
   const CHUNK = 250;
   let cur = 0;
-  async function chunk() {
+  async function chunkIngest() {
     const end = Math.min(cur + CHUNK, stream.records.length);
     for (; cur < end; cur++) {
       state.lattice.ingest(stream.records[cur]);
@@ -344,19 +444,94 @@ async function boot() {
     const pct = Math.floor(100 * cur / stream.records.length);
     statusEl.textContent = "ingesting " + cur + "/" + stream.records.length + " (" + pct + "%)";
     if (cur < stream.records.length) {
-      return new Promise(function (r) { setTimeout(function () { chunk().then(r); }, 0); });
+      return new Promise(function (r) { setTimeout(function () { chunkIngest().then(r); }, 0); });
     }
   }
-  await chunk();
+  await chunkIngest();
 
-  statusEl.textContent = "rendering (" + stream.records.length + " tokens, " +
+  statusEl.textContent = "rendering (" + stream.records.length + " records, " +
     state.lattice.ALL_PEERS.length + " peers)";
 
   // Build lattice dims for joint-space resolution
   state.latticeDims = GpuLatticeCompiler.buildLatticeDimsSpec(PeerSpecs);
 
+  // Host-mix display for three-language runs
+  const hostMixEl = document.getElementById("host-mix");
+  if (state.streamMode === "three-language") {
+    document.getElementById("hm-html").textContent = state.hostMix.html;
+    document.getElementById("hm-css").textContent  = state.hostMix.css;
+    document.getElementById("hm-js").textContent   = state.hostMix.js;
+    hostMixEl.style.display = "flex";
+  } else {
+    hostMixEl.style.display = "none";
+  }
+
   renderAll();
   statusEl.textContent = "ready · click any token";
+}
+
+// ---------------------------------------------------------------------
+// Download trajectory as TSV (single sample at corpus end; matches the
+// shape phase-3-trajectory.tsv produces).
+// ---------------------------------------------------------------------
+function downloadTrajectory() {
+  if (!state.lattice) {
+    document.getElementById("boot-status").textContent = "no lattice; boot a corpus first";
+    return;
+  }
+  const obs = state.lattice.observe();
+  const peers = state.lattice.ALL_PEERS;
+  const METRICS = ["derived","predictive","ratified","promoted","evictions","inventions","constraintTotal","uniqueAlphabetCovered","scalar","gap"];
+
+  // Header
+  const header = ["token_count"];
+  for (const p of peers) for (const m of METRICS) header.push(p + "." + m);
+  header.push("lattice.matched", "lattice.unresolved", "lattice.scalar");
+
+  // Single end-of-corpus row
+  const row = [String(state.stream.records.length)];
+  for (const p of peers) {
+    const o = obs.peers[p];
+    const ic = o.intakeConfig || {};
+    const counts = ic.outputCounts || {};
+    row.push(String(o.stats.derivedGenerated));
+    row.push(String(o.stats.predictionsGenerated));
+    row.push(String(o.stats.ratificationsObserved));
+    row.push(String(o.stats.promotionsObserved));
+    row.push(String(o.stats.evictionsObserved));
+    row.push(String(o.stats.inventionsGenerated));
+    row.push(String(o.constraintTotal));
+    row.push(String(Object.keys(counts).length));
+    row.push(o.delta.scalar.toFixed(4));
+    row.push(o.delta.gap.toFixed(4));
+  }
+  if (state.walkResult) {
+    const ld = state.walkResult.latticeDelta;
+    row.push(String(ld.matched), String(ld.unresolved), ld.scalar.toFixed(4));
+  } else {
+    row.push("0", "0", "—");
+  }
+
+  // Promotion timeline
+  const promos = ["", "", "", "promotion_timeline"];
+  for (const p of peers) {
+    const o = obs.peers[p];
+    for (const sc of o.subcascades) {
+      promos.push("\n" + p + "\t" + sc.name + "\t" + sc.familyType + "\tm=" + sc.memberCount + "\tfid=" + sc.fidAtBirth.toFixed(4));
+    }
+  }
+
+  const tsv = header.join("\t") + "\n" + row.join("\t") + "\n\n" +
+              "# promotion_timeline\n# peer\tname\tfamily\tmembers\tfid_at_birth" +
+              promos.slice(4).join("");
+
+  const blob = new Blob([tsv], { type: "text/tab-separated-values" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "phase-trajectory-" + (state.streamMode || "unknown") + "-" + Date.now() + ".tsv";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
 
 // ---------------------------------------------------------------------
@@ -416,7 +591,8 @@ function renderSourcePane() {
     const r = records[i];
     const o = state.perTokenOutputs[i] || {};
     const composerOut = o.composer || "composer-no-agreement";
-    const cls = "tok src-" + composerOut;
+    const originCls = r.origin ? " origin-" + r.origin : "";
+    const cls = "tok src-" + composerOut + originCls;
     const txt = r.text != null ? String(r.text) : "";
     // escape HTML
     const safe = txt.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -609,6 +785,8 @@ document.getElementById("btn-reset-sliders").addEventListener("click", function 
   for (const axis in state.axisWeights) state.axisWeights[axis] = 1;
   renderSliders();
 });
+
+document.getElementById("btn-download-trajectory").addEventListener("click", downloadTrajectory);
 
 })();
 </script>
