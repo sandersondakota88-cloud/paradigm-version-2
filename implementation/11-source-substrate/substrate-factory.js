@@ -269,13 +269,18 @@
 
     // ----------------------------------------------------------
     // Build the per-step ctx (substrate-relative state). Phase 3.1
-    // only carries selfLastOutput; Phase 3.3 will add peerLastOutputs
-    // from the lattice wiring layer.
+    // carries selfLastOutput; Phase 3.3 adds peerLastOutputs from
+    // the lattice wiring layer via ingest()'s optional second arg.
     // ----------------------------------------------------------
-    function buildCtx() {
+    function buildCtx(extCtx) {
       return {
         selfLastOutput: field.lastOutput,
-        peerLastOutputs: opts.peerLastOutputs || null  // null in Phase 3.1
+        // peerLastOutputs is a snapshot of {axis: lastOutput} from the
+        // PREVIOUS tick, supplied by the lattice wiring layer at ingest()
+        // call time. Reading T-1 (not T) eliminates within-tick ordering
+        // as a supervision path (F3).
+        peerLastOutputs: (extCtx && extCtx.peerLastOutputs) ||
+                         opts.peerLastOutputs || null
       };
     }
 
@@ -308,14 +313,16 @@
     // The per-peer cycle. Mirrors ct-engine.js _opInput's structure
     // but uses vocab.matches() directly instead of compiler/ER.
     // ----------------------------------------------------------
-    function ingest(token) {
+    function ingest(token, extCtx) {
       field.step++;
       field.inputCount++;
       stats.tokensIngested++;
 
-      // Build per-step ctx (substrate-relative state). Phase 3.1: just
-      // selfLastOutput; Phase 3.3 will add peerLastOutputs from lattice.
-      const ctx = buildCtx();
+      // Build per-step ctx. extCtx optionally carries peerLastOutputs
+      // from the lattice wiring layer (Phase 3.3 cross-channels). When
+      // absent, ctx.peerLastOutputs is null and tokensFn runs in
+      // Phase 3.2 isolation mode.
+      const ctx = buildCtx(extCtx);
 
       // Convert token to peer-input shape. Phase 2 uses vocab.tokenToInput;
       // Phase 3.1 intake-config can override via tokensFn returning the

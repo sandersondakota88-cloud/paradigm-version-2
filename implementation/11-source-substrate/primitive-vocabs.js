@@ -560,6 +560,148 @@
   };
 
   // ===================================================================
+  // 6. COMPOSER-PEER vocabulary (Phase 3.3)
+  // ===================================================================
+  // The composer reads the five peers' lastOutputs as input (it has no
+  // direct corpus access). Its tokenToInput is therefore a thin shim
+  // that exposes ctx.peerLastOutputs to matches(). Derivation generates
+  // intersection patterns when multiple peers' outputs agree on a
+  // structural read; predictive generation reaches for output
+  // combinations not yet seen.
+
+  const COMPOSER_GEN_MAX_PER_TOKEN = 3;
+  const COMPOSER_PRED_MAX_PER_GAP = 2;
+
+  const composerVocab = {
+    tokenToInput: function (token) {
+      // The composer's "input" is constructed by makePeer's tokensFn
+      // path — see peer-specs.js composer spec. The token-level fields
+      // here just expose the corpus token's identity for completeness.
+      return {
+        index: token.index || 0,
+        kind: token.kind,
+        text: token.text,
+        position: token.position_class
+        // intakeTokens (from tokensFn) is what matches() actually reads.
+      };
+    },
+
+    generateDerivedFromNovelty: function (input, field) {
+      const gen = [];
+      const tokens = input.intakeTokens || [];
+      // Extract the per-axis "from-<axis>:<output>" projections.
+      const peerOutputs = Object.create(null);
+      for (const t of tokens) {
+        if (typeof t !== "string" || t.indexOf("from-") !== 0) continue;
+        const colonIdx = t.indexOf(":");
+        if (colonIdx < 5) continue;
+        const axis = t.slice(5, colonIdx);
+        const out = t.slice(colonIdx + 1);
+        peerOutputs[axis] = out;
+      }
+      const axes = Object.keys(peerOutputs);
+      if (axes.length < 2) return gen;
+
+      // Derived: pair-presence (which two axes agreed on what?)
+      for (let i = 0; i < axes.length; i++) {
+        for (let j = i + 1; j < axes.length; j++) {
+          if (gen.length >= COMPOSER_GEN_MAX_PER_TOKEN) break;
+          const aAxis = axes[i], bAxis = axes[j];
+          const aOut = peerOutputs[aAxis], bOut = peerOutputs[bAxis];
+          if (!_has(field, "composer-pair", function (p) {
+            return p.aAxis === aAxis && p.bAxis === bAxis &&
+                   p.aOut === aOut && p.bOut === bOut;
+          })) {
+            gen.push(_mkDerived("composer-pair",
+              { aAxis: aAxis, bAxis: bAxis, aOut: aOut, bOut: bOut },
+              "composer pair: " + aAxis + ":" + aOut + " & " + bAxis + ":" + bOut));
+          }
+        }
+        if (gen.length >= COMPOSER_GEN_MAX_PER_TOKEN) break;
+      }
+      // Derived: full-tuple (all five peers' outputs on this step)
+      if (gen.length < COMPOSER_GEN_MAX_PER_TOKEN && axes.length >= 3) {
+        const tupleKey = axes.sort().map(function (a) {
+          return a + ":" + peerOutputs[a];
+        }).join("|");
+        if (!_has(field, "composer-tuple", function (p) { return p.key === tupleKey; })) {
+          gen.push(_mkDerived("composer-tuple",
+            { key: tupleKey, outputs: Object.assign({}, peerOutputs) },
+            "composer tuple: " + tupleKey));
+        }
+      }
+      return gen;
+    },
+
+    generatePredictionsFromGap: function (field) {
+      const gen = [];
+      // Predict: for each pair-presence derived/ratified, predict a
+      // third axis's output that "completes" the tuple. Bootstrap from
+      // derived-or-ratified (chicken-and-egg fix per peer-vocabs).
+      const pairs = [];
+      for (const c of field.constraints) {
+        if (!c.pattern) continue;
+        if (c.kind !== "derived" && c.kind !== "ratified") continue;
+        if (c.pattern.type === "composer-pair") pairs.push(c.pattern);
+      }
+      const tuples = Object.create(null);
+      for (const c of field.constraints) {
+        if (c.pattern && c.pattern.type === "composer-tuple") {
+          tuples[c.pattern.key] = true;
+        }
+      }
+      for (const p of pairs) {
+        if (gen.length >= COMPOSER_PRED_MAX_PER_GAP) break;
+        // Predict that a third axis agreement extends this pair
+        gen.push(_mkPredictive("composer-extension",
+          { aAxis: p.aAxis, bAxis: p.bAxis, aOut: p.aOut, bOut: p.bOut },
+          "predicted: " + p.aAxis + ":" + p.aOut + " & " + p.bAxis + ":" + p.bOut + " extends"));
+      }
+      return gen;
+    },
+
+    matches: function (c, input) {
+      if (!c || !c.pattern) return false;
+      const p = c.pattern;
+      const tokens = input.intakeTokens || [];
+      const peerOutputs = Object.create(null);
+      for (const t of tokens) {
+        if (typeof t !== "string" || t.indexOf("from-") !== 0) continue;
+        const colonIdx = t.indexOf(":");
+        if (colonIdx < 5) continue;
+        peerOutputs[t.slice(5, colonIdx)] = t.slice(colonIdx + 1);
+      }
+      switch (p.type) {
+        case "composer-pair":
+          return peerOutputs[p.aAxis] === p.aOut &&
+                 peerOutputs[p.bAxis] === p.bOut;
+        case "composer-tuple": {
+          const axes = Object.keys(peerOutputs).sort();
+          if (axes.length < 2) return false;
+          const tupleKey = axes.map(function (a) {
+            return a + ":" + peerOutputs[a];
+          }).join("|");
+          return tupleKey === p.key;
+        }
+        case "composer-extension":
+          // Match when the two stipulated axes hold their outputs AND
+          // at least one additional axis is present (extension confirmed)
+          if (peerOutputs[p.aAxis] !== p.aOut) return false;
+          if (peerOutputs[p.bAxis] !== p.bOut) return false;
+          const others = Object.keys(peerOutputs).filter(function (a) {
+            return a !== p.aAxis && a !== p.bAxis;
+          });
+          return others.length >= 1;
+      }
+      return false;
+    },
+
+    familyType: function (c) {
+      return c && c.pattern ? c.pattern.type : null;
+    }
+  };
+
+  // ===================================================================
   // Module
   // ===================================================================
 
@@ -568,7 +710,8 @@
     vocab:     vocabVocab,
     cooccur:   cooccurVocab,
     position:  positionVocab,
-    frequency: frequencyVocab
+    frequency: frequencyVocab,
+    composer:  composerVocab
   });
 
   if (typeof module !== "undefined" && module.exports) {

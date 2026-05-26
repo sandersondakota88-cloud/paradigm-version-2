@@ -103,7 +103,15 @@
     tokensFn: function (token, ctx) {
       const t = ["k-" + token.kind];
       if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
-      // Cross-peer tokens will land here in Phase 3.3.
+      // Phase 3.3 cross-peer: origin-tagged tokens from other peers'
+      // T-1 lastOutputs. Per SE-10/M5: byproduct-at-channel, not commands.
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          if (axis === "kind") continue;  // don't double-count own axis
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
       return t;
     },
 
@@ -192,6 +200,13 @@
         "bucket-" + _bucketFromRecurrence(token.recurrence_text || 0)
       ];
       if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          if (axis === "vocab") continue;
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
       return t;
     },
 
@@ -290,12 +305,18 @@
         "nb-" + _neighborhoodBucket(token),
         "sym-" + (_isSymmetric(token) ? "yes" : "no")
       ];
-      // Add a couple of neighbor-kind tokens (substrate-internal)
       const pre  = token.neighbors_pre  || [];
       const post = token.neighbors_post || [];
       if (pre.length > 0)  t.push("nbpre-"  + pre[pre.length - 1].kind);
       if (post.length > 0) t.push("nbpost-" + post[0].kind);
       if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          if (axis === "cooccur") continue;
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
       return t;
     },
 
@@ -365,6 +386,13 @@
         ? token.neighbors_pre[token.neighbors_pre.length - 1] : null;
       if (prev) t.push("prev-pos-" + (prev.position_class || "OTHER"));
       if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          if (axis === "position") continue;
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
       return t;
     },
 
@@ -445,6 +473,13 @@
         "ktb-" + _bucketFromRecurrence(token.recurrence_kind_text || 0)
       ];
       if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          if (axis === "frequency") continue;
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
       return t;
     },
 
@@ -491,6 +526,91 @@
   };
 
   // ===================================================================
+  // 6. COMPOSER intake config (Phase 3.3)
+  // ===================================================================
+  // The composer reads all five peers' lastOutputs as its primary
+  // intake. It has no direct corpus signal; its job is to surface
+  // intersection structure across axes per SE-11 §2.3.
+
+  const composerIntakeConfig = {
+    dimsFn: function (token, ctx) {
+      // The composer's coord is the per-axis lastOutput of each peer.
+      // peerLastOutputs is supplied by the lattice wiring layer.
+      const out = {};
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          out[axis] = ctx.peerLastOutputs[axis] || "none";
+        }
+      }
+      return out;
+    },
+
+    tokensFn: function (token, ctx) {
+      const t = [];
+      if (ctx && ctx.peerLastOutputs) {
+        for (const axis in ctx.peerLastOutputs) {
+          const v = ctx.peerLastOutputs[axis];
+          if (v) t.push("from-" + axis + ":" + v);
+        }
+      }
+      if (ctx && ctx.selfLastOutput) t.push("self-" + ctx.selfLastOutput);
+      return t;
+    },
+
+    outputVar:      "--composer-role",
+    defaultOutput:  "composer-no-agreement",
+    outputAlphabet: [
+      "composer-multi-axis-agreement",
+      "composer-single-axis-only",
+      "composer-no-agreement",
+      "composer-novel-intersection"
+    ],
+
+    // Composer domain rules can't enumerate all axis-output combinations,
+    // so we keep these minimal. K1 promotion through fidelity will shape
+    // which intersections become load-bearing.
+    domainRules: [
+      // Default: no agreement
+      { when: {}, then: "composer-no-agreement" }
+      // Substrate-relative interpretation lives in the field's pattern
+      // matching (matches() on composer-pair, composer-tuple,
+      // composer-extension); the domainRules layer here is intentionally
+      // thin because the composer's load-bearing work is in the K1
+      // fidelity layer, not in spec-time rule enumeration.
+    ],
+
+    centroids: {
+      "composer-multi-axis-agreement": { focus: "joint-stability" },
+      "composer-single-axis-only":     { focus: "axis-private" },
+      "composer-no-agreement":         { focus: "axis-divergence" },
+      "composer-novel-intersection":   { focus: "emergent-tuple" }
+    },
+
+    onRatify: function (c, field, ctx) {
+      // Sample an axis pair from currently-known peer outputs
+      const axes = ctx && ctx.peerLastOutputs ? Object.keys(ctx.peerLastOutputs) : [];
+      if (axes.length < 2) return null;
+      const i = Math.floor(Math.random() * axes.length);
+      let j = Math.floor(Math.random() * axes.length);
+      while (j === i && axes.length > 1) j = Math.floor(Math.random() * axes.length);
+      const a = axes[i], b = axes[j];
+      return {
+        pattern: {
+          type:    "composer-axis-affinity",
+          aAxis:   a,
+          bAxis:   b,
+          aOut:    ctx.peerLastOutputs[a],
+          bOut:    ctx.peerLastOutputs[b],
+          context: ctx.selfLastOutput,
+          focus:   this.centroids[ctx.selfLastOutput] ?
+                   this.centroids[ctx.selfLastOutput].focus : "unknown"
+        },
+        desc: "composer invented at " + ctx.selfLastOutput
+      };
+    }
+  };
+
+  // ===================================================================
   // Bind onRatify closures so `this` inside them references the spec
   // ===================================================================
 
@@ -499,6 +619,7 @@
   cooccurIntakeConfig.onRatify   = cooccurIntakeConfig.onRatify.bind(cooccurIntakeConfig);
   positionIntakeConfig.onRatify  = positionIntakeConfig.onRatify.bind(positionIntakeConfig);
   frequencyIntakeConfig.onRatify = frequencyIntakeConfig.onRatify.bind(frequencyIntakeConfig);
+  composerIntakeConfig.onRatify  = composerIntakeConfig.onRatify.bind(composerIntakeConfig);
 
   // ===================================================================
   // Module
@@ -509,7 +630,8 @@
     vocab:     vocabIntakeConfig,
     cooccur:   cooccurIntakeConfig,
     position:  positionIntakeConfig,
-    frequency: frequencyIntakeConfig
+    frequency: frequencyIntakeConfig,
+    composer:  composerIntakeConfig
   });
 
   if (typeof module !== "undefined" && module.exports) {
