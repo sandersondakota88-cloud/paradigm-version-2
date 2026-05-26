@@ -21,6 +21,31 @@
 //
 // Per substrate-factory-spec.md §5 revised: peers evaluate CPU-side in
 // Phase 2. Phase 4 hoists peer fields to GPU.
+//
+// =============================================================================
+// Phase 3.1 extension — intake-configuration spec
+// =============================================================================
+// Per phase-3-spec.md, the peer accepts six optional spec fields beyond
+// the Phase 2 primitiveVocab. These close the four gaps Phase 2 surfaced
+// (A: no resolved decisions, B: uniform intake, C: closed pattern vocab,
+// D: no cross-peer observation). All six are optional; a peer constructed
+// without them runs Phase 2-style.
+//
+//   dimsFn(token, ctx)         -> { dimName: value, ... }  coord shape
+//   tokensFn(token, ctx)       -> [intakeTokens...]        intake projection
+//   outputVar                  -> string                   output slot name
+//   defaultOutput              -> string                   alphabet default
+//   outputAlphabet             -> [string...]              finite alphabet
+//   domainRules                -> [{ when: {...}, then: string }...]
+//   centroids                  -> { outputToken: centroidTemplate, ... }
+//   onRatify(c, field, ctx)    -> patternObj | null        invention hook
+//   onPromote(sc, idMap, field, ctx)  -> patternObj | null
+//
+// `ctx` carries substrate-relative state (selfLastOutput, peerLastOutputs).
+// Phase 3.1: ctx has selfLastOutput only. Phase 3.3 adds peerLastOutputs.
+//
+// Canonical Field is unmodified. lastOutput resolution is a CPU walk over
+// domainRules (most-specific-match wins), stored in field.lastOutput.
 // =============================================================================
 
 "use strict";
@@ -103,7 +128,12 @@
       lastMatchedCompoundIds: [],
 
       // Internal id counter for generated constraints
-      _idCtr: 0
+      _idCtr: 0,
+
+      // Phase 3.1: peer's most recently resolved output token (from the
+      // peer's output alphabet via domainRules). null when no intake-config
+      // is wired or before the first ingest.
+      lastOutput: null
     };
 
     // Copy method references from the canonical Field. These will execute
@@ -157,9 +187,41 @@
     const CFG = FieldModule.CFG;
     const vocab = opts.primitiveVocab;
 
+    // ----------------------------------------------------------
+    // Phase 3.1 intake-configuration spec (all optional; Phase 2
+    // peers run without these and behave as before).
+    // ----------------------------------------------------------
+    const dimsFn         = (typeof opts.dimsFn === "function")    ? opts.dimsFn    : null;
+    const tokensFn       = (typeof opts.tokensFn === "function")  ? opts.tokensFn  : null;
+    const outputVar      = (typeof opts.outputVar === "string")   ? opts.outputVar : null;
+    const defaultOutput  = (typeof opts.defaultOutput === "string") ? opts.defaultOutput : null;
+    const outputAlphabet = Array.isArray(opts.outputAlphabet)     ? opts.outputAlphabet.slice() : null;
+    const domainRules    = Array.isArray(opts.domainRules)        ? opts.domainRules.slice() : null;
+    const centroids      = (opts.centroids && typeof opts.centroids === "object") ? opts.centroids : null;
+    const onRatifyHook   = (typeof opts.onRatify === "function")  ? opts.onRatify  : null;
+    const onPromoteHook  = (typeof opts.onPromote === "function") ? opts.onPromote : null;
+
+    // Intake-config is "active" when at least dimsFn + domainRules + outputVar
+    // are present (the minimum set to resolve a lastOutput per step).
+    const intakeConfigActive = (dimsFn !== null && domainRules !== null && outputVar !== null);
+
+    if (intakeConfigActive && defaultOutput === null) {
+      throw new TypeError("makePeer: intake-config requires defaultOutput when dimsFn+domainRules+outputVar are set");
+    }
+    if (intakeConfigActive && outputAlphabet === null) {
+      throw new TypeError("makePeer: intake-config requires outputAlphabet when dimsFn+domainRules+outputVar are set");
+    }
+    if (intakeConfigActive && outputAlphabet.indexOf(defaultOutput) < 0) {
+      throw new TypeError("makePeer: defaultOutput must be in outputAlphabet");
+    }
+
     // Construct the per-peer field with optional seed override
     const seedOverride = opts.seed || null;
     const field = makePeerField(FieldModule, seedOverride);
+
+    if (intakeConfigActive) {
+      field.lastOutput = defaultOutput;
+    }
 
     // Stats per peer (read-only via observe())
     const stats = {
@@ -168,8 +230,79 @@
       predictionsGenerated: 0,
       ratificationsObserved: 0,
       promotionsObserved: 0,
-      evictionsObserved: 0
+      evictionsObserved: 0,
+      // Phase 3.1 additions
+      inventionsGenerated: 0,
+      outputResolutions: 0,
+      outputCounts: Object.create(null)
     };
+
+    // ----------------------------------------------------------
+    // Resolve the peer's output for the current coord by walking
+    // domainRules. Most-specific-match wins (count of coord fields
+    // specified in the rule's `when` clause). Ties broken by rule
+    // order (last-declared wins). Returns defaultOutput on no match.
+    //
+    // This is the CPU resolution path. Phase 3b (later phase)
+    // swaps it for CSS-cascade getComputedStyle on probe DOM.
+    // ----------------------------------------------------------
+    function resolveOutput(coord) {
+      if (!coord || !domainRules) return defaultOutput;
+      let best = null;
+      let bestSpecificity = -1;
+      for (let i = 0; i < domainRules.length; i++) {
+        const rule = domainRules[i];
+        if (!rule || !rule.when) continue;
+        let specificity = 0;
+        let matches = true;
+        for (const k in rule.when) {
+          specificity++;
+          if (coord[k] !== rule.when[k]) { matches = false; break; }
+        }
+        if (matches && specificity >= bestSpecificity) {
+          best = rule.then;
+          bestSpecificity = specificity;
+        }
+      }
+      return (best !== null && typeof best !== "undefined") ? best : defaultOutput;
+    }
+
+    // ----------------------------------------------------------
+    // Build the per-step ctx (substrate-relative state). Phase 3.1
+    // only carries selfLastOutput; Phase 3.3 will add peerLastOutputs
+    // from the lattice wiring layer.
+    // ----------------------------------------------------------
+    function buildCtx() {
+      return {
+        selfLastOutput: field.lastOutput,
+        peerLastOutputs: opts.peerLastOutputs || null  // null in Phase 3.1
+      };
+    }
+
+    // ----------------------------------------------------------
+    // Integrate an invented constraint pattern (returned from
+    // onRatify or onPromote). Pattern object should look like a
+    // derived constraint pattern: { type, ...patternFields, desc }.
+    // The kernel tags it as derived and integrates.
+    // ----------------------------------------------------------
+    function integrateInvention(patternObj) {
+      if (!patternObj || typeof patternObj !== "object") return;
+      if (!patternObj.pattern && patternObj.type) {
+        // Caller returned a bare pattern; wrap it
+        patternObj = { pattern: patternObj, desc: patternObj.desc || "invented" };
+      }
+      const d = patternObj;
+      if (!d.id) d.id = "inv::" + (++field._idCtr);
+      if (!d.kind) d.kind = "derived";
+      if (d.birth === undefined) d.birth = field.step;
+      if (d.lastUsed === undefined) d.lastUsed = field.step;
+      if (d.uses === undefined) d.uses = 0;
+      if (d.weight === undefined) d.weight = 1.0;
+      if (d.permanent === undefined) d.permanent = false;
+      if (!d.invented) d.invented = true;
+      field.integrate([d]);
+      stats.inventionsGenerated++;
+    }
 
     // ----------------------------------------------------------
     // The per-peer cycle. Mirrors ct-engine.js _opInput's structure
@@ -180,8 +313,30 @@
       field.inputCount++;
       stats.tokensIngested++;
 
-      // Convert token to peer-input shape
-      const input = vocab.tokenToInput(token);
+      // Build per-step ctx (substrate-relative state). Phase 3.1: just
+      // selfLastOutput; Phase 3.3 will add peerLastOutputs from lattice.
+      const ctx = buildCtx();
+
+      // Convert token to peer-input shape. Phase 2 uses vocab.tokenToInput;
+      // Phase 3.1 intake-config can override via tokensFn returning the
+      // intake projection. Both paths feed vocab.matches() below.
+      let input;
+      if (intakeConfigActive && tokensFn !== null) {
+        try {
+          const intakeTokens = tokensFn(token, ctx);
+          // tokensFn returns an array of intake tokens. We expose them on
+          // the input record so vocab.matches() can use them. We also keep
+          // the Phase 2 vocab.tokenToInput projection so existing matches()
+          // implementations keep working unchanged.
+          input = vocab.tokenToInput(token);
+          input.intakeTokens = Array.isArray(intakeTokens) ? intakeTokens : [];
+          input.ctx = ctx;
+        } catch (e) {
+          input = vocab.tokenToInput(token);
+        }
+      } else {
+        input = vocab.tokenToInput(token);
+      }
 
       // Refresh vector-delta before evaluation (canonical kernel does
       // this in _opInput before matching)
@@ -213,6 +368,17 @@
           if (field.ratify(idx)) {
             ratifiedThisStep.push(c);
             stats.ratificationsObserved++;
+            // Phase 3.1: invention at ratification. The hook may return
+            // a new pattern object; if so it integrates as a derived
+            // constraint. Per F5/SE-09 this is permanent vocabulary growth.
+            if (onRatifyHook !== null) {
+              try {
+                const invention = onRatifyHook(c, field, ctx);
+                if (invention) integrateInvention(invention);
+              } catch (e) {
+                // Hooks don't kill the cycle
+              }
+            }
           }
         }
       }
@@ -310,12 +476,41 @@
       const promotedThisStep = field.checkPromotions();
       if (promotedThisStep && promotedThisStep.length > 0) {
         stats.promotionsObserved += promotedThisStep.length;
+        // Phase 3.1: invention at promotion. Build idMap for the hook.
+        if (onPromoteHook !== null) {
+          const idMap = Object.create(null);
+          for (const c of field.constraints) { if (c && c.id) idMap[c.id] = c; }
+          for (const sc of promotedThisStep) {
+            try {
+              const invention = onPromoteHook(sc, idMap, field, ctx);
+              if (invention) integrateInvention(invention);
+            } catch (e) {
+              // Hooks don't kill the cycle
+            }
+          }
+        }
       }
 
       // Flow discipline (SE-02)
       const evicted = field.evictStalePredictions();
       if (evicted && evicted.length > 0) {
         stats.evictionsObserved += evicted.length;
+      }
+
+      // Phase 3.1: resolve peer's output for this token (CPU walk over
+      // domainRules; most-specific-match wins). Stored on field.lastOutput
+      // so other peers (Phase 3.3) and observe() can read it.
+      let resolvedOutput = null;
+      if (intakeConfigActive) {
+        try {
+          const coord = dimsFn(token, ctx);
+          resolvedOutput = resolveOutput(coord);
+        } catch (e) {
+          resolvedOutput = defaultOutput;
+        }
+        field.lastOutput = resolvedOutput;
+        stats.outputResolutions++;
+        stats.outputCounts[resolvedOutput] = (stats.outputCounts[resolvedOutput] || 0) + 1;
       }
 
       return {
@@ -326,7 +521,8 @@
         predictions: stats.predictionsGenerated,
         promoted: promotedThisStep.length,
         evicted: evicted.length,
-        delta: vAfter
+        delta: vAfter,
+        lastOutput: resolvedOutput
       };
     }
 
@@ -361,6 +557,20 @@
         };
       });
 
+      // Phase 3.1: intake-config block; null when not active
+      let intakeConfigBlock = null;
+      if (intakeConfigActive) {
+        intakeConfigBlock = {
+          outputVar: outputVar,
+          lastOutput: field.lastOutput,
+          defaultOutput: defaultOutput,
+          alphabet: outputAlphabet.slice(),
+          outputCounts: Object.assign({}, stats.outputCounts),
+          inventionsGenerated: stats.inventionsGenerated,
+          outputResolutions: stats.outputResolutions
+        };
+      }
+
       return {
         id: opts.id,
         axis: opts.axis,
@@ -379,6 +589,7 @@
         subcascades: subcascadeViews,
         namingPref: field.namingPref,
         namedCount: field.namedCount,
+        intakeConfig: intakeConfigBlock,
         stats: Object.assign({}, stats)
       };
     }
@@ -400,7 +611,13 @@
       primitiveVocab: vocab,
       ingest: ingest,
       observe: observe,
-      teardown: teardown
+      teardown: teardown,
+      // Phase 3.1: intake-config introspection (lattice wiring in Phase 3.3
+      // reads these to build per-peer ctx.peerLastOutputs).
+      intakeConfigActive: intakeConfigActive,
+      outputVar: outputVar,
+      outputAlphabet: outputAlphabet ? outputAlphabet.slice() : null,
+      getLastOutput: function () { return field.lastOutput; }
     });
   }
 
