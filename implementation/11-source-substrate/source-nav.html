@@ -59,6 +59,47 @@
     border-color: #c2a05a;
     background: #2a2218;
   }
+  /* Phase 12 reader bridge: tokens that contributed to a clicked
+     sub-cascade get a thick outline overlay (separate from composer
+     coloring and origin border so all three signals coexist). */
+  .source-pane .tok.bridge-highlight {
+    outline: 2px solid #c2a05a;
+    outline-offset: 1px;
+    box-shadow: 0 0 4px #c2a05a;
+  }
+  /* Sub-cascades that the selected token touched */
+  .sub-row.bridge-highlight {
+    background: #2a2218;
+    border-color: #c2a05a;
+  }
+  .sub-panel {
+    max-height: 320px;
+    overflow-y: auto;
+    background: #0c1118;
+    border: 1px solid #2c3340;
+    padding: 4px;
+    font-size: 10px;
+  }
+  .sub-row {
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    display: grid;
+    grid-template-columns: 1fr 60px 50px;
+    gap: 6px;
+    align-items: center;
+  }
+  .sub-row:hover { background: #1a1f28; }
+  .sub-row .sub-name { color: #d6dde6; font-weight: 700; }
+  .sub-row .sub-axis { color: #8aa0bb; font-size: 9px; text-transform: uppercase; }
+  .sub-row .sub-mem  { color: #c2a05a; text-align: right; font-weight: 700; }
+  .sub-row .sub-fid  { color: #9aa8bb; text-align: right; font-size: 9px; }
+  .sub-section {
+    color: #c87575; font-size: 9px; text-transform: uppercase;
+    letter-spacing: 1px; margin: 6px 4px 2px;
+  }
   /* Source pane colors keyed by composer output (NOT a hardcoded interpretation
      of what tokens mean; just a visualization of the substrate's emitted
      decision per token). */
@@ -233,6 +274,23 @@
       <div class="heat-grid" id="heat-grid"></div>
       <div class="stat" id="heat-stat" style="margin-top: 4px;">—</div>
     </div>
+    <!-- Phase 12: reader bridge — sub-cascade panel.
+         Each promoted sub-cascade listed with member count. Click a row
+         to highlight every token that contributed to any member of this
+         sub-cascade firing. Per O3 the labels are substrate-internal
+         vocabulary only. Per §2.1 no interpretation. The reader's eyes
+         do the correspondence work. -->
+    <div class="box">
+      <h2>Sub-cascade reader bridge (Phase 12)</h2>
+      <div class="stat" style="margin-bottom: 6px;">
+        click a sub-cascade row → tokens that contributed get highlighted in source<br>
+        click a token in source → sub-cascades it touched get highlighted here
+      </div>
+      <div id="subcascade-panel" class="sub-panel">no lattice yet</div>
+      <div style="margin-top: 6px;">
+        <button id="btn-clear-bridge">CLEAR HIGHLIGHTS</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -339,7 +397,8 @@ async function buildStream(selValue, statusEl) {
     return {
       mode: "js-only",
       records: CorpusAdapter.adaptCorpus(src, acorn).records,
-      hostMix: { js: -1 }  // filled below
+      hostMix: { js: -1 },
+      sourceByOrigin: { js: src }
     };
   }
   if (selValue === "todomvc:three-language") {
@@ -350,6 +409,7 @@ async function buildStream(selValue, statusEl) {
     for (let i = 0; i < TODOMVC_CSS.length; i++) {
       cssParts.push(await fetchText(TODOMVC_CSS[i]));
     }
+    const cssSrc = cssParts.join("\n\n");
     statusEl.textContent = "fetching TodoMVC JS...";
     const jsSrc = await fetchText(TODOMVC_JS);
 
@@ -358,7 +418,7 @@ async function buildStream(selValue, statusEl) {
     const htmlStream = HTMLAdapter.adaptHTML(htmlSrc);
     statusEl.textContent = "parsing CSS...";
     await new Promise(function (r) { setTimeout(r, 0); });
-    const cssStream = CSSAdapter.adaptCSS(cssParts.join("\n\n"));
+    const cssStream = CSSAdapter.adaptCSS(cssSrc);
     statusEl.textContent = "tokenizing JS...";
     await new Promise(function (r) { setTimeout(r, 0); });
     const jsStream = CorpusAdapter.adaptCorpus(jsSrc, acorn);
@@ -376,7 +436,8 @@ async function buildStream(selValue, statusEl) {
         html: htmlStream.records.length,
         css:  cssStream.records.length,
         js:   jsStream.records.length
-      }
+      },
+      sourceByOrigin: { html: htmlSrc, css: cssSrc, js: jsSrc }
     };
   }
 
@@ -396,7 +457,12 @@ async function buildStream(selValue, statusEl) {
   }
   const recs = CorpusAdapter.adaptCorpus(src, acorn).records;
   for (const r of recs) r.origin = "js";
-  return { mode: "js-only", records: recs, hostMix: { js: recs.length } };
+  return {
+    mode: "js-only",
+    records: recs,
+    hostMix: { js: recs.length },
+    sourceByOrigin: { js: src }
+  };
 }
 
 async function boot() {
@@ -415,6 +481,7 @@ async function boot() {
   state.stream = { records: unifiedStream.records, metadata: { total_tokens: unifiedStream.records.length } };
   state.streamMode = unifiedStream.mode;
   state.hostMix = unifiedStream.hostMix;
+  state.sourceByOrigin = unifiedStream.sourceByOrigin || {};
 
   statusEl.textContent = "building lattice (" + unifiedStream.records.length +
     " records" +
@@ -432,19 +499,33 @@ async function boot() {
   });
 
   // Ingest in order; yield every CHUNK records so the UI stays responsive.
+  // Phase 12: also capture per-token match attribution (which substrate
+  // constraints fired at this token, by peer). Used by the reader bridge
+  // to highlight which tokens contributed to which sub-cascades.
   const stream = state.stream;
   state.perTokenOutputs = new Array(stream.records.length);
+  state.perTokenMatched = new Array(stream.records.length);
+  state.perTokenRatified = new Array(stream.records.length);
+  // Reverse index: constraintId -> [tokenIdx, ...] (built lazily after ingest)
+  state.constraintFiredAt = null;
   const CHUNK = 250;
   let cur = 0;
   async function chunkIngest() {
     const end = Math.min(cur + CHUNK, stream.records.length);
     for (; cur < end; cur++) {
-      state.lattice.ingest(stream.records[cur]);
+      const ingestResult = state.lattice.ingest(stream.records[cur]);
       const snap = Object.create(null);
+      const matchedByPeer = Object.create(null);
+      const ratifiedByPeer = Object.create(null);
       for (const axis of state.lattice.ALL_PEERS) {
         snap[axis] = state.lattice.peers[axis].getLastOutput();
+        const pres = ingestResult && ingestResult.results && ingestResult.results[axis];
+        matchedByPeer[axis]  = (pres && pres.matchedIds)  ? pres.matchedIds.slice()  : [];
+        ratifiedByPeer[axis] = (pres && pres.ratifiedIds) ? pres.ratifiedIds.slice() : [];
       }
       state.perTokenOutputs[cur] = snap;
+      state.perTokenMatched[cur] = matchedByPeer;
+      state.perTokenRatified[cur] = ratifiedByPeer;
     }
     const pct = Math.floor(100 * cur / stream.records.length);
     statusEl.textContent = "ingesting " + cur + "/" + stream.records.length + " (" + pct + "%)";
@@ -453,6 +534,19 @@ async function boot() {
     }
   }
   await chunkIngest();
+
+  // Build reverse index: for each constraint id, which tokens caused it
+  // to fire (matched or ratified). This drives the reader bridge.
+  state.constraintFiredAt = Object.create(null);
+  for (let t = 0; t < state.perTokenMatched.length; t++) {
+    const m = state.perTokenMatched[t] || {};
+    for (const axis in m) {
+      for (const cid of m[axis]) {
+        if (!state.constraintFiredAt[cid]) state.constraintFiredAt[cid] = [];
+        state.constraintFiredAt[cid].push(t);
+      }
+    }
+  }
 
   statusEl.textContent = "rendering (" + stream.records.length + " records, " +
     state.lattice.ALL_PEERS.length + " peers)";
@@ -548,6 +642,7 @@ function renderAll() {
   renderProjection();
   renderHeatGrid();
   renderSliders();
+  renderSubcascadePanel();
 }
 
 function renderGauges() {
@@ -733,6 +828,312 @@ function renderSliders() {
   });
 }
 
+// ---------------------------------------------------------------------
+// Phase 12 — reader bridge.
+//
+// renderSubcascadePanel: lists every promoted sub-cascade across all six
+// peers. Each row is clickable: clicking highlights every source token
+// that contributed to any member of this sub-cascade.
+//
+// bridgeHighlightSubcascade(peer, sc): walks the sub-cascade's member IDs,
+// looks each up in state.constraintFiredAt, marks those tokens with the
+// .bridge-highlight class.
+//
+// bridgeHighlightToken(idx): walks state.perTokenMatched[idx], finds
+// which sub-cascades any of those constraint IDs belong to, marks
+// the matching sub-cascade rows in the panel with .bridge-highlight.
+//
+// Per O3: panel content is substrate-internal vocabulary only
+// (sub-cascade names, family types, member counts, fidelity-at-birth).
+// Per §2.1: no interpretation; the labels are what the substrate
+// produced for itself.
+// ---------------------------------------------------------------------
+
+function renderSubcascadePanel() {
+  const root = document.getElementById("subcascade-panel");
+  if (!root) return;
+  if (!state.lattice) { root.textContent = "no lattice yet"; return; }
+  const obs = state.lattice.observe();
+  const rows = [];
+  // Cache sub-cascade member sets so token-click can look them up
+  state.subcascadesByPeer = Object.create(null);
+  for (const axis of state.lattice.ALL_PEERS) {
+    const subs = obs.peers[axis].subcascades;
+    if (subs.length === 0) continue;
+    state.subcascadesByPeer[axis] = subs;
+    rows.push("<div class='sub-section'>" + axis + " (" + subs.length + ")</div>");
+    for (let i = 0; i < subs.length; i++) {
+      const sc = subs[i];
+      const id = axis + ":" + i;
+      rows.push(
+        "<div class='sub-row' data-peer='" + axis + "' data-sub-idx='" + i + "' " +
+        "title='family=" + sc.familyType + "'>" +
+          "<div><span class='sub-name'>" + sc.name + "</span><br>" +
+            "<span class='sub-axis'>" + sc.familyType + "</span></div>" +
+          "<div class='sub-mem'>" + sc.memberCount + "</div>" +
+          "<div class='sub-fid'>" + (sc.fidAtBirth || 0).toFixed(3) + "</div>" +
+        "</div>"
+      );
+    }
+  }
+  if (rows.length === 0) {
+    root.innerHTML = "<div class='stat'>no sub-cascades promoted yet</div>";
+  } else {
+    root.innerHTML = rows.join("");
+  }
+
+  // Wire row clicks
+  root.querySelectorAll(".sub-row").forEach(function (el) {
+    el.addEventListener("click", function () {
+      const peer = el.dataset.peer;
+      const idx = parseInt(el.dataset.subIdx, 10);
+      const sc = state.subcascadesByPeer[peer][idx];
+      bridgeHighlightSubcascade(peer, sc);
+      // Also visually mark this row as the active one
+      root.querySelectorAll(".sub-row.bridge-highlight").forEach(function (r) {
+        r.classList.remove("bridge-highlight");
+      });
+      el.classList.add("bridge-highlight");
+    });
+  });
+}
+
+function clearBridgeHighlights() {
+  document.querySelectorAll("#source-pane .tok.bridge-highlight").forEach(function (el) {
+    el.classList.remove("bridge-highlight");
+  });
+  document.querySelectorAll("#subcascade-panel .sub-row.bridge-highlight").forEach(function (el) {
+    el.classList.remove("bridge-highlight");
+  });
+}
+
+// Phase 12 representative-sample extractor.
+//
+// Given a token index, return a short HTML-escaped source slice that
+// "shows what the substrate saw here." For JS records we slice the
+// original source via the Acorn-supplied source_range plus a window of
+// ±SLICE_RADIUS characters of context. For HTML records we show the
+// element's tag + selected attributes. For CSS records we show the
+// rule's selector text or property:value.
+//
+// This is the platform's rendering pipeline borrowed as eyes for the
+// platform's compute pipeline. The source text the compute substrate
+// ingested is rendered back to the human reader through the same DOM
+// the substrate happens to live in.
+const SLICE_RADIUS = 40;  // characters of context on each side
+
+function _escapeHTML(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function representativeSampleFor(tokenIdx) {
+  if (!state.stream || !state.stream.records) return null;
+  const r = state.stream.records[tokenIdx];
+  if (!r) return null;
+  const origin = r.origin || "js";
+  const src = state.sourceByOrigin && state.sourceByOrigin[origin];
+
+  if (origin === "js" && src && r.source_range) {
+    const [start, end] = r.source_range;
+    const sliceStart = Math.max(0, start - SLICE_RADIUS);
+    const sliceEnd   = Math.min(src.length, end + SLICE_RADIUS);
+    const pre  = src.substring(sliceStart, start);
+    const tok  = src.substring(start, end);
+    const post = src.substring(end, sliceEnd);
+    return {
+      origin: "js",
+      html:
+        _escapeHTML(pre) +
+        "<strong style='color:#c2a05a;background:#2a2218;padding:0 2px;'>" +
+        _escapeHTML(tok) +
+        "</strong>" +
+        _escapeHTML(post)
+    };
+  }
+
+  if (origin === "html") {
+    // Synthesize a representative HTML snippet from the record's fields.
+    if (r.kind === "element") {
+      const attrs = r.attrs || {};
+      let attrsStr = "";
+      for (const k of Object.keys(attrs).slice(0, 4)) {
+        attrsStr += " " + k + '="' + _escapeHTML(attrs[k]).slice(0, 32) + '"';
+      }
+      return {
+        origin: "html",
+        html: "&lt;<strong style='color:#c87575;'>" + _escapeHTML(r.tag) + "</strong>" + attrsStr + "&gt;"
+      };
+    }
+    if (r.kind === "attribute") {
+      return {
+        origin: "html",
+        html: "&lt;" + _escapeHTML(r.tag) + " <strong style='color:#c87575;'>" +
+              _escapeHTML(r.attr_name) + "=\"" + _escapeHTML(r.text) + "\"</strong>&gt;"
+      };
+    }
+    if (r.kind === "text") {
+      return { origin: "html", html: "<em>" + _escapeHTML(r.text).slice(0, 80) + "</em>" };
+    }
+    return { origin: "html", html: _escapeHTML(r.text || r.kind) };
+  }
+
+  if (origin === "css") {
+    if (r.kind === "selector") {
+      const full = r.full_selector || r.text;
+      const idx = full.indexOf(r.text);
+      if (idx >= 0) {
+        const pre  = full.substring(0, idx);
+        const post = full.substring(idx + r.text.length);
+        return {
+          origin: "css",
+          html:
+            _escapeHTML(pre) +
+            "<strong style='color:#75c8c8;background:#1a2a2a;padding:0 2px;'>" +
+            _escapeHTML(r.text) +
+            "</strong>" +
+            _escapeHTML(post) +
+            " { ... }"
+        };
+      }
+      return { origin: "css", html: "<strong style='color:#75c8c8;'>" + _escapeHTML(r.text) + "</strong> { ... }" };
+    }
+    if (r.kind === "declaration") {
+      return {
+        origin: "css",
+        html: _escapeHTML(r.full_selector || "") + " { <strong style='color:#75c8c8;'>" +
+              _escapeHTML(r.property) + ":</strong> " + _escapeHTML(r.text) + "; }"
+      };
+    }
+    if (r.kind === "at-rule") {
+      return {
+        origin: "css",
+        html: "<strong style='color:#75c8c8;'>@" + _escapeHTML(r.kind_subtype) + " " + _escapeHTML(r.text) + "</strong>"
+      };
+    }
+    return { origin: "css", html: _escapeHTML(r.text) };
+  }
+
+  return { origin: origin, html: _escapeHTML(r.text || "") };
+}
+
+// Pick N representative tokens from the contributing-set, biased toward
+// even distribution across the corpus (so samples aren't all clustered
+// at one position). We sort token indices, then pick every Nth.
+function pickRepresentatives(tokenSet, n) {
+  const tokens = Object.keys(tokenSet).map(Number).sort(function (a, b) { return a - b; });
+  if (tokens.length <= n) return tokens;
+  const step = tokens.length / n;
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(tokens[Math.floor(i * step)]);
+  return out;
+}
+
+function bridgeHighlightSubcascade(peer, sc) {
+  clearBridgeHighlights();
+  // sub-cascade members are constraint IDs. For each, look up which
+  // tokens contributed to it firing via state.constraintFiredAt.
+  // The peer's field carries the canonical member-id list.
+  const peerObj = state.lattice.peers[peer];
+  if (!peerObj || !peerObj.field || !peerObj.field.subcascades) return;
+  // Find the sub-cascade by name in the peer's field (the observe()
+  // snapshot doesn't carry memberIds directly)
+  let memberIds = [];
+  for (const realSc of peerObj.field.subcascades) {
+    if (realSc.name === sc.name && realSc.familyType === sc.familyType) {
+      memberIds = realSc.memberIds || [];
+      break;
+    }
+  }
+  // Union the token-sets that fired each member
+  const tokenSet = Object.create(null);
+  for (const mid of memberIds) {
+    const tokens = state.constraintFiredAt[mid];
+    if (!tokens) continue;
+    for (const t of tokens) tokenSet[t] = true;
+  }
+  // Highlight in source pane
+  const pane = document.getElementById("source-pane");
+  let firstHit = null;
+  pane.querySelectorAll(".tok").forEach(function (el) {
+    const t = parseInt(el.dataset.tokenId, 10);
+    if (tokenSet[t]) {
+      el.classList.add("bridge-highlight");
+      if (firstHit === null) firstHit = el;
+    }
+  });
+  if (firstHit) {
+    firstHit.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  // Tell the user how many lit up + render representative samples
+  const detail = document.getElementById("detail-panel");
+  const hitCount = Object.keys(tokenSet).length;
+  const reps = pickRepresentatives(tokenSet, 8);
+
+  let sampleHTML = "";
+  if (reps.length > 0) {
+    sampleHTML +=
+      "<hr style='border:none;border-top:1px solid #2c3340;margin:6px 0;'>" +
+      "<div class='field'>representative firings:</div>" +
+      "<div class='stat' style='font-size:9px;margin-bottom:4px;'>" +
+        "(eight samples evenly distributed across all " + hitCount + " contributing tokens)" +
+      "</div>";
+    for (const t of reps) {
+      const samp = representativeSampleFor(t);
+      if (!samp) continue;
+      sampleHTML +=
+        "<div style='margin-bottom:6px;padding:4px 6px;background:#0c1118;border-left:2px solid " +
+        (samp.origin === "html" ? "#c87575" : samp.origin === "css" ? "#75c8c8" : "#b5c875") +
+        ";font-size:10px;line-height:1.4;word-break:break-all;'>" +
+          "<span class='stat' style='font-size:9px;'>tok " + t + " · " + samp.origin + "</span><br>" +
+          "<code style='color:#d6dde6;'>" + samp.html + "</code>" +
+        "</div>";
+    }
+  }
+
+  detail.innerHTML =
+    "<div class='token-id'>sub-cascade · " + sc.name + "</div>" +
+    "<div class='field'>family:</div><div class='value'>" + sc.familyType + "</div>" +
+    "<div class='field'>members:</div><div class='value'>" + sc.memberCount + "</div>" +
+    "<div class='field'>fid@birth:</div><div class='value'>" + (sc.fidAtBirth || 0).toFixed(4) + "</div>" +
+    "<div class='field'>tokens contributing:</div>" +
+    "<div class='value' style='color:#c2a05a;font-size:14px;'>" + hitCount + "</div>" +
+    "<div class='stat' style='font-size:9px;'>(of " + state.stream.records.length + " total)</div>" +
+    sampleHTML;
+}
+
+function bridgeHighlightTokenSubcascades(idx) {
+  // Don't clear sub-cascade highlights from a prior click of a sub-cascade
+  // row; only clear other token-driven highlights.
+  document.querySelectorAll("#subcascade-panel .sub-row.bridge-highlight").forEach(function (el) {
+    el.classList.remove("bridge-highlight");
+  });
+  if (!state.perTokenMatched || !state.subcascadesByPeer) return;
+  const matched = state.perTokenMatched[idx];
+  if (!matched) return;
+  // Collect all matched constraint IDs across peers
+  const ids = Object.create(null);
+  for (const axis in matched) for (const cid of matched[axis]) ids[cid] = true;
+  // For each sub-cascade, check if any of its member IDs are in this set
+  for (const peer in state.subcascadesByPeer) {
+    const peerObj = state.lattice.peers[peer];
+    const realSubs = peerObj.field.subcascades;
+    for (let i = 0; i < realSubs.length; i++) {
+      const sc = realSubs[i];
+      let hits = 0;
+      for (const mid of (sc.memberIds || [])) {
+        if (ids[mid]) hits++;
+      }
+      if (hits > 0) {
+        const row = document.querySelector(
+          "#subcascade-panel .sub-row[data-peer='" + peer + "'][data-sub-idx='" + i + "']"
+        );
+        if (row) row.classList.add("bridge-highlight");
+      }
+    }
+  }
+}
+
 function selectToken(idx) {
   state.selectedTokenIdx = idx;
   // highlight in source pane
@@ -744,6 +1145,9 @@ function selectToken(idx) {
   if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
   renderProjection();
   renderDetail();
+  // Phase 12 reader bridge: light up sub-cascades whose members fired
+  // on this token.
+  bridgeHighlightTokenSubcascades(idx);
 }
 
 function renderDetail() {
@@ -839,6 +1243,7 @@ function depositProbe() {
 
 document.getElementById("btn-deposit-css").addEventListener("click", depositCSS);
 document.getElementById("btn-deposit-probe").addEventListener("click", depositProbe);
+document.getElementById("btn-clear-bridge").addEventListener("click", clearBridgeHighlights);
 
 })();
 </script>

@@ -520,10 +520,23 @@
         stats.outputCounts[resolvedOutput] = (stats.outputCounts[resolvedOutput] || 0) + 1;
       }
 
+      // Phase 12: per-step matched constraint IDs surfaced for the
+      // reader bridge. Lets external observers attribute which
+      // substrate-internal constraints fired at this token. Per O3
+      // this exposes substrate-internal vocabulary only (constraint
+      // IDs the substrate generated itself).
+      const matchedIds = [];
+      for (const idx of matched) {
+        const c = field.constraints[idx];
+        if (c && c.id) matchedIds.push(c.id);
+      }
+
       return {
         step: field.step,
         matched: matched.length,
+        matchedIds: matchedIds,
         ratified: ratifiedThisStep.length,
+        ratifiedIds: ratifiedThisStep.map(function (c) { return c.id; }),
         derived: stats.derivedGenerated,
         predictions: stats.predictionsGenerated,
         promoted: promotedThisStep.length,
